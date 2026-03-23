@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,23 +12,30 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import Toast from '../components/Toast';
 import { getDeviceId } from '../utils/deviceId';
-
-// ─── Point to Flask test server or Django backend ─────────────────────────────
-const API_BASE =
-  Platform.OS === 'android'
-    ? 'http://10.0.2.2:5000'   // Android emulator → localhost
-    : 'http://127.0.0.1:5000'; // iOS simulator / physical (change to machine IP)
-// ─────────────────────────────────────────────────────────────────────────────
+import { useAppName } from '../utils/AppContext';
+import { useApiConfig } from '../utils/ApiConfig';
+import { registerForPushNotifications, registerTokenWithBackend } from '../utils/notifications';
+import AppBrand from '../components/AppBrand';
+import DeveloperSettings from '../components/DeveloperSettings';
 
 export default function LoginScreen({ onLoginSuccess }) {
+  const { updateAppName } = useAppName();
+  const { currentUrl, checkHealth, updateFallback, isUsingFallback } = useApiConfig();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [deviceId, setDeviceId] = useState('');
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+  const [showDeveloperSettings, setShowDeveloperSettings] = useState(false);
 
+  const clickCountRef = useRef(0);
+  const clickTimerRef = useRef(null);
+
+  // Health check on mount
   useEffect(() => {
+    checkHealth();
     getDeviceId().then(setDeviceId);
   }, []);
 
@@ -37,15 +44,38 @@ export default function LoginScreen({ onLoginSuccess }) {
     setTimeout(() => setToast((t) => ({ ...t, visible: false })), 3200);
   };
 
+  // 10-click counter for developer settings
+  const handleAppNamePress = () => {
+    clickCountRef.current += 1;
+
+    // Clear timer
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+
+    // Reset counter after 3 seconds of inactivity
+    clickTimerRef.current = setTimeout(() => {
+      clickCountRef.current = 0;
+    }, 3000);
+
+    // Open developer settings on 10th click
+    if (clickCountRef.current >= 10) {
+      clickCountRef.current = 0;
+      clearTimeout(clickTimerRef.current);
+      setShowDeveloperSettings(true);
+      showToast('Developer Settings unlocked!', 'success');
+    }
+  };
+
   const handleLogin = async () => {
     if (!email || !password) {
-      showToast('Please enter email and password.', 'error');
+      showToast('Please enter email/username and password.', 'error');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/login`, {
+      const response = await fetch(`${currentUrl}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, device_id: deviceId }),
@@ -54,7 +84,24 @@ export default function LoginScreen({ onLoginSuccess }) {
       const data = await response.json();
 
       if (response.ok && data.success) {
+        // Save fallback URL from response
+        if (data.fallback_url) {
+          await updateFallback(data.fallback_url);
+        }
+
+        await updateAppName(data.business_name?.trim() || 'MS');
         showToast(`Welcome back, ${data.username}!`, 'success');
+
+        // Register for push notifications (async, don't block login)
+        registerForPushNotifications().then(({ token, error }) => {
+          if (token) {
+            console.log('[Login] Registering push token...');
+            registerTokenWithBackend(currentUrl, deviceId, email, token);
+          } else if (error) {
+            console.warn('[Login] Push notification registration failed:', error);
+          }
+        });
+
         setTimeout(() => {
           onLoginSuccess({
             username: data.username,
@@ -82,21 +129,30 @@ export default function LoginScreen({ onLoginSuccess }) {
 
       <Toast visible={toast.visible} message={toast.message} type={toast.type} />
 
+      <DeveloperSettings
+        visible={showDeveloperSettings}
+        onClose={() => setShowDeveloperSettings(false)}
+      />
+
       <View style={styles.header}>
-        <Text style={styles.appName}>MS</Text>
+        <TouchableOpacity onPress={handleAppNamePress} activeOpacity={1}>
+          <AppBrand textStyle={styles.appName} />
+        </TouchableOpacity>
         <Text style={styles.tagline}>Welcome back</Text>
+        {isUsingFallback && (
+          <Text style={styles.fallbackIndicator}>Using Fallback Server</Text>
+        )}
       </View>
 
       <View style={styles.form}>
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Username / Email</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter your email"
+            placeholder="Enter your username or email"
             placeholderTextColor="#aaa"
             value={email}
             onChangeText={setEmail}
-            keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -106,7 +162,7 @@ export default function LoginScreen({ onLoginSuccess }) {
           <Text style={styles.label}>Password</Text>
           <View style={styles.passwordWrapper}>
             <TextInput
-              style={[styles.input, styles.passwordInput]}
+              style={styles.passwordInput}
               placeholder="Enter your password"
               placeholderTextColor="#aaa"
               value={password}
@@ -117,6 +173,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             <TouchableOpacity
               style={styles.toggleBtn}
               onPress={() => setShowPassword(!showPassword)}
+              activeOpacity={0.6}
             >
               <Text style={styles.toggleText}>{showPassword ? 'Hide' : 'Show'}</Text>
             </TouchableOpacity>
@@ -140,9 +197,9 @@ export default function LoginScreen({ onLoginSuccess }) {
         </TouchableOpacity>
       </View>
 
-      {deviceId ? (
+      {/* {deviceId ? (
         <Text style={styles.deviceIdText}>Device: {deviceId.substring(0, 16)}…</Text>
-      ) : null}
+      ) : null} */}
     </KeyboardAvoidingView>
   );
 }
@@ -157,6 +214,14 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', marginBottom: 40 },
   appName: { fontSize: 52, fontWeight: '800', color: '#1a1a2e', letterSpacing: 2 },
   tagline: { fontSize: 16, color: '#666', marginTop: 6 },
+  fallbackIndicator: {
+    fontSize: 11,
+    color: '#ff9800',
+    fontWeight: '700',
+    marginTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   form: {
     backgroundColor: '#fff',
     borderRadius: 20,
@@ -179,24 +244,32 @@ const styles = StyleSheet.create({
     color: '#1a1a2e',
     backgroundColor: '#fafafa',
   },
-  passwordWrapper: { flexDirection: 'row', alignItems: 'center' },
-  passwordInput: {
-    flex: 1,
-    borderTopRightRadius: 0,
-    borderBottomRightRadius: 0,
-    borderRightWidth: 0,
+  passwordWrapper: {
+    position: 'relative',
   },
-  toggleBtn: {
+  passwordInput: {
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    borderLeftWidth: 0,
-    borderTopRightRadius: 10,
-    borderBottomRightRadius: 10,
+    borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    paddingRight: 60,
+    fontSize: 15,
+    color: '#1a1a2e',
     backgroundColor: '#fafafa',
   },
-  toggleText: { fontSize: 13, color: '#4a90e2', fontWeight: '600' },
+  toggleBtn: {
+    position: 'absolute',
+    right: 4,
+    top: 4,
+    bottom: 4,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+  },
+  toggleText: { fontSize: 13, color: '#4a90e2', fontWeight: '700' },
   forgotBtn: { alignSelf: 'flex-end', marginBottom: 24 },
   forgotText: { fontSize: 13, color: '#4a90e2', fontWeight: '500' },
   loginBtn: {

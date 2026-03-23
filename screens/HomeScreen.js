@@ -40,7 +40,7 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
   const webViewRef = useRef(null);
   const canGoBackRef = useRef(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState(null);
   const [notification, setNotification] = useState(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -396,8 +396,10 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.errorText}>Failed to load the app.</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={() => setError(false)}>
+        <Text style={styles.errorText}>Failed to load the app</Text>
+        <Text style={styles.errorDetail}>{error}</Text>
+        <Text style={styles.errorUrl}>URL: {WEB_APP_URL}</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={() => setError(null)}>
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
       </View>
@@ -432,13 +434,23 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         allowUniversalAccessFromFileURLs
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
+        mixedContentMode="always"
         injectedJavaScript={injectedJavaScript}
         onMessage={handleMessage}
         onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
         onFileDownload={onFileDownload}
         onNavigationStateChange={(navState) => { canGoBackRef.current = navState.canGoBack; }}
         onLoadEnd={() => setLoading(false)}
-        onError={() => { setLoading(false); setError(true); }}
+        onError={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          setLoading(false);
+          setError(`${nativeEvent.description || 'Unknown error'} (Code: ${nativeEvent.code || 'N/A'})`);
+        }}
+        onHttpError={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          setLoading(false);
+          setError(`HTTP ${nativeEvent.statusCode}: ${nativeEvent.description || 'Server error'}`);
+        }}
         userAgent={`MSApp/1.0 ReactNative/${Platform.OS}`}
       />
     </View>
@@ -457,7 +469,9 @@ const styles = StyleSheet.create({
   },
   loadingText: { marginTop: 12, color: '#555', fontSize: 14 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  errorText: { fontSize: 16, color: '#555', marginBottom: 16 },
+  errorText: { fontSize: 18, color: '#d32f2f', marginBottom: 8, fontWeight: '700', textAlign: 'center' },
+  errorDetail: { fontSize: 14, color: '#666', marginBottom: 6, textAlign: 'center' },
+  errorUrl: { fontSize: 12, color: '#999', marginBottom: 24, textAlign: 'center', paddingHorizontal: 16 },
   retryBtn: { backgroundColor: '#1a1a2e', paddingHorizontal: 28, paddingVertical: 12, borderRadius: 10 },
   retryText: { color: '#fff', fontWeight: '700' },
 });

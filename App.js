@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { AppProvider } from './utils/AppContext';
+import { ApiConfigProvider } from './utils/ApiConfig';
 import LoginScreen from './screens/LoginScreen';
 import URLSelectorScreen from './screens/URLSelectorScreen';
 import HomeScreen from './screens/HomeScreen';
 
-export default function App() {
+function RootNavigator() {
   const [user, setUser] = useState(null);
   const [webUrl, setWebUrl] = useState(null);
 
@@ -11,15 +13,14 @@ export default function App() {
     setUser(userData);
     const entries = Object.entries(userData.urls || {});
     if (entries.length === 1) {
-      setWebUrl(entries[0][1]); // single URL → go straight to WebView
+      setWebUrl(entries[0][1]);
     }
-    // multiple URLs → webUrl stays null → URLSelectorScreen shown
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setUser(null);
     setWebUrl(null);
-  };
+  }, []);
 
   const isMultiUrl = Object.keys(user?.urls || {}).length > 1;
 
@@ -46,5 +47,15 @@ export default function App() {
       onBackToSelector={() => setWebUrl(null)}
       onLogout={handleLogout}
     />
+  );
+}
+
+export default function App() {
+  return (
+    <ApiConfigProvider>
+      <AppProvider>
+        <RootNavigator />
+      </AppProvider>
+    </ApiConfigProvider>
   );
 }

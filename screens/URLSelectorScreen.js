@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { useAppName } from '../utils/AppContext';
+import AppBrand from '../components/AppBrand';
 import {
   View,
   Text,
@@ -13,7 +15,6 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function URLSelectorScreen({ user, urls, onSelect, onLogout }) {
-  // urls is a dict: { "Label": "https://..." }
   const entries = Object.entries(urls);
 
   // Back on selector screen → confirm logout
@@ -54,7 +55,7 @@ export default function URLSelectorScreen({ user, urls, onSelect, onLogout }) {
       <StatusBar style="dark" />
 
       <View style={styles.header}>
-        <Text style={styles.appName}>MS</Text>
+        <AppBrand textStyle={styles.appName} />
         <Text style={styles.greeting}>Hello, {user?.username}</Text>
         <Text style={styles.subtitle}>Select a workspace to continue</Text>
       </View>
