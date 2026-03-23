@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "AG-PROJ03",
+    "name": "MS",
     "slug": "ag-proj03",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -23,6 +23,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-sharing"
+    ]
   }
 }
