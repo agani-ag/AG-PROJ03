@@ -21,6 +21,8 @@ APK_Output/
 *.p12
 *.key
 *.mobileprovision
+ms-release.keystore
+signing.properties
 
 # ── Logs & debug ──────────────────────────────────────────────────────────────
 npm-debug.*

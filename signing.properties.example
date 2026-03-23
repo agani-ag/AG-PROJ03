@@ -1,0 +1,7 @@
+# MS App — Release Signing Configuration
+# Copy this file to: signing.properties
+# Fill in your values. signing.properties is gitignored — never commit it.
+
+KEYSTORE_PASS=your-keystore-password
+KEY_ALIAS=ms-key
+KEY_PASS=your-key-password
