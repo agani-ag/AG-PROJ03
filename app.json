@@ -31,7 +31,8 @@
     "plugins": [
       "expo-sharing",
       "@react-native-firebase/app",
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {

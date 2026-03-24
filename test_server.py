@@ -1,6 +1,6 @@
 """
-MS App - Flask Test Server
-Run: pip install flask flask-cors requests
+SyncUp App - Flask Test Server
+Run: pip install flask flask-cors requests google-auth
      python test_server.py
 """
 
@@ -9,9 +9,40 @@ from flask_cors import CORS
 from datetime import datetime
 import requests
 import json
+import os
 
 app = Flask(__name__)
 CORS(app)  # Allow requests from React Native / WebView
+
+# ── FCM v1 API Configuration ─────────────────────────────────────────────────
+# Download service account JSON from:
+#   Firebase Console → Project Settings → Service accounts → Generate new private key
+FIREBASE_PROJECT_ID = "syncup-f470b"
+SERVICE_ACCOUNT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "firebase-service-account.json")
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_fcm_access_token():
+    """Get OAuth2 access token for FCM v1 API using service account"""
+    try:
+        from google.oauth2 import service_account
+
+        credentials = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE,
+            scopes=["https://www.googleapis.com/auth/firebase.messaging"],
+        )
+        credentials.refresh(google_auth_request())
+        return credentials.token
+    except FileNotFoundError:
+        print(f"[FCM] firebase-service-account.json not found at: {SERVICE_ACCOUNT_FILE}")
+        return None
+    except Exception as e:
+        print(f"[FCM] Failed to get access token: {e}")
+        return None
+
+def google_auth_request():
+    """Create a google-auth compatible request object"""
+    import google.auth.transport.requests
+    return google.auth.transport.requests.Request()
 
 # ── Mock user store (replace with real DB in Django) ──────────────────────────
 MOCK_USERS = {
@@ -21,8 +52,8 @@ MOCK_USERS = {
         "full_name": "Ganesh Saravanan",
         "business_name": "Microman Solutions",
         "urls": {
-            "Test Page 1": "http://YOUR_PC_IP:5000/test1",  # Replace YOUR_PC_IP with ipconfig result
-            "Test Page 2": "http://YOUR_PC_IP:5000/test2",
+            "Test Page 1": "https://bowling-names-developments-front.trycloudflare.com/test1",  # Replace YOUR_PC_IP with ipconfig result
+            "Test Page 2": "https://bowling-names-developments-front.trycloudflare.com/test2",
         },
     },
     "admin@ms.com": {
@@ -31,7 +62,7 @@ MOCK_USERS = {
         "full_name": "Admin User",
         "business_name": "MS Admin",
         "urls": {
-            "Admin Panel": "https://microman2000.pythonanywhere.com/admin",
+            "Admin Panel": "https://bowling-names-developments-front.trycloudflare.com/test2",
         },
     },
 }
@@ -98,7 +129,8 @@ def login():
 def register_device():
     """
     Register device push token for notifications.
-    Store: user_id → device_id → {push_token, platform, timestamp}
+    IMPORTANT: One device_id can only belong to ONE user at a time.
+    If device_id exists under a different user, it will be MOVED to the new user.
     """
     data = request.get_json(silent=True) or {}
     device_id = data.get("device_id")
@@ -112,30 +144,131 @@ def register_device():
             "message": "Missing required fields: device_id, user_id, push_token"
         }), 400
 
-    # Store token
+    current_time = datetime.now().isoformat()
+    is_update = False
+    moved_from_user = None
+
+    # Step 1: Check if this device_id exists under ANY user
+    for existing_user_id, devices in list(DEVICE_TOKENS.items()):
+        if device_id in devices:
+            if existing_user_id == user_id:
+                # Same user, same device - just UPDATE
+                is_update = True
+            else:
+                # Different user! MOVE device from old user to new user
+                moved_from_user = existing_user_id
+                print(f"\n{'='*60}")
+                print(f"[DEVICE] 🔄 Device Reassignment Detected!")
+                print(f"  Device: {device_id}")
+                print(f"  Moving from user: {existing_user_id}")
+                print(f"  Moving to user: {user_id}")
+                print(f"{'='*60}\n")
+
+                # Remove from old user
+                del DEVICE_TOKENS[existing_user_id][device_id]
+
+                # If old user has no more devices, remove user entry
+                if not DEVICE_TOKENS[existing_user_id]:
+                    del DEVICE_TOKENS[existing_user_id]
+            break
+
+    # Step 2: Add/Update device under the current user
     if user_id not in DEVICE_TOKENS:
         DEVICE_TOKENS[user_id] = {}
 
-    DEVICE_TOKENS[user_id][device_id] = {
-        "push_token": push_token,
-        "platform": platform,
-        "registered_at": datetime.now().isoformat(),
-    }
+    if is_update:
+        # Update existing device (same user)
+        existing = DEVICE_TOKENS[user_id][device_id]
+        DEVICE_TOKENS[user_id][device_id] = {
+            "push_token": push_token,
+            "platform": platform,
+            "registered_at": existing.get("registered_at", current_time),
+            "last_login": current_time,
+        }
+        action = "UPDATED"
+    else:
+        # New registration (either brand new device, or moved from another user)
+        DEVICE_TOKENS[user_id][device_id] = {
+            "push_token": push_token,
+            "platform": platform,
+            "registered_at": current_time,
+            "last_login": current_time,
+        }
+        action = "MOVED" if moved_from_user else "REGISTERED"
 
+    # Step 3: Log the action
     print(f"\n{'='*60}")
-    print(f"[DEVICE] ✅ Token Registered Successfully!")
-    print(f"  User: {user_id}")
+    if action == "MOVED":
+        print(f"[DEVICE] 🔄 Device MOVED!")
+        print(f"  Previous user: {moved_from_user}")
+        print(f"  New user: {user_id}")
+    elif action == "UPDATED":
+        print(f"[DEVICE] 🔄 Device UPDATED!")
+        print(f"  User: {user_id}")
+    else:
+        print(f"[DEVICE] ✅ Device REGISTERED!")
+        print(f"  User: {user_id}")
+
     print(f"  Device: {device_id}")
     print(f"  Platform: {platform}")
     print(f"  Token: {push_token[:40]}...")
-    print(f"[DEVICE] Current storage: {len(DEVICE_TOKENS)} users, {sum(len(devices) for devices in DEVICE_TOKENS.values())} devices")
+
+    if action == "UPDATED":
+        print(f"  First registered: {DEVICE_TOKENS[user_id][device_id]['registered_at']}")
+    print(f"  Last login: {current_time}")
+    print(f"[DEVICE] Total: {len(DEVICE_TOKENS)} users, {sum(len(devices) for devices in DEVICE_TOKENS.values())} devices")
     print(f"{'='*60}\n")
 
     return jsonify({
         "success": True,
-        "message": "Device registered successfully",
+        "message": f"Device {action.lower()} successfully",
         "device_id": device_id,
+        "action": action,
+        "moved_from_user": moved_from_user,
     })
+
+
+@app.route("/api/device/unregister", methods=["POST"])
+def unregister_device():
+    """
+    Unregister device push token (called on logout).
+    Removes the device from DEVICE_TOKENS storage.
+    """
+    data = request.get_json(silent=True) or {}
+    device_id = data.get("device_id")
+    user_id = data.get("user_id")
+
+    if not device_id or not user_id:
+        return jsonify({
+            "success": False,
+            "message": "Missing required fields: device_id, user_id"
+        }), 400
+
+    # Remove token
+    if user_id in DEVICE_TOKENS and device_id in DEVICE_TOKENS[user_id]:
+        del DEVICE_TOKENS[user_id][device_id]
+
+        # If user has no more devices, remove user entry
+        if not DEVICE_TOKENS[user_id]:
+            del DEVICE_TOKENS[user_id]
+
+        print(f"\n{'='*60}")
+        print(f"[DEVICE] 🚪 Device Unregistered (Logout)")
+        print(f"  User: {user_id}")
+        print(f"  Device: {device_id}")
+        print(f"[DEVICE] Remaining: {len(DEVICE_TOKENS)} users, {sum(len(devices) for devices in DEVICE_TOKENS.values())} devices")
+        print(f"{'='*60}\n")
+
+        return jsonify({
+            "success": True,
+            "message": "Device unregistered successfully"
+        })
+    else:
+        print(f"[DEVICE] ⚠️ Unregister attempt for non-existent device: {device_id} (user: {user_id})")
+        return jsonify({
+            "success": False,
+            "message": "Device not found"
+        }), 404
 
 
 @app.route("/api/device/list", methods=["GET"])
@@ -148,7 +281,8 @@ def list_devices():
                 "user_id": user_id,
                 "device_id": device_id,
                 "platform": info["platform"],
-                "registered_at": info["registered_at"],
+                "registered_at": info.get("registered_at", "N/A"),
+                "last_login": info.get("last_login", "N/A"),
                 "token_preview": info["push_token"][:40] + "..."
             })
 
@@ -211,11 +345,11 @@ def send_notification():
     else:
         return jsonify({"success": False, "message": f"Invalid target: {target}"}), 400
 
-    # Send notifications via Expo Push API
+    # Send notifications via Firebase Cloud Messaging (FCM)
     if not tokens_to_send:
         return jsonify({"success": False, "message": "No devices to send to"}), 400
 
-    sent_count, failed_count = send_expo_push_notifications(tokens_to_send, title, body, notification_data)
+    sent_count, failed_count = send_fcm_notifications(tokens_to_send, title, body, notification_data)
 
     print(f"[NOTIFICATIONS] Sent {sent_count} notifications, {failed_count} failed")
 
@@ -227,42 +361,60 @@ def send_notification():
     })
 
 
-def send_expo_push_notifications(tokens, title, body, data):
+def send_fcm_notifications(tokens, title, body, data):
     """
-    Send push notifications via Expo Push API
+    Send push notifications via Firebase Cloud Messaging v1 API
     Returns: (sent_count, failed_count)
     """
-    messages = []
+    access_token = get_fcm_access_token()
+    if not access_token:
+        print("[FCM] Failed to get access token. Check firebase-service-account.json")
+        return 0, len(tokens)
+
+    sent = 0
+    failed = 0
+    url = f"https://fcm.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/messages:send"
+
     for token in tokens:
-        messages.append({
-            "to": token,
-            "sound": "default",
-            "title": title,
-            "body": body,
-            "data": data,
-        })
+        try:
+            payload = {
+                "message": {
+                    "token": token,
+                    "notification": {
+                        "title": title,
+                        "body": body,
+                    },
+                    "android": {
+                        "notification": {
+                            "sound": "default",
+                        }
+                    },
+                    "data": {k: str(v) for k, v in (data or {}).items()},
+                }
+            }
 
-    try:
-        response = requests.post(
-            'https://exp.host/--/api/v2/push/send',
-            headers={
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-            },
-            json=messages
-        )
+            response = requests.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
 
-        response.raise_for_status()
-        result = response.json()
+            if response.status_code == 200:
+                sent += 1
+                print(f"[FCM] Sent to {token[:30]}...")
+            else:
+                failed += 1
+                error_msg = response.json().get("error", {}).get("message", response.text[:100])
+                print(f"[FCM] Failed for {token[:30]}... Error: {error_msg}")
 
-        sent = sum(1 for msg in result.get('data', []) if msg.get('status') == 'ok')
-        failed = len(messages) - sent
+        except Exception as e:
+            failed += 1
+            print(f"[FCM] Exception: {e}")
 
-        return sent, failed
-
-    except Exception as e:
-        print(f"[NOTIFICATIONS] Error sending: {e}")
-        return 0, len(messages)
+    return sent, failed
 
 
 @app.route("/test1", methods=["GET"])
@@ -588,12 +740,13 @@ def test2():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  MS Flask Test Server")
-    print("  POST /api/login               — authenticate user")
-    print("  GET  /api/health              — health check")
-    print("  POST /api/device/register     — register push token")
-    print("  GET  /api/device/list         — list registered devices (DEBUG)")
-    print("  POST /api/notifications/send  — send push notifications")
+    print("  SyncUp Flask Test Server")
+    print("  POST /api/login                — authenticate user")
+    print("  GET  /api/health               — health check")
+    print("  POST /api/device/register      — register push token")
+    print("  POST /api/device/unregister    — unregister device (logout)")
+    print("  GET  /api/device/list          — list registered devices (DEBUG)")
+    print("  POST /api/notifications/send   — send push notifications")
     print()
     print("  Test credentials (email OR username):")
     for email, info in MOCK_USERS.items():

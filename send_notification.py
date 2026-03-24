@@ -13,7 +13,7 @@ import requests
 import argparse
 import json
 
-API_BASE = "https://microman2000.pythonanywhere.com"
+API_BASE = "https://bowling-names-developments-front.trycloudflare.com"
 
 
 def list_devices():
@@ -23,15 +23,16 @@ def list_devices():
         data = response.json()
 
         print(f"\nRegistered Devices: {data.get('total_devices', 0)} ({data.get('total_users', 0)} users)")
-        print("-" * 60)
+        print("-" * 80)
 
         for device in data.get("devices", []):
             print(f"  User: {device['user_id']}")
             print(f"  Device: {device['device_id']}")
             print(f"  Platform: {device['platform']}")
             print(f"  Token: {device['token_preview']}")
-            print(f"  Registered: {device['registered_at']}")
-            print("-" * 60)
+            print(f"  First Registered: {device.get('registered_at', 'N/A')}")
+            print(f"  Last Login: {device.get('last_login', 'N/A')}")
+            print("-" * 80)
 
         if not data.get("devices"):
             print("  No devices registered yet.")

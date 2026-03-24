@@ -23,6 +23,8 @@ APK_Output/
 *.mobileprovision
 ms-release.keystore
 signing.properties
+firebase-service-account.json
+google-services.json
 
 # ── Logs & debug ──────────────────────────────────────────────────────────────
 npm-debug.*

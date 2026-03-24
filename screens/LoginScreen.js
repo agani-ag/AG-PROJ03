@@ -15,8 +15,10 @@ import { getDeviceId } from '../utils/deviceId';
 import { useAppName } from '../utils/AppContext';
 import { useApiConfig } from '../utils/ApiConfig';
 import { registerForPushNotifications, registerTokenWithBackend } from '../utils/notifications';
+import { saveCredentials } from '../utils/secureAuth';
 import AppBrand from '../components/AppBrand';
 import DeveloperSettings from '../components/DeveloperSettings';
+import PinEntry from '../components/PinEntry';
 
 export default function LoginScreen({ onLoginSuccess }) {
   const { updateAppName } = useAppName();
@@ -28,6 +30,7 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [deviceId, setDeviceId] = useState('');
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+  const [showPinEntry, setShowPinEntry] = useState(false);
   const [showDeveloperSettings, setShowDeveloperSettings] = useState(false);
 
   const clickCountRef = useRef(0);
@@ -58,13 +61,19 @@ export default function LoginScreen({ onLoginSuccess }) {
       clickCountRef.current = 0;
     }, 3000);
 
-    // Open developer settings on 10th click
+    // Show PIN entry on 10th click
     if (clickCountRef.current >= 10) {
       clickCountRef.current = 0;
       clearTimeout(clickTimerRef.current);
-      setShowDeveloperSettings(true);
-      showToast('Developer Settings unlocked!', 'success');
+      setShowPinEntry(true);
+      showToast('Enter PIN to access Developer Settings', 'success');
     }
+  };
+
+  const handlePinSuccess = () => {
+    setShowPinEntry(false);
+    setShowDeveloperSettings(true);
+    showToast('Developer Settings unlocked!', 'success');
   };
 
   const handleLogin = async () => {
@@ -92,6 +101,10 @@ export default function LoginScreen({ onLoginSuccess }) {
         await updateAppName(data.business_name?.trim() || 'MS');
         showToast(`Welcome back, ${data.username}!`, 'success');
 
+        // Save credentials securely for auto-login
+        await saveCredentials(email, password);
+        console.log('[Login] Credentials saved for auto-login');
+
         // Register for Firebase push notifications
         try {
           const { token, error } = await registerForPushNotifications();
@@ -117,6 +130,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             username: data.username,
             reversedPassword: data.reversed_password,
             deviceId: data.device_id,
+            loginId: email, // Store the email/username used for login (for logout)
             urls: data.urls || {},
           });
         }, 2000);
@@ -138,6 +152,12 @@ export default function LoginScreen({ onLoginSuccess }) {
       <StatusBar style="dark" />
 
       <Toast visible={toast.visible} message={toast.message} type={toast.type} />
+
+      <PinEntry
+        visible={showPinEntry}
+        onClose={() => setShowPinEntry(false)}
+        onSuccess={handlePinSuccess}
+      />
 
       <DeveloperSettings
         visible={showDeveloperSettings}

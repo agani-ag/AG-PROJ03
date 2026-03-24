@@ -6,7 +6,7 @@ const KEY_API_BASE = 'ms_api_base';
 const KEY_FALLBACK = 'ms_api_fallback';
 
 // Default API URLs
-const DEFAULT_API_BASE = 'https://microman2000.pythonanywhere.com';
+const DEFAULT_API_BASE = 'https://bowling-names-developments-front.trycloudflare.com';
 const DEFAULT_FALLBACK = Platform.OS === 'android' ? 'http://10.0.2.2:5000' : 'http://127.0.0.1:5000';
 
 const ApiConfigContext = createContext({
