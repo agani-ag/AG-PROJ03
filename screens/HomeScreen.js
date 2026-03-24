@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Camera from 'expo-camera';
@@ -44,10 +45,7 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
   const [notification, setNotification] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-
-  useEffect(() => {
-    requestPermissions();
-  }, []);
+  const [statusBarColor, setStatusBarColor] = useState('#ffffff'); // Track status bar color
 
   // Android hardware back button
   useEffect(() => {
@@ -70,9 +68,40 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
     return () => handler.remove();
   }, [isMultiUrl, onBackToSelector, onLogout]);
 
-  const requestPermissions = async () => {
-    await Location.requestForegroundPermissionsAsync();
-    await Camera.Camera.requestCameraPermissionsAsync();
+  // Convert CSS color (rgb/rgba/hex) to hex for StatusBar
+  const convertCssColorToHex = (cssColor) => {
+    if (!cssColor) return '#ffffff';
+
+    // Already hex
+    if (cssColor.startsWith('#')) return cssColor;
+
+    // rgb(r, g, b) or rgba(r, g, b, a)
+    const match = cssColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+      const r = parseInt(match[1]).toString(16).padStart(2, '0');
+      const g = parseInt(match[2]).toString(16).padStart(2, '0');
+      const b = parseInt(match[3]).toString(16).padStart(2, '0');
+      return `#${r}${g}${b}`;
+    }
+
+    return '#ffffff'; // Default white
+  };
+
+  // Check if color is light (to determine status bar text color)
+  const isLightColor = (hexColor) => {
+    if (!hexColor || hexColor === '#ffffff') return true;
+
+    // Convert hex to RGB
+    const hex = hexColor.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+
+    // Calculate luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    // Return true if light (luminance > 0.5)
+    return luminance > 0.5;
   };
 
   const showBanner = (title, body) => {
@@ -327,6 +356,40 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
       }, true);
 
       console.log('[MS] All bridges initialised');
+
+      // Detect status bar color from page background
+      (function detectStatusBarColor() {
+        function getBackgroundColor() {
+          var body = document.body;
+          var computedStyle = window.getComputedStyle(body);
+          var bgColor = computedStyle.backgroundColor;
+
+          // If body background is transparent, check html element
+          if (bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent') {
+            var html = document.documentElement;
+            bgColor = window.getComputedStyle(html).backgroundColor;
+          }
+
+          return bgColor;
+        }
+
+        function sendColorToApp() {
+          var color = getBackgroundColor();
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'STATUS_BAR_COLOR',
+            color: color
+          }));
+        }
+
+        // Send initial color
+        setTimeout(sendColorToApp, 500);
+
+        // Watch for color changes
+        var observer = new MutationObserver(sendColorToApp);
+        observer.observe(document.body, { attributes: true, attributeFilter: ['style', 'class'] });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class'] });
+      })();
+
       true;
     })();
   `;
@@ -336,6 +399,11 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
     try { msg = JSON.parse(event.nativeEvent.data); } catch { return; }
 
     switch (msg.type) {
+      case 'STATUS_BAR_COLOR':
+        // Convert CSS color to hex for StatusBar
+        setStatusBarColor(convertCssColorToHex(msg.color));
+        break;
+
       case 'SHOW_NOTIFICATION':
         showBanner(msg.title, msg.body);
         break;
@@ -388,20 +456,31 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Failed to load the app</Text>
-        <Text style={styles.errorDetail}>{error}</Text>
-        <Text style={styles.errorUrl}>URL: {WEB_APP_URL}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={() => setError(null)}>
-          <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <StatusBar
+          style={statusBarColor === '#ffffff' || isLightColor(statusBarColor) ? 'dark' : 'light'}
+          backgroundColor={statusBarColor}
+          translucent={false}
+        />
+        <View style={styles.center}>
+          <Text style={styles.errorText}>Failed to load the app</Text>
+          <Text style={styles.errorDetail}>{error}</Text>
+          <Text style={styles.errorUrl}>URL: {WEB_APP_URL}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => setError(null)}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <StatusBar
+        style={statusBarColor === '#ffffff' || isLightColor(statusBarColor) ? 'dark' : 'light'}
+        backgroundColor={statusBarColor}
+        translucent={false}
+      />
 
       <LogoutConfirmation
         visible={showLogoutConfirm}
@@ -452,7 +531,7 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         }}
         userAgent={`MSApp/1.0 ReactNative/${Platform.OS}`}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

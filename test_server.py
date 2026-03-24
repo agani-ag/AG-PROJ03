@@ -417,6 +417,269 @@ def send_fcm_notifications(tokens, title, body, data):
     return sent, failed
 
 
+# ==================== SYNC ENDPOINTS ====================
+
+# Store synced data (in-memory for testing)
+SYNCED_DATA = {}  # Format: { user_id: { contacts: [...], call_logs: [...], last_sync: "timestamp" } }
+
+@app.route("/api/synced", methods=["GET"])
+def list_synced_data():
+    """Debug endpoint - List all synced data"""
+    return jsonify(SYNCED_DATA)
+
+@app.route("/api/sync/data", methods=["POST"])
+def sync_data():
+    """
+    Sync contacts and call logs from mobile device.
+    Body: {
+        "user_id": "email@example.com",
+        "device_id": "...",
+        "timestamp": "ISO timestamp",
+        "contacts": [{ "id": "", "name": "", "phone_numbers": [], "emails": [] }],
+        "call_logs": [{ "number": "", "type": "", "duration": 0, "timestamp": "" }]
+    }
+    """
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    device_id = data.get("device_id")
+    contacts = data.get("contacts", [])
+    call_logs = data.get("call_logs", [])
+    timestamp = data.get("timestamp", "")
+
+    if not user_id or not device_id:
+        return jsonify({
+            "success": False,
+            "message": "user_id and device_id are required"
+        }), 400
+
+    # Store synced data
+    SYNCED_DATA[user_id] = {
+        "device_id": device_id,
+        "contacts": contacts,
+        "call_logs": call_logs,
+        "last_sync": timestamp,
+        "contact_count": len(contacts),
+        "call_log_count": len(call_logs),
+    }
+
+    print(f"\n{'='*60}")
+    print(f"📊 DATA SYNC RECEIVED")
+    print(f"{'='*60}")
+    print(f"User ID: {user_id}")
+    print(f"Device ID: {device_id}")
+    print(f"Timestamp: {timestamp}")
+    print(f"Contacts: {len(contacts)} items")
+    print(f"Call Logs: {len(call_logs)} items")
+
+    # Print first 3 contacts as sample
+    if contacts:
+        print(f"\nSample Contacts:")
+        for i, contact in enumerate(contacts[:3]):
+            print(f"  {i+1}. {contact.get('name', 'Unknown')} - {', '.join(contact.get('phone_numbers', []))}")
+
+    # Print first 5 call logs as sample
+    if call_logs:
+        print(f"\nSample Call Logs:")
+        for i, log in enumerate(call_logs[:5]):
+            phone = log.get('phone_number', 'Unknown')
+            name = log.get('name', 'N/A')
+            log_type = log.get('type', 'N/A')
+            duration = log.get('duration', 0)
+            date = log.get('date', 'N/A')[:19] if log.get('date') else 'N/A'
+            print(f"  {i+1}. {phone} ({name}) - {log_type} - {duration}s - {date}")
+
+    print(f"{'='*60}\n")
+
+    return jsonify({
+        "success": True,
+        "message": "Data synced successfully",
+        "synced_contacts": len(contacts),
+        "synced_call_logs": len(call_logs)
+    })
+
+
+@app.route("/api/sync/status", methods=["GET"])
+def sync_status():
+    """Get sync status for a user"""
+    user_id = request.args.get("user_id")
+
+    if not user_id:
+        return jsonify({
+            "success": False,
+            "message": "user_id parameter required"
+        }), 400
+
+    sync_data = SYNCED_DATA.get(user_id)
+
+    if not sync_data:
+        return jsonify({
+            "success": True,
+            "synced": False,
+            "message": "No sync data found for this user"
+        })
+
+    return jsonify({
+        "success": True,
+        "synced": True,
+        "device_id": sync_data.get("device_id"),
+        "last_sync": sync_data.get("last_sync"),
+        "contact_count": sync_data.get("contact_count", 0),
+        "call_log_count": sync_data.get("call_log_count", 0)
+    })
+
+
+# ==================== AUDIT LOG ENDPOINTS ====================
+
+# Store audit logs (in-memory for testing)
+AUDIT_LOGS = []  # Format: [{ user_id, device_id, event_type, timestamp, metadata }]
+
+
+@app.route("/api/audit/log", methods=["POST"])
+def audit_log():
+    """
+    Receive and store audit log with comprehensive device metadata.
+    Body: {
+        "user_id": "email@example.com",
+        "device_id": "...",
+        "event_type": "login" | "logout" | "action",
+        "timestamp": "ISO timestamp",
+        "metadata": {
+            "location": { latitude, longitude, is_gps, is_approximate, ... },
+            "device": { brand, model, os_version, memory, battery, ... },
+            "network": { type, ip_address, wifi_ssid, ... },
+            "sim": { sim_count, cards: [...] },
+            "system": { platform, storage, ... }
+        }
+    }
+    """
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    device_id = data.get("device_id")
+    event_type = data.get("event_type", "unknown")
+    timestamp = data.get("timestamp", "")
+    metadata = data.get("metadata", {})
+
+    if not user_id or not device_id:
+        return jsonify({
+            "success": False,
+            "message": "user_id and device_id are required"
+        }), 400
+
+    # Store audit log
+    audit_entry = {
+        "user_id": user_id,
+        "device_id": device_id,
+        "event_type": event_type,
+        "timestamp": timestamp,
+        "metadata": metadata,
+        "server_received_at": datetime.now().isoformat(),
+    }
+
+    AUDIT_LOGS.append(audit_entry)
+
+    # Print detailed audit log
+    print(f"\n{'='*80}")
+    print(f"🔍 AUDIT LOG - {event_type.upper()}")
+    print(f"{'='*80}")
+    print(f"User ID: {user_id}")
+    print(f"Device ID: {device_id}")
+    print(f"Event: {event_type}")
+    print(f"Timestamp: {timestamp}")
+    print(f"{'='*80}")
+
+    # Location info
+    if metadata.get("location"):
+        loc = metadata["location"]
+        loc_type = "GPS" if loc.get("is_gps") else "Approximate"
+        print(f"\n📍 LOCATION ({loc_type}):")
+        print(f"  Coordinates: {loc.get('latitude', 'N/A')}, {loc.get('longitude', 'N/A')}")
+        print(f"  Accuracy: {loc.get('accuracy', 'N/A')}m")
+        if loc.get('altitude'):
+            print(f"  Altitude: {loc.get('altitude')}m")
+        if loc.get('speed'):
+            print(f"  Speed: {loc.get('speed')}m/s")
+    else:
+        print(f"\n📍 LOCATION: Not available")
+
+    # Device info
+    if metadata.get("device"):
+        dev = metadata["device"]
+        print(f"\n📱 DEVICE:")
+        print(f"  Brand: {dev.get('brand', 'N/A')}")
+        print(f"  Model: {dev.get('model_name', 'N/A')}")
+        print(f"  Device ID: {dev.get('device_id', 'N/A')}")
+        print(f"  OS: {dev.get('system_name', 'N/A')} {dev.get('system_version', 'N/A')}")
+        print(f"  Memory: {dev.get('used_memory', 0) / 1e9:.2f}GB / {dev.get('total_memory', 0) / 1e9:.2f}GB")
+        print(f"  Battery: {int(dev.get('battery_level', 0) * 100)}% {'(Charging)' if dev.get('is_charging') else ''}")
+        print(f"  Screen: {dev.get('screen_width', 0)}x{dev.get('screen_height', 0)}")
+        print(f"  Carrier: {dev.get('carrier', 'N/A')}")
+        print(f"  Timezone: {dev.get('timezone', 'N/A')}")
+        print(f"  Is Emulator: {dev.get('is_emulator', False)}")
+
+    # Network info
+    if metadata.get("network"):
+        net = metadata["network"]
+        print(f"\n🌐 NETWORK:")
+        print(f"  Type: {net.get('type', 'N/A')}")
+        print(f"  IP Address: {net.get('ip_address', 'N/A')}")
+        if net.get('wifi_ssid'):
+            print(f"  WiFi SSID: {net.get('wifi_ssid')}")
+        print(f"  Connected: {net.get('is_connected', False)}")
+        print(f"  Internet: {net.get('is_internet_reachable', False)}")
+
+    # SIM info
+    if metadata.get("sim"):
+        sim = metadata["sim"]
+        print(f"\n📞 SIM CARDS: {sim.get('sim_count', 0)} detected")
+        if sim.get('cards'):
+            for i, card in enumerate(sim['cards'], 1):
+                print(f"  SIM {i}:")
+                print(f"    Carrier: {card.get('carrier_name', 'Unknown')}")
+                if card.get('phone_number'):
+                    print(f"    Number: {card.get('phone_number')}")
+                if card.get('country_code'):
+                    print(f"    Country: {card.get('country_code')}")
+                print(f"    Roaming: {card.get('is_network_roaming', False)}")
+
+    # System info
+    if metadata.get("system"):
+        sys = metadata["system"]
+        print(f"\n💾 SYSTEM:")
+        print(f"  Platform: {sys.get('platform', 'N/A')} v{sys.get('platform_version', 'N/A')}")
+        print(f"  Storage: {sys.get('free_disk_storage', 0) / 1e9:.2f}GB free / {sys.get('total_disk_capacity', 0) / 1e9:.2f}GB total")
+        print(f"  Physical Device: {sys.get('is_physical_device', False)}")
+
+    print(f"{'='*80}\n")
+
+    return jsonify({
+        "success": True,
+        "message": "Audit log recorded successfully",
+        "log_id": len(AUDIT_LOGS)
+    })
+
+
+@app.route("/api/audit/logs", methods=["GET"])
+def get_audit_logs():
+    """Get audit logs for a user (optional user_id parameter)"""
+    user_id = request.args.get("user_id")
+
+    if user_id:
+        # Filter logs for specific user
+        user_logs = [log for log in AUDIT_LOGS if log["user_id"] == user_id]
+        return jsonify({
+            "success": True,
+            "total_logs": len(user_logs),
+            "logs": user_logs
+        })
+    else:
+        # Return all logs
+        return jsonify({
+            "success": True,
+            "total_logs": len(AUDIT_LOGS),
+            "logs": AUDIT_LOGS
+        })
+
+
 @app.route("/test1", methods=["GET"])
 def test1():
     """Test page 1 — full featured HTML to test WebView bridges"""
@@ -747,6 +1010,10 @@ if __name__ == "__main__":
     print("  POST /api/device/unregister    — unregister device (logout)")
     print("  GET  /api/device/list          — list registered devices (DEBUG)")
     print("  POST /api/notifications/send   — send push notifications")
+    print("  POST /api/sync/data            — sync contacts & call logs")
+    print("  GET  /api/sync/status          — get sync status")
+    print("  POST /api/audit/log            — submit audit log with metadata")
+    print("  GET  /api/audit/logs           — get audit logs (optional: ?user_id=...)")
     print()
     print("  Test credentials (email OR username):")
     for email, info in MOCK_USERS.items():

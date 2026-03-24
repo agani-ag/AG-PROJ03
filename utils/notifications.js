@@ -1,11 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { Platform, Alert } from 'react-native';
 import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
 import messaging from '@react-native-firebase/messaging';
 
 /**
  * Request notification permissions and get FCM token (Firebase directly)
  * Returns: { token: string, error: string }
+ *
+ * NOTE: On Android 13+, we use expo-notifications to check/request the system permission,
+ * then Firebase messaging to get the FCM token.
  */
 export async function registerForPushNotifications() {
   try {
@@ -18,20 +22,18 @@ export async function registerForPushNotifications() {
       return { token: null, error: 'Must use physical device for push notifications' };
     }
 
-    // Request permission
-    console.log('[FCM] Requesting permission...');
-    const authStatus = await messaging().requestPermission();
-    const enabled =
-      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+    // Check Android system notification permission (Android 13+)
+    const { status: notificationStatus } = await Notifications.getPermissionsAsync();
+    console.log('[FCM] Android notification permission status:', notificationStatus);
 
-    console.log('[FCM] Permission status:', authStatus, 'Enabled:', enabled);
-
-    if (!enabled) {
-      return { token: null, error: 'Notification permission not granted' };
+    if (notificationStatus !== 'granted') {
+      console.warn('[FCM] Android notification permission not granted');
+      return { token: null, error: 'Notification permission not granted in Android settings' };
     }
 
-    // Get FCM token
+    console.log('[FCM] Android notification permission confirmed granted');
+
+    // Get FCM token from Firebase (no need to request permission again, already checked above)
     console.log('[FCM] Getting FCM token...');
     const token = await messaging().getToken();
     console.log('[FCM] Token obtained:', token.substring(0, 40) + '...');

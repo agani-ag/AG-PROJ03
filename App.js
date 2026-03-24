@@ -1,11 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Alert, View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider } from './utils/AppContext';
 import { ApiConfigProvider, useApiConfig } from './utils/ApiConfig';
 import { unregisterDevice, clearUserData } from './utils/logout';
 import { hasStoredCredentials, getStoredCredentials, authenticateWithDevice } from './utils/secureAuth';
 import { getDeviceId } from './utils/deviceId';
 import { registerForPushNotifications, registerTokenWithBackend } from './utils/notifications';
+import { checkAllPermissions } from './utils/permissionChecker';
+import { collectDeviceMetadata, sendAuditLog } from './utils/auditLogger';
+import PermissionsScreen from './screens/PermissionsScreen';
 import LoginScreen from './screens/LoginScreen';
 import URLSelectorScreen from './screens/URLSelectorScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -15,11 +19,63 @@ function RootNavigator() {
   const [user, setUser] = useState(null);
   const [webUrl, setWebUrl] = useState(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const [checkingPermissions, setCheckingPermissions] = useState(true);
+  const [deniedPermissions, setDeniedPermissions] = useState([]);
 
-  // Check for saved credentials on app start
+  // Check actual permission status on every app launch
   useEffect(() => {
-    checkSavedCredentials();
+    checkPermissionsStatus();
   }, []);
+
+  // Check for saved credentials after permissions are handled
+  useEffect(() => {
+    if (permissionsGranted) {
+      checkSavedCredentials();
+    }
+  }, [permissionsGranted]);
+
+  const checkPermissionsStatus = async () => {
+    try {
+      console.log('[Permissions] Checking actual permission status...');
+      const { allGranted, denied } = await checkAllPermissions();
+
+      if (allGranted) {
+        // All permissions granted - skip permissions screen
+        console.log('[Permissions] All permissions granted, proceeding');
+        setPermissionsGranted(true);
+      } else {
+        // Some permissions denied - show permissions screen with ONLY denied ones
+        console.log('[Permissions] Missing permissions:', denied);
+        setDeniedPermissions(denied);
+      }
+
+      setCheckingPermissions(false);
+    } catch (err) {
+      console.error('[Permissions] Check status error:', err);
+      // On error, assume permissions granted to avoid blocking
+      setPermissionsGranted(true);
+      setCheckingPermissions(false);
+    }
+  };
+
+  const handlePermissionsComplete = async (results) => {
+    console.log('[Permissions] User completed permissions:', results);
+
+    // Re-check permission status to see if all are now granted
+    const { allGranted, denied } = await checkAllPermissions();
+
+    if (allGranted) {
+      // All granted now - proceed to app
+      console.log('[Permissions] All permissions now granted');
+      setPermissionsGranted(true);
+    } else {
+      // Still some denied - proceed anyway but will show again next launch
+      console.log('[Permissions] Some still denied, but allowing app access');
+      setDeniedPermissions(denied);
+      setPermissionsGranted(true);
+    }
+  };
 
   const checkSavedCredentials = async () => {
     try {
@@ -80,6 +136,18 @@ function RootNavigator() {
 
       if (response.ok && data.success) {
         console.log('[AutoLogin] Login successful');
+
+        // Collect and send audit log with comprehensive device metadata
+        setTimeout(async () => {
+          try {
+            console.log('[AutoLogin] Collecting device metadata for audit log...');
+            const metadata = await collectDeviceMetadata();
+            await sendAuditLog(currentUrl, email, deviceId, 'auto-login', metadata);
+          } catch (err) {
+            console.error('[AutoLogin] Audit log error:', err);
+            // Don't block auto-login if audit log fails
+          }
+        }, 500); // Start audit log collection after 500ms
 
         // Register for push notifications
         try {
@@ -144,6 +212,26 @@ function RootNavigator() {
 
   const isMultiUrl = Object.keys(user?.urls || {}).length > 1;
 
+  // Show loading screen while checking permissions status
+  if (checkingPermissions) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4a90e2" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
+
+  // Show permissions screen on first launch or if some permissions are denied
+  if (!permissionsGranted) {
+    return (
+      <PermissionsScreen
+        onComplete={handlePermissionsComplete}
+        deniedOnly={deniedPermissions}
+      />
+    );
+  }
+
   // Show loading screen while checking for saved credentials
   if (isCheckingAuth) {
     return (
@@ -182,11 +270,13 @@ function RootNavigator() {
 
 export default function App() {
   return (
-    <ApiConfigProvider>
-      <AppProvider>
-        <RootNavigator />
-      </AppProvider>
-    </ApiConfigProvider>
+    <SafeAreaProvider>
+      <ApiConfigProvider>
+        <AppProvider>
+          <RootNavigator />
+        </AppProvider>
+      </ApiConfigProvider>
+    </SafeAreaProvider>
   );
 }
 

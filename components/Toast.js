@@ -42,9 +42,10 @@ export default function Toast({ visible, message, type = 'success', duration = 3
   }, [visible, message]);
 
   const isSuccess = type === 'success';
-  const iconName = isSuccess ? 'checkmark-circle' : 'close-circle';
-  const iconColor = isSuccess ? '#22c55e' : '#ef4444';
-  const borderColor = isSuccess ? '#22c55e' : '#ef4444';
+  const isInfo = type === 'info';
+  const iconName = isSuccess ? 'checkmark-circle' : isInfo ? 'information-circle' : 'close-circle';
+  const iconColor = isSuccess ? '#22c55e' : isInfo ? '#3b82f6' : '#ef4444';
+  const borderColor = isSuccess ? '#22c55e' : isInfo ? '#3b82f6' : '#ef4444';
 
   return (
     <Animated.View
