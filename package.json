@@ -22,6 +22,8 @@
   "homepage": "https://github.com/agani-ag/AG-PROJ03#readme",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-firebase/app": "^23.8.8",
+    "@react-native-firebase/messaging": "^23.8.8",
     "babel-preset-expo": "^55.0.12",
     "expo": "^55.0.8",
     "expo-application": "~55.0.10",

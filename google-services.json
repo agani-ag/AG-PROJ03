@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "624119850696",
+    "project_id": "syncup-f470b",
+    "storage_bucket": "syncup-f470b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:624119850696:android:6a86c21dc3f5a87ebee7fd",
+        "android_client_info": {
+          "package_name": "com.anonymous.agproj03"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBsqd5A-_JduFWI2oJqrE7V-C-hRRXOp5c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

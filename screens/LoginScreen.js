@@ -92,16 +92,26 @@ export default function LoginScreen({ onLoginSuccess }) {
         await updateAppName(data.business_name?.trim() || 'MS');
         showToast(`Welcome back, ${data.username}!`, 'success');
 
-        // Register for push notifications (async, don't block login)
-        registerForPushNotifications().then(({ token, error }) => {
-          if (token) {
-            console.log('[Login] Registering push token...');
-            registerTokenWithBackend(currentUrl, deviceId, email, token);
-          } else if (error) {
-            console.warn('[Login] Push notification registration failed:', error);
-          }
-        });
+        // Register for Firebase push notifications
+        try {
+          const { token, error } = await registerForPushNotifications();
 
+          if (token) {
+            const success = await registerTokenWithBackend(currentUrl, deviceId, email, token);
+            if (success) {
+              showToast('Notifications enabled!', 'success');
+            } else {
+              showToast('Notification registration failed', 'error');
+            }
+          } else if (error) {
+            showToast(`Notification error: ${error}`, 'error');
+          }
+        } catch (err) {
+          console.error('[Login] Notification error:', err.message);
+          showToast(`Notification error: ${err.message}`, 'error');
+        }
+
+        // Navigate after notification setup
         setTimeout(() => {
           onLoginSuccess({
             username: data.username,
@@ -109,7 +119,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             deviceId: data.device_id,
             urls: data.urls || {},
           });
-        }, 1200);
+        }, 2000);
       } else {
         showToast(data.message || 'Invalid credentials.', 'error');
       }

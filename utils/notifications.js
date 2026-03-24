@@ -1,117 +1,54 @@
-import { useState, useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Platform, Alert } from 'react-native';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
-
-// Configure how notifications are displayed when app is in foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+import messaging from '@react-native-firebase/messaging';
 
 /**
- * Request notification permissions and get Expo Push Token
+ * Request notification permissions and get FCM token (Firebase directly)
  * Returns: { token: string, error: string }
  */
 export async function registerForPushNotifications() {
-  let token;
-
-  // Only works on physical devices
-  if (!Device.isDevice) {
-    return { token: null, error: 'Must use physical device for push notifications' };
-  }
-
-  // Check/request permissions
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== 'granted') {
-    return { token: null, error: 'Permission not granted for notifications' };
-  }
-
-  // Get Expo Push Token
   try {
-    token = (await Notifications.getExpoPushTokenAsync()).data;
-    console.log('[Notifications] Expo Push Token:', token);
+    console.log('[FCM] Starting registration...');
+    console.log('[FCM] Device.isDevice:', Device.isDevice);
+
+    // Only works on physical devices
+    if (!Device.isDevice) {
+      console.warn('[FCM] Not a physical device, aborting');
+      return { token: null, error: 'Must use physical device for push notifications' };
+    }
+
+    // Request permission
+    console.log('[FCM] Requesting permission...');
+    const authStatus = await messaging().requestPermission();
+    const enabled =
+      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+    console.log('[FCM] Permission status:', authStatus, 'Enabled:', enabled);
+
+    if (!enabled) {
+      return { token: null, error: 'Notification permission not granted' };
+    }
+
+    // Get FCM token
+    console.log('[FCM] Getting FCM token...');
+    const token = await messaging().getToken();
+    console.log('[FCM] Token obtained:', token.substring(0, 40) + '...');
+
+    return { token, error: null };
   } catch (err) {
-    return { token: null, error: 'Failed to get push token: ' + err.message };
+    console.error('[FCM] Error:', err.message);
+    return { token: null, error: err.message };
   }
-
-  // Android-specific channel setup
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
-    });
-  }
-
-  return { token, error: null };
 }
 
 /**
- * Hook to handle push notifications
- * Usage: const { notification, expoPushToken } = useNotifications();
- */
-export function useNotifications() {
-  const [expoPushToken, setExpoPushToken] = useState('');
-  const [notification, setNotification] = useState(null);
-  const notificationListener = useRef();
-  const responseListener = useRef();
-
-  useEffect(() => {
-    // Register for push notifications
-    registerForPushNotifications().then((result) => {
-      if (result.token) {
-        setExpoPushToken(result.token);
-      } else {
-        console.warn('[Notifications]', result.error);
-      }
-    });
-
-    // Listen for notifications received while app is in foreground
-    notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
-      console.log('[Notifications] Received:', notification);
-      setNotification(notification);
-    });
-
-    // Listen for user tapping on notification
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      console.log('[Notifications] User tapped:', response);
-      // Handle navigation based on notification data
-      const data = response.notification.request.content.data;
-      if (data?.screen) {
-        // Navigate to specific screen (you can wire this up later)
-        console.log('[Notifications] Navigate to:', data.screen);
-      }
-    });
-
-    // Cleanup
-    return () => {
-      Notifications.removeNotificationSubscription(notificationListener.current);
-      Notifications.removeNotificationSubscription(responseListener.current);
-    };
-  }, []);
-
-  return {
-    expoPushToken,
-    notification,
-  };
-}
-
-/**
- * Send push token to backend
+ * Send FCM token to backend server
  */
 export async function registerTokenWithBackend(apiUrl, deviceId, userId, pushToken) {
+  console.log('[FCM Backend] Registering token...');
+
   try {
     const response = await fetch(`${apiUrl}/api/device/register`, {
       method: 'POST',
@@ -125,10 +62,58 @@ export async function registerTokenWithBackend(apiUrl, deviceId, userId, pushTok
     });
 
     const data = await response.json();
-    console.log('[Notifications] Registration response:', data);
+    console.log('[FCM Backend] Response:', data.success ? 'Success' : 'Failed');
     return data.success;
   } catch (err) {
-    console.error('[Notifications] Registration failed:', err);
+    console.error('[FCM Backend] Error:', err.message);
     return false;
   }
+}
+
+/**
+ * Setup Firebase message handlers (call once in App.js or root component)
+ */
+export function setupNotificationHandlers() {
+  // Foreground messages - show alert since Firebase doesn't auto-display
+  const unsubscribe = messaging().onMessage(async (remoteMessage) => {
+    console.log('[FCM] Foreground message:', remoteMessage);
+    Alert.alert(
+      remoteMessage.notification?.title || 'Notification',
+      remoteMessage.notification?.body || '',
+    );
+  });
+
+  // Background/quit message handler is set in index.js
+  return unsubscribe;
+}
+
+/**
+ * Hook to setup notification listeners
+ */
+export function useNotifications() {
+  const unsubscribeRef = useRef(null);
+
+  useEffect(() => {
+    // Setup foreground handler
+    unsubscribeRef.current = setupNotificationHandlers();
+
+    // Handle notification that opened the app from background
+    messaging()
+      .getInitialNotification()
+      .then((remoteMessage) => {
+        if (remoteMessage) {
+          console.log('[FCM] App opened from notification:', remoteMessage);
+        }
+      });
+
+    // Handle notification tap when app is in background
+    const unsubscribeOpen = messaging().onNotificationOpenedApp((remoteMessage) => {
+      console.log('[FCM] Notification tapped (background):', remoteMessage);
+    });
+
+    return () => {
+      if (unsubscribeRef.current) unsubscribeRef.current();
+      unsubscribeOpen();
+    };
+  }, []);
 }

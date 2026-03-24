@@ -21,8 +21,8 @@ MOCK_USERS = {
         "full_name": "Ganesh Saravanan",
         "business_name": "Microman Solutions",
         "urls": {
-            "Test Page 1": "http://10.0.2.2:5000/test1",
-            "Test Page 2": "http://10.0.2.2:5000/test2",
+            "Test Page 1": "http://YOUR_PC_IP:5000/test1",  # Replace YOUR_PC_IP with ipconfig result
+            "Test Page 2": "http://YOUR_PC_IP:5000/test2",
         },
     },
     "admin@ms.com": {
@@ -122,13 +122,40 @@ def register_device():
         "registered_at": datetime.now().isoformat(),
     }
 
-    print(f"[DEVICE] Registered: user={user_id}, device={device_id}, platform={platform}")
-    print(f"[DEVICE] Token storage: {len(DEVICE_TOKENS)} users, {sum(len(devices) for devices in DEVICE_TOKENS.values())} devices")
+    print(f"\n{'='*60}")
+    print(f"[DEVICE] ✅ Token Registered Successfully!")
+    print(f"  User: {user_id}")
+    print(f"  Device: {device_id}")
+    print(f"  Platform: {platform}")
+    print(f"  Token: {push_token[:40]}...")
+    print(f"[DEVICE] Current storage: {len(DEVICE_TOKENS)} users, {sum(len(devices) for devices in DEVICE_TOKENS.values())} devices")
+    print(f"{'='*60}\n")
 
     return jsonify({
         "success": True,
         "message": "Device registered successfully",
         "device_id": device_id,
+    })
+
+
+@app.route("/api/device/list", methods=["GET"])
+def list_devices():
+    """Debug endpoint - List all registered devices"""
+    devices_list = []
+    for user_id, devices in DEVICE_TOKENS.items():
+        for device_id, info in devices.items():
+            devices_list.append({
+                "user_id": user_id,
+                "device_id": device_id,
+                "platform": info["platform"],
+                "registered_at": info["registered_at"],
+                "token_preview": info["push_token"][:40] + "..."
+            })
+
+    return jsonify({
+        "total_users": len(DEVICE_TOKENS),
+        "total_devices": sum(len(devices) for devices in DEVICE_TOKENS.values()),
+        "devices": devices_list
     })
 
 
@@ -560,16 +587,17 @@ def test2():
 
 
 if __name__ == "__main__":
-    print("=" * 55)
+    print("=" * 60)
     print("  MS Flask Test Server")
-    print("  POST /api/login            — authenticate user")
-    print("  GET  /api/health           — health check")
-    print("  POST /api/device/register  — register push token")
-    print("  POST /api/notifications/send — send push notifications")
+    print("  POST /api/login               — authenticate user")
+    print("  GET  /api/health              — health check")
+    print("  POST /api/device/register     — register push token")
+    print("  GET  /api/device/list         — list registered devices (DEBUG)")
+    print("  POST /api/notifications/send  — send push notifications")
     print()
     print("  Test credentials (email OR username):")
     for email, info in MOCK_USERS.items():
         username = info.get('username', 'N/A')
         print(f"    {email} OR {username}  /  {info['password']}")
-    print("=" * 55)
+    print("=" * 60)
     app.run(debug=True, host="0.0.0.0", port=5000)

@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "MS",
+    "name": "SyncUp",
     "slug": "ag-proj03",
+    "owner": "fireman2002",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -21,13 +22,21 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.anonymous.agproj03",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-sharing"
-    ]
+      "expo-sharing",
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "837755c1-98e5-42c6-bfd9-1ff23600473c"
+      }
+    }
   }
 }

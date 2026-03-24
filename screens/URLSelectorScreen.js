@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppName } from '../utils/AppContext';
 import AppBrand from '../components/AppBrand';
+import LogoutConfirmation from '../components/LogoutConfirmation';
 import {
   View,
   Text,
@@ -9,30 +10,22 @@ import {
   FlatList,
   SafeAreaView,
   BackHandler,
-  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function URLSelectorScreen({ user, urls, onSelect, onLogout }) {
   const entries = Object.entries(urls);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Back on selector screen → confirm logout
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
-      Alert.alert(
-        'Logout',
-        'Are you sure you want to logout?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Logout', style: 'destructive', onPress: onLogout },
-        ],
-        { cancelable: true }
-      );
+      setShowLogoutConfirm(true);
       return true;
     });
     return () => handler.remove();
-  }, [onLogout]);
+  }, []);
 
   const renderItem = ({ item, index }) => {
     const [label, url] = item;
@@ -53,6 +46,12 @@ export default function URLSelectorScreen({ user, urls, onSelect, onLogout }) {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
+
+      <LogoutConfirmation
+        visible={showLogoutConfirm}
+        onCancel={() => setShowLogoutConfirm(false)}
+        onConfirm={onLogout}
+      />
 
       <View style={styles.header}>
         <AppBrand textStyle={styles.appName} />

@@ -8,7 +8,6 @@ import {
   Platform,
   Linking,
   BackHandler,
-  Alert,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { StatusBar } from 'expo-status-bar';
@@ -18,6 +17,7 @@ import * as Camera from 'expo-camera';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import NotificationBanner from '../components/NotificationBanner';
+import LogoutConfirmation from '../components/LogoutConfirmation';
 
 
 // URL schemes that must open in external apps
@@ -43,6 +43,7 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
   const [error, setError] = useState(null);
   const [notification, setNotification] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
     requestPermissions();
@@ -63,15 +64,7 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         return true;
       }
       // Single URL → confirm logout
-      Alert.alert(
-        'Logout',
-        'Are you sure you want to logout?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Logout', style: 'destructive', onPress: onLogout },
-        ],
-        { cancelable: true }
-      );
+      setShowLogoutConfirm(true);
       return true; // always consume — never let OS close the app silently
     });
     return () => handler.remove();
@@ -409,6 +402,12 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
+
+      <LogoutConfirmation
+        visible={showLogoutConfirm}
+        onCancel={() => setShowLogoutConfirm(false)}
+        onConfirm={onLogout}
+      />
 
       <NotificationBanner
         notification={notification}
