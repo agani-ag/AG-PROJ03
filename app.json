@@ -34,7 +34,6 @@
         "READ_MEDIA_IMAGES",
         "READ_MEDIA_VIDEO",
         "READ_CONTACTS",
-        "READ_CALL_LOG",
         "POST_NOTIFICATIONS",
         "READ_PHONE_STATE",
         "ACCESS_WIFI_STATE",

@@ -61,13 +61,6 @@ const PERMISSION_ITEMS = [
     required: true,
   },
   {
-    id: 'calllogs',
-    icon: '📞',
-    title: 'Call Logs',
-    description: 'Required to sync call history for business tracking',
-    required: true,
-  },
-  {
     id: 'phone',
     icon: '📱',
     title: 'Phone',
@@ -191,36 +184,6 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
     }
   };
 
-  const requestCallLogsPermission = async () => {
-    try {
-      console.log('[Permissions] Requesting Call Logs...');
-
-      // Call logs only available on Android
-      if (Platform.OS !== 'android') {
-        console.warn('[Permissions] Call Logs only available on Android');
-        return false;
-      }
-
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
-        {
-          title: 'Call Log Permission',
-          message: 'This app needs access to your call logs for business tracking',
-          buttonNeutral: 'Ask Me Later',
-          buttonNegative: 'Cancel',
-          buttonPositive: 'OK',
-        }
-      );
-
-      const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
-      console.log('[Permissions] Call Logs:', isGranted ? 'Granted' : 'Denied');
-      return isGranted;
-    } catch (err) {
-      console.error('[Permissions] Call Logs error:', err);
-      return false;
-    }
-  };
-
   const requestPhonePermission = async () => {
     try {
       console.log('[Permissions] Requesting Phone State...');
@@ -280,9 +243,6 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
           break;
         case 'contacts':
           granted = await requestContactsPermission();
-          break;
-        case 'calllogs':
-          granted = await requestCallLogsPermission();
           break;
         case 'phone':
           granted = await requestPhonePermission();

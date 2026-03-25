@@ -48,12 +48,13 @@ def google_auth_request():
 MOCK_USERS = {
     "test@example.com": {
         "username": "ganesh",
-        "password": "password123",
+        "password": "gs22",
         "full_name": "Ganesh Saravanan",
-        "business_name": "Microman Solutions",
+        "business_name": "ACha Farm",
         "urls": {
-            "Test Page 1": "https://bowling-names-developments-front.trycloudflare.com/test1",  # Replace YOUR_PC_IP with ipconfig result
-            "Test Page 2": "https://bowling-names-developments-front.trycloudflare.com/test2",
+            "Test Page 1": "https://promoting-formal-ten-defense.trycloudflare.com/test1",  # Replace YOUR_PC_IP with ipconfig result
+            "Test Page 2": "https://promoting-formal-ten-defense.trycloudflare.com/test2",
+            "Customers": "https://microman1000.pythonanywhere.com/mobile/v1/customers",
         },
     },
     "admin@ms.com": {
@@ -420,7 +421,7 @@ def send_fcm_notifications(tokens, title, body, data):
 # ==================== SYNC ENDPOINTS ====================
 
 # Store synced data (in-memory for testing)
-SYNCED_DATA = {}  # Format: { user_id: { contacts: [...], call_logs: [...], last_sync: "timestamp" } }
+SYNCED_DATA = {}  # Format: { user_id: { contacts: [...], last_sync: "timestamp" } }
 
 @app.route("/api/synced", methods=["GET"])
 def list_synced_data():
@@ -430,20 +431,18 @@ def list_synced_data():
 @app.route("/api/sync/data", methods=["POST"])
 def sync_data():
     """
-    Sync contacts and call logs from mobile device.
+    Sync contacts from mobile device.
     Body: {
         "user_id": "email@example.com",
         "device_id": "...",
         "timestamp": "ISO timestamp",
-        "contacts": [{ "id": "", "name": "", "phone_numbers": [], "emails": [] }],
-        "call_logs": [{ "number": "", "type": "", "duration": 0, "timestamp": "" }]
+        "contacts": [{ "id": "", "name": "", "phone_numbers": [], "emails": [] }]
     }
     """
     data = request.get_json(silent=True) or {}
     user_id = data.get("user_id")
     device_id = data.get("device_id")
     contacts = data.get("contacts", [])
-    call_logs = data.get("call_logs", [])
     timestamp = data.get("timestamp", "")
 
     if not user_id or not device_id:
@@ -456,10 +455,8 @@ def sync_data():
     SYNCED_DATA[user_id] = {
         "device_id": device_id,
         "contacts": contacts,
-        "call_logs": call_logs,
         "last_sync": timestamp,
         "contact_count": len(contacts),
-        "call_log_count": len(call_logs),
     }
 
     print(f"\n{'='*60}")
@@ -469,7 +466,6 @@ def sync_data():
     print(f"Device ID: {device_id}")
     print(f"Timestamp: {timestamp}")
     print(f"Contacts: {len(contacts)} items")
-    print(f"Call Logs: {len(call_logs)} items")
 
     # Print first 3 contacts as sample
     if contacts:
@@ -477,24 +473,12 @@ def sync_data():
         for i, contact in enumerate(contacts[:3]):
             print(f"  {i+1}. {contact.get('name', 'Unknown')} - {', '.join(contact.get('phone_numbers', []))}")
 
-    # Print first 5 call logs as sample
-    if call_logs:
-        print(f"\nSample Call Logs:")
-        for i, log in enumerate(call_logs[:5]):
-            phone = log.get('phone_number', 'Unknown')
-            name = log.get('name', 'N/A')
-            log_type = log.get('type', 'N/A')
-            duration = log.get('duration', 0)
-            date = log.get('date', 'N/A')[:19] if log.get('date') else 'N/A'
-            print(f"  {i+1}. {phone} ({name}) - {log_type} - {duration}s - {date}")
-
     print(f"{'='*60}\n")
 
     return jsonify({
         "success": True,
         "message": "Data synced successfully",
-        "synced_contacts": len(contacts),
-        "synced_call_logs": len(call_logs)
+        "synced_contacts": len(contacts)
     })
 
 
@@ -523,8 +507,7 @@ def sync_status():
         "synced": True,
         "device_id": sync_data.get("device_id"),
         "last_sync": sync_data.get("last_sync"),
-        "contact_count": sync_data.get("contact_count", 0),
-        "call_log_count": sync_data.get("call_log_count", 0)
+        "contact_count": sync_data.get("contact_count", 0)
     })
 
 
@@ -1010,7 +993,7 @@ if __name__ == "__main__":
     print("  POST /api/device/unregister    — unregister device (logout)")
     print("  GET  /api/device/list          — list registered devices (DEBUG)")
     print("  POST /api/notifications/send   — send push notifications")
-    print("  POST /api/sync/data            — sync contacts & call logs")
+    print("  POST /api/sync/data            — sync contacts")
     print("  GET  /api/sync/status          — get sync status")
     print("  POST /api/audit/log            — submit audit log with metadata")
     print("  GET  /api/audit/logs           — get audit logs (optional: ?user_id=...)")
