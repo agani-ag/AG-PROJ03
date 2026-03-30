@@ -52,7 +52,7 @@ export async function registerTokenWithBackend(apiUrl, deviceId, userId, pushTok
   console.log('[FCM Backend] Registering token...');
 
   try {
-    const response = await fetch(`${apiUrl}/api/device/register`, {
+    const response = await fetch(`${apiUrl}/device/api/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

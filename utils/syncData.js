@@ -50,7 +50,7 @@ export async function syncContacts(apiUrl, userId, deviceId) {
     console.log('[Sync] Sending data to backend...');
     console.log(`[Sync] Contacts: ${syncData.contacts.length}`);
 
-    const response = await fetch(`${apiUrl}/api/sync/data`, {
+    const response = await fetch(`${apiUrl}/device/api/sync/data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(syncData),

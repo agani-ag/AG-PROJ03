@@ -12,7 +12,7 @@ export async function unregisterDevice(apiUrl, userId) {
     console.log('[Logout] Device ID:', deviceId);
     console.log('[Logout] User ID:', userId);
 
-    const response = await fetch(`${apiUrl}/api/device/unregister`, {
+    const response = await fetch(`${apiUrl}/device/api/unregister`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

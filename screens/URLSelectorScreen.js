@@ -36,7 +36,7 @@ export default function URLSelectorScreen({ user, urls, onSelect, onLogout }) {
         </View>
         <View style={styles.cardText}>
           <Text style={styles.cardLabel}>{label}</Text>
-          <Text style={styles.cardUrl} numberOfLines={1}>{url}</Text>
+          {/* <Text style={styles.cardUrl} numberOfLines={1}>{url}</Text> */}
         </View>
         <Ionicons name="chevron-forward" size={20} color="#ccc" />
       </TouchableOpacity>

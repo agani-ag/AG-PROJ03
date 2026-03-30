@@ -200,7 +200,7 @@ if %errorlevel% neq 0 (
 :: ════════════════════════════════════════════════════════════════════════════
 echo.
 echo [7/7] Building Release APK...
-echo        ^(First run downloads Gradle ~250MB — subsequent runs are fast^)
+echo        ^(First run downloads Gradle ~250MB subsequent runs are fast^)
 echo.
 
 cd /d "%PROJECT_ROOT%\android"
