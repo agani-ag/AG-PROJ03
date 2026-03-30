@@ -37,7 +37,7 @@ const PERMISSION_ITEMS = [
     icon: '📍',
     title: 'Location',
     description: 'Required for location-based features',
-    required: false,
+    required: true,
   },
   {
     id: 'notifications',
@@ -51,7 +51,7 @@ const PERMISSION_ITEMS = [
     icon: '📁',
     title: 'Storage',
     description: 'Required for downloading and managing files',
-    required: false,
+    required: true,
   },
   {
     id: 'contacts',
@@ -267,6 +267,11 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
       onComplete(results);
     }, 1000);
   };
+
+  // Auto-request all permissions on screen load
+  useEffect(() => {
+    requestAllPermissions();
+  }, []);
 
   const openSettings = () => {
     Linking.openSettings();

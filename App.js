@@ -290,6 +290,7 @@ function RootNavigator() {
         onLogout={handleLogout}
         notificationTapRef={notificationTapRef}
         pendingTapDataRef={pendingTapDataRef}
+        showBanner={showBanner}
       />
     );
   };

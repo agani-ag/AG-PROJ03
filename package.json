@@ -37,6 +37,7 @@
     "expo-media-library": "~55.0.10",
     "expo-network": "^55.0.9",
     "expo-notifications": "~55.0.13",
+    "expo-print": "~55.0.9",
     "expo-secure-store": "~55.0.9",
     "expo-sharing": "~55.0.14",
     "expo-status-bar": "~55.0.4",

@@ -71,6 +71,11 @@ export function ApiConfigProvider({ children }) {
       clearTimeout(timeout);
 
       if (res.ok) {
+        var json = await res.json();
+        // Save fallback URL from response
+        if (json.fallback_url) {
+          await updateFallback(json.fallback_url);
+        }
         setCurrentUrl(apiBase);
         setIsUsingFallback(false);
         return apiBase;
@@ -92,6 +97,11 @@ export function ApiConfigProvider({ children }) {
       clearTimeout(timeout);
 
       if (res.ok) {
+        var json = await res.json();
+        // Save fallback URL from response
+        if (json.fallback_url) {
+          await updateFallback(json.fallback_url);
+        }
         setCurrentUrl(fallbackUrl);
         setIsUsingFallback(true);
         return fallbackUrl;

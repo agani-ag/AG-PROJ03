@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Text, StyleSheet, View, TouchableOpacity, Image } from 'react-native';
+import { Animated, Text, StyleSheet, View, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function NotificationBanner({ notification, onDismiss, onPress }) {
@@ -51,10 +51,8 @@ export default function NotificationBanner({ notification, onDismiss, onPress })
     else dismiss();
   };
 
-  const hasImage = !!notification.image;
-
   return (
-    <Animated.View style={[styles.container, hasImage && styles.containerWithImage, { transform: [{ translateY }], opacity }]}>
+    <Animated.View style={[styles.container, { transform: [{ translateY }], opacity }]}>
       <TouchableOpacity activeOpacity={0.85} onPress={handlePress}>
         <View style={styles.headerRow}>
           <View style={styles.iconBox}>
@@ -65,16 +63,13 @@ export default function NotificationBanner({ notification, onDismiss, onPress })
               <Text style={styles.title} numberOfLines={1}>{notification.title}</Text>
             ) : null}
             {notification.body ? (
-              <Text style={styles.body} numberOfLines={hasImage ? 1 : 2}>{notification.body}</Text>
+              <Text style={styles.body} numberOfLines={2}>{notification.body}</Text>
             ) : null}
           </View>
           <TouchableOpacity onPress={dismiss} style={styles.closeBtn}>
             <Ionicons name="close" size={18} color="#aaa" />
           </TouchableOpacity>
         </View>
-        {hasImage && (
-          <Image source={{ uri: notification.image }} style={styles.image} resizeMode="cover" />
-        )}
       </TouchableOpacity>
     </Animated.View>
   );
@@ -97,10 +92,6 @@ const styles = StyleSheet.create({
     elevation: 10,
     zIndex: 9999,
   },
-  containerWithImage: {
-    paddingBottom: 0,
-    overflow: 'hidden',
-  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -118,11 +109,4 @@ const styles = StyleSheet.create({
   title: { color: '#fff', fontWeight: '700', fontSize: 14, marginBottom: 2 },
   body: { color: '#ccc', fontSize: 12, lineHeight: 17 },
   closeBtn: { padding: 4, marginLeft: 8 },
-  image: {
-    width: '100%',
-    height: 160,
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
-    marginTop: 10,
-  },
 });

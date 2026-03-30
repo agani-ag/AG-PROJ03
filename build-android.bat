@@ -194,6 +194,16 @@ if %errorlevel% neq 0 (
     pause & exit /b 1
 )
 
+:: Patch AndroidManifest.xml to fix Firebase notification icon merge conflict
+echo.
+echo        Patching AndroidManifest for notification icon...
+node "%PROJECT_ROOT%\scripts\patch-notification-manifest.js"
+
+if %errorlevel% neq 0 (
+    echo  [ERROR] Failed to patch notification manifest.
+    pause & exit /b 1
+)
+
 
 :: ════════════════════════════════════════════════════════════════════════════
 :: STEP 7 — Gradle release build

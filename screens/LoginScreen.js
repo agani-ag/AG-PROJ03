@@ -95,10 +95,6 @@ export default function LoginScreen({ onLoginSuccess }) {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // Save fallback URL from response
-        if (data.fallback_url) {
-          await updateFallback(data.fallback_url);
-        }
 
         await updateAppName(data.business_name?.trim() || 'SyncUp');
         showToast(`Welcome back, ${data.username}!`, 'success');

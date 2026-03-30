@@ -17,6 +17,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Camera from 'expo-camera';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
 import LogoutConfirmation from '../components/LogoutConfirmation';
 
 
@@ -36,7 +37,7 @@ const DOWNLOAD_EXTENSIONS = [
   '.zip', '.rar', '.ppt', '.pptx', '.txt', '.odt', '.ods',
 ];
 
-export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackToSelector, onLogout, notificationTapRef, pendingTapDataRef }) {
+export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackToSelector, onLogout, notificationTapRef, pendingTapDataRef, showBanner }) {
   const webViewRef = useRef(null);
   const canGoBackRef = useRef(false);
   const [loading, setLoading] = useState(true);
@@ -292,6 +293,12 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
       window.Notification.permission = 'granted';
       window.Notification.requestPermission = function () { return Promise.resolve('granted'); };
 
+      // ── Print bridge ─────────────────────────────────────────────────────
+      window.print = function () {
+        var html = document.documentElement.outerHTML;
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'PRINT', html: html }));
+      };
+
       // ── Geolocation bridge ───────────────────────────────────────────────
       Object.defineProperty(navigator, 'geolocation', {
         value: {
@@ -331,17 +338,6 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
       var DL_EXTS = ['.pdf','.doc','.docx','.xls','.xlsx','.csv','.zip','.rar','.ppt','.pptx','.txt','.odt','.ods'];
 
       document.addEventListener('click', function (e) {
-        // ── File input ──────────────────────────────────────────────────────
-        var inputEl = e.target;
-        if (inputEl.tagName === 'INPUT' && inputEl.type === 'file') {
-          e.preventDefault();
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: inputEl.getAttribute('capture') !== null ? 'OPEN_CAMERA' : 'OPEN_FILE_PICKER',
-            accept: inputEl.accept || '*/*',
-          }));
-          return;
-        }
-
         // ── Anchor links ────────────────────────────────────────────────────
         var el = e.target.closest('a');
         if (!el) return;
@@ -472,6 +468,17 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         const { status } = await Camera.Camera.requestCameraPermissionsAsync();
         if (status !== 'granted') return;
         webViewRef.current?.injectJavaScript(`document.dispatchEvent(new CustomEvent('ms_camera_ready')); true;`);
+        break;
+      }
+
+      case 'PRINT': {
+        try {
+          if (msg.html) {
+            await Print.printAsync({ html: msg.html });
+          }
+        } catch (err) {
+          console.warn('[Print] Error:', err.message);
+        }
         break;
       }
     }
