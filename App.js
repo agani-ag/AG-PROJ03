@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Alert, View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider } from './utils/AppContext';
@@ -6,9 +6,10 @@ import { ApiConfigProvider, useApiConfig } from './utils/ApiConfig';
 import { unregisterDevice, clearUserData } from './utils/logout';
 import { hasStoredCredentials, getStoredCredentials, authenticateWithDevice } from './utils/secureAuth';
 import { getDeviceId } from './utils/deviceId';
-import { registerForPushNotifications, registerTokenWithBackend } from './utils/notifications';
+import { registerForPushNotifications, registerTokenWithBackend, useNotifications } from './utils/notifications';
 import { checkAllPermissions } from './utils/permissionChecker';
 import { collectDeviceMetadata, sendAuditLog } from './utils/auditLogger';
+import NotificationBanner from './components/NotificationBanner';
 import PermissionsScreen from './screens/PermissionsScreen';
 import LoginScreen from './screens/LoginScreen';
 import URLSelectorScreen from './screens/URLSelectorScreen';
@@ -22,6 +23,28 @@ function RootNavigator() {
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [checkingPermissions, setCheckingPermissions] = useState(true);
   const [deniedPermissions, setDeniedPermissions] = useState([]);
+  const [notification, setNotification] = useState(null);
+  const notificationTapRef = useRef(null);
+  const pendingTapDataRef = useRef(null);
+
+  // In-app notification banner (works on all screens)
+  const showBanner = (title, body, image, data) => {
+    setNotification({ title, body, image: image || null, data: data || null });
+  };
+
+  const handleNotificationTap = (data) => {
+    console.log('[FCM] handleNotificationTap called, data:', JSON.stringify(data));
+    console.log('[FCM] notificationTapRef.current exists:', !!notificationTapRef.current);
+    if (notificationTapRef.current) {
+      notificationTapRef.current(data);
+    } else {
+      // HomeScreen not mounted yet (app was killed), store for later
+      console.log('[FCM] Storing pending notification tap data');
+      pendingTapDataRef.current = data;
+    }
+  };
+
+  useNotifications(showBanner, handleNotificationTap);
 
   // Check actual permission status on every app launch
   useEffect(() => {
@@ -242,29 +265,49 @@ function RootNavigator() {
     );
   }
 
-  if (!user) {
-    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
-  }
+  const renderScreen = () => {
+    if (!user) {
+      return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+    }
 
-  if (!webUrl) {
+    if (!webUrl) {
+      return (
+        <URLSelectorScreen
+          user={user}
+          urls={user.urls}
+          onSelect={setWebUrl}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
     return (
-      <URLSelectorScreen
+      <HomeScreen
         user={user}
-        urls={user.urls}
-        onSelect={setWebUrl}
+        url={webUrl}
+        isMultiUrl={isMultiUrl}
+        onBackToSelector={() => setWebUrl(null)}
         onLogout={handleLogout}
+        notificationTapRef={notificationTapRef}
+        pendingTapDataRef={pendingTapDataRef}
       />
     );
-  }
+  };
 
   return (
-    <HomeScreen
-      user={user}
-      url={webUrl}
-      isMultiUrl={isMultiUrl}
-      onBackToSelector={() => setWebUrl(null)}
-      onLogout={handleLogout}
-    />
+    <View style={{ flex: 1 }}>
+      {renderScreen()}
+      <NotificationBanner
+        notification={notification}
+        onDismiss={() => setNotification(null)}
+        onPress={() => {
+          if (notification?.data?.url) {
+            handleNotificationTap(notification.data);
+          }
+          setNotification(null);
+        }}
+      />
+    </View>
   );
 }
 

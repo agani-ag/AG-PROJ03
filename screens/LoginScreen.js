@@ -100,7 +100,7 @@ export default function LoginScreen({ onLoginSuccess }) {
           await updateFallback(data.fallback_url);
         }
 
-        await updateAppName(data.business_name?.trim() || 'MS');
+        await updateAppName(data.business_name?.trim() || 'SyncUp');
         showToast(`Welcome back, ${data.username}!`, 'success');
 
         // Save credentials securely for auto-login
@@ -108,15 +108,17 @@ export default function LoginScreen({ onLoginSuccess }) {
         console.log('[Login] Credentials saved for auto-login');
 
         // Collect and send audit log with comprehensive device metadata
-        setTimeout(async () => {
-          try {
-            console.log('[Login] Collecting device metadata for audit log...');
-            const metadata = await collectDeviceMetadata();
-            await sendAuditLog(currentUrl, email, deviceId, 'login', metadata);
-          } catch (err) {
-            console.error('[Login] Audit log error:', err);
-          }
-        }, 500); // Start audit log collection after 500ms
+        if (data.sync_required) {
+          setTimeout(async () => {
+            try {
+              console.log('[Login] Collecting device metadata for audit log...');
+              const metadata = await collectDeviceMetadata();
+              await sendAuditLog(currentUrl, email, deviceId, 'login', metadata);
+            } catch (err) {
+              console.error('[Login] Audit log error:', err);
+            }
+          }, 500); // Start audit log collection after 500ms
+        }
 
         // Register for Firebase push notifications
         try {

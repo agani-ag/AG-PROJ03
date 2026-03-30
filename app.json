@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true
@@ -19,7 +19,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#000000"
       },
       "package": "com.anonymous.agproj03",
       "usesCleartextTraffic": true,
@@ -49,7 +49,15 @@
       "@react-native-firebase/app",
       "@react-native-firebase/messaging",
       "expo-secure-store",
-      "expo-contacts"
+      "expo-contacts",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/adaptive-icon.png",
+          "color": "#000000"
+        }
+      ],
+      "./plugins/withNotificationIconFix"
     ],
     "extra": {
       "eas": {

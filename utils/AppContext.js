@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const KEY_NAME = 'ms_business_name';
-const DEFAULT_NAME = 'MS';
+const KEY_NAME = 'syncup_business_name';
+const DEFAULT_NAME = 'SyncUp';
 
 const AppContext = createContext({
   appName: DEFAULT_NAME,
@@ -20,7 +20,7 @@ export function AppProvider({ children }) {
   }, []);
 
   const updateAppName = async (name) => {
-    const trimmed = (name || 'MS').trim() || 'MS';
+    const trimmed = (name || 'SyncUp').trim() || 'SyncUp';
     setAppName(trimmed);
     await AsyncStorage.setItem(KEY_NAME, trimmed);
   };

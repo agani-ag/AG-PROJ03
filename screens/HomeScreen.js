@@ -17,7 +17,6 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Camera from 'expo-camera';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import NotificationBanner from '../components/NotificationBanner';
 import LogoutConfirmation from '../components/LogoutConfirmation';
 
 
@@ -37,12 +36,11 @@ const DOWNLOAD_EXTENSIONS = [
   '.zip', '.rar', '.ppt', '.pptx', '.txt', '.odt', '.ods',
 ];
 
-export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackToSelector, onLogout }) {
+export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackToSelector, onLogout, notificationTapRef, pendingTapDataRef }) {
   const webViewRef = useRef(null);
   const canGoBackRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [notification, setNotification] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [statusBarColor, setStatusBarColor] = useState('#ffffff'); // Track status bar color
@@ -104,8 +102,33 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
     return luminance > 0.5;
   };
 
-  const showBanner = (title, body) => {
-    setNotification({ title, body });
+  // Register notification tap handler so App.js can delegate taps to WebView
+  useEffect(() => {
+    if (notificationTapRef) {
+      notificationTapRef.current = (data) => {
+        if (data?.url && webViewRef.current) {
+          console.log('[FCM] Navigating WebView to:', data.url);
+          webViewRef.current.injectJavaScript(`window.location.href = ${JSON.stringify(data.url)}; true;`);
+        }
+      };
+      return () => { notificationTapRef.current = null; };
+    }
+  }, [notificationTapRef]);
+
+  // Process any pending notification tap data after WebView loads
+  const handleWebViewLoadEnd = () => {
+    setLoading(false);
+    // Check for pending notification that arrived before HomeScreen mounted
+    if (pendingTapDataRef?.current) {
+      const pending = pendingTapDataRef.current;
+      pendingTapDataRef.current = null;
+      console.log('[FCM] Processing pending notification tap:', JSON.stringify(pending));
+      if (pending.url && webViewRef.current) {
+        setTimeout(() => {
+          webViewRef.current.injectJavaScript(`window.location.href = ${JSON.stringify(pending.url)}; true;`);
+        }, 500);
+      }
+    }
   };
 
   // ── Deep link handler ───────────────────────────────────────────────────────
@@ -465,7 +488,7 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         <View style={styles.center}>
           <Text style={styles.errorText}>Failed to load the app</Text>
           <Text style={styles.errorDetail}>{error}</Text>
-          <Text style={styles.errorUrl}>URL: {WEB_APP_URL}</Text>
+          {/* <Text style={styles.errorUrl}>URL: {WEB_APP_URL}</Text> */}
           <TouchableOpacity style={styles.retryBtn} onPress={() => setError(null)}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
@@ -486,11 +509,6 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         visible={showLogoutConfirm}
         onCancel={() => setShowLogoutConfirm(false)}
         onConfirm={onLogout}
-      />
-
-      <NotificationBanner
-        notification={notification}
-        onDismiss={() => setNotification(null)}
       />
 
       {loading && (
@@ -517,8 +535,15 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         onMessage={handleMessage}
         onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
         onFileDownload={onFileDownload}
+        onOpenWindow={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          const targetUrl = nativeEvent.targetUrl;
+          if (targetUrl) {
+            Linking.openURL(targetUrl);
+          }
+        }}
         onNavigationStateChange={(navState) => { canGoBackRef.current = navState.canGoBack; }}
-        onLoadEnd={() => setLoading(false)}
+        onLoadEnd={handleWebViewLoadEnd}
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
           setLoading(false);

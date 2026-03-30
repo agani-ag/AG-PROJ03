@@ -304,13 +304,15 @@ def send_notification():
         "device_id": "...",              # if target=device
         "title": "Notification Title",
         "body": "Notification message",
-        "data": { "screen": "home", ... }  # optional
+        "image": "https://example.com/image.jpg",  # optional
+        "data": { "url": "https://...", ... }  # optional
     }
     """
     data = request.get_json(silent=True) or {}
     target = data.get("target", "all")
     title = data.get("title", "MS App")
     body = data.get("body", "You have a new notification")
+    image = data.get("image", None)
     notification_data = data.get("data", {})
 
     tokens_to_send = []
@@ -350,7 +352,7 @@ def send_notification():
     if not tokens_to_send:
         return jsonify({"success": False, "message": "No devices to send to"}), 400
 
-    sent_count, failed_count = send_fcm_notifications(tokens_to_send, title, body, notification_data)
+    sent_count, failed_count = send_fcm_notifications(tokens_to_send, title, body, notification_data, image)
 
     print(f"[NOTIFICATIONS] Sent {sent_count} notifications, {failed_count} failed")
 
@@ -362,7 +364,7 @@ def send_notification():
     })
 
 
-def send_fcm_notifications(tokens, title, body, data):
+def send_fcm_notifications(tokens, title, body, data, image=None):
     """
     Send push notifications via Firebase Cloud Messaging v1 API
     Returns: (sent_count, failed_count)
@@ -378,19 +380,29 @@ def send_fcm_notifications(tokens, title, body, data):
 
     for token in tokens:
         try:
+            notification_payload = {
+                "title": title,
+                "body": body,
+            }
+            if image:
+                notification_payload["image"] = image
+
+            # Pass image in data too so foreground handler can access it
+            msg_data = {k: str(v) for k, v in (data or {}).items()}
+            if image:
+                msg_data["image"] = image
+
             payload = {
                 "message": {
                     "token": token,
-                    "notification": {
-                        "title": title,
-                        "body": body,
-                    },
+                    "notification": notification_payload,
                     "android": {
                         "notification": {
                             "sound": "default",
+                            **(({"image": image}) if image else {}),
                         }
                     },
-                    "data": {k: str(v) for k, v in (data or {}).items()},
+                    "data": msg_data,
                 }
             }
 

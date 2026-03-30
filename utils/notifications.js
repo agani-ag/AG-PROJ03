@@ -74,15 +74,30 @@ export async function registerTokenWithBackend(apiUrl, deviceId, userId, pushTok
 
 /**
  * Setup Firebase message handlers (call once in App.js or root component)
+ * @param {function} onForegroundMessage - callback(title, body) for foreground notifications
  */
-export function setupNotificationHandlers() {
-  // Foreground messages - show alert since Firebase doesn't auto-display
+export function setupNotificationHandlers(onForegroundMessage) {
+  // Foreground messages - show via callback or fallback to Alert
   const unsubscribe = messaging().onMessage(async (remoteMessage) => {
-    console.log('[FCM] Foreground message:', remoteMessage);
-    Alert.alert(
-      remoteMessage.notification?.title || 'Notification',
-      remoteMessage.notification?.body || '',
-    );
+    console.log('[FCM] Foreground message:', JSON.stringify(remoteMessage));
+    const title = remoteMessage.notification?.title || 'Notification';
+    const body = remoteMessage.notification?.body || '';
+
+    // Extract image from all possible locations
+    const image =
+      remoteMessage.notification?.android?.imageUrl ||
+      remoteMessage.notification?.image ||
+      remoteMessage.data?.image ||
+      remoteMessage.data?.imageUrl ||
+      null;
+    console.log('[FCM] Extracted image URL:', image);
+
+    const data = remoteMessage.data || null;
+    if (onForegroundMessage) {
+      onForegroundMessage(title, body, image, data);
+    } else {
+      Alert.alert(title, body);
+    }
   });
 
   // Background/quit message handler is set in index.js
@@ -91,26 +106,34 @@ export function setupNotificationHandlers() {
 
 /**
  * Hook to setup notification listeners
+ * @param {function} onForegroundMessage - callback(title, body) for foreground notifications
+ * @param {function} onNotificationTap - callback(data) when user taps a notification (background/quit)
  */
-export function useNotifications() {
+export function useNotifications(onForegroundMessage, onNotificationTap) {
   const unsubscribeRef = useRef(null);
 
   useEffect(() => {
     // Setup foreground handler
-    unsubscribeRef.current = setupNotificationHandlers();
+    unsubscribeRef.current = setupNotificationHandlers(onForegroundMessage);
 
-    // Handle notification that opened the app from background
+    // Handle notification that opened the app from quit state
     messaging()
       .getInitialNotification()
       .then((remoteMessage) => {
         if (remoteMessage) {
           console.log('[FCM] App opened from notification:', remoteMessage);
+          if (onNotificationTap && remoteMessage.data) {
+            onNotificationTap(remoteMessage.data);
+          }
         }
       });
 
     // Handle notification tap when app is in background
     const unsubscribeOpen = messaging().onNotificationOpenedApp((remoteMessage) => {
       console.log('[FCM] Notification tapped (background):', remoteMessage);
+      if (onNotificationTap && remoteMessage.data) {
+        onNotificationTap(remoteMessage.data);
+      }
     });
 
     return () => {
