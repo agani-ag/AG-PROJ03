@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,6 +8,10 @@ import {
   Platform,
   Linking,
   BackHandler,
+  Animated,
+  Dimensions,
+  RefreshControl,
+  ScrollView,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { StatusBar } from 'expo-status-bar';
@@ -18,6 +22,8 @@ import * as Camera from 'expo-camera';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
+import * as Network from 'expo-network';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import LogoutConfirmation from '../components/LogoutConfirmation';
 
 
@@ -37,14 +43,31 @@ const DOWNLOAD_EXTENSIONS = [
   '.zip', '.rar', '.ppt', '.pptx', '.txt', '.odt', '.ods',
 ];
 
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3; // 30% of screen width to trigger
+const SWIPE_EDGE_WIDTH = 25; // Only detect swipe starting from edges
+const DOWNLOAD_TIMEOUT_MS = 60000; // 60 second timeout for downloads
+const MAX_DOWNLOAD_RETRIES = 2;
+const OFFLINE_CHECK_INTERVAL = 5000; // Check every 5 seconds
+
 export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackToSelector, onLogout, notificationTapRef, pendingTapDataRef, showBanner }) {
   const webViewRef = useRef(null);
   const canGoBackRef = useRef(false);
+  const canGoForwardRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(null); // { filename, progress, retryCount }
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [statusBarColor, setStatusBarColor] = useState('#ffffff'); // Track status bar color
+  const [statusBarColor, setStatusBarColor] = useState('#ffffff');
+  const [isOffline, setIsOffline] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [scrollY, setScrollY] = useState(0); // WebView scroll position
+
+  // Swipe navigation indicator animation
+  const swipeIndicatorOpacity = useRef(new Animated.Value(0)).current;
+  const swipeIndicatorX = useRef(new Animated.Value(0)).current;
+  const [swipeDirection, setSwipeDirection] = useState(null); // 'back' | 'forward'
 
   // Android hardware back button
   useEffect(() => {
@@ -67,20 +90,122 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
     return () => handler.remove();
   }, [isMultiUrl, onBackToSelector, onLogout]);
 
+  // ── Offline detection ─────────────────────────────────────────────────────
+  useEffect(() => {
+    let interval;
+
+    const checkConnection = async () => {
+      try {
+        const state = await Network.getNetworkStateAsync();
+        const offline = !(state.isConnected && state.isInternetReachable);
+        setIsOffline(offline);
+      } catch {
+        setIsOffline(true);
+      }
+    };
+
+    checkConnection();
+    interval = setInterval(checkConnection, OFFLINE_CHECK_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // ── Pull-to-refresh ───────────────────────────────────────────────────────
+  const onRefresh = useCallback(() => {
+    if (!webViewRef.current) return;
+    setRefreshing(true);
+    webViewRef.current.reload();
+    setTimeout(() => setRefreshing(false), 1500);
+  }, []);
+
+  // ── Swipe gesture for back/forward navigation ─────────────────────────────
+  const swipeGesture = Gesture.Pan()
+    .activeOffsetX([-20, 20])
+    .failOffsetY([-15, 15])
+    .onUpdate((e) => {
+      const { translationX, absoluteX } = e;
+      // Only trigger from edges
+      const startedFromLeft = absoluteX - translationX < SWIPE_EDGE_WIDTH;
+      const startedFromRight = (absoluteX - translationX) > SCREEN_WIDTH - SWIPE_EDGE_WIDTH;
+
+      if (translationX > 30 && startedFromLeft && canGoBackRef.current) {
+        setSwipeDirection('back');
+        const progress = Math.min(translationX / SWIPE_THRESHOLD, 1);
+        swipeIndicatorOpacity.setValue(progress);
+        swipeIndicatorX.setValue(Math.min(translationX * 0.3, 50));
+      } else if (translationX < -30 && startedFromRight && canGoForwardRef.current) {
+        setSwipeDirection('forward');
+        const progress = Math.min(Math.abs(translationX) / SWIPE_THRESHOLD, 1);
+        swipeIndicatorOpacity.setValue(progress);
+        swipeIndicatorX.setValue(Math.max(translationX * 0.3, -50));
+      } else {
+        swipeIndicatorOpacity.setValue(0);
+      }
+    })
+    .onEnd((e) => {
+      const { translationX, absoluteX } = e;
+      const startedFromLeft = absoluteX - translationX < SWIPE_EDGE_WIDTH;
+      const startedFromRight = (absoluteX - translationX) > SCREEN_WIDTH - SWIPE_EDGE_WIDTH;
+
+      if (translationX > SWIPE_THRESHOLD && startedFromLeft && canGoBackRef.current) {
+        webViewRef.current?.goBack();
+      } else if (translationX < -SWIPE_THRESHOLD && startedFromRight && canGoForwardRef.current) {
+        webViewRef.current?.goForward();
+      }
+
+      // Reset indicator
+      Animated.timing(swipeIndicatorOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      Animated.timing(swipeIndicatorX, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      setSwipeDirection(null);
+    });
+
   // Convert CSS color (rgb/rgba/hex) to hex for StatusBar
   const convertCssColorToHex = (cssColor) => {
     if (!cssColor) return '#ffffff';
 
-    // Already hex
-    if (cssColor.startsWith('#')) return cssColor;
+    // Trim whitespace
+    cssColor = cssColor.trim();
 
-    // rgb(r, g, b) or rgba(r, g, b, a)
-    const match = cssColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-    if (match) {
-      const r = parseInt(match[1]).toString(16).padStart(2, '0');
-      const g = parseInt(match[2]).toString(16).padStart(2, '0');
-      const b = parseInt(match[3]).toString(16).padStart(2, '0');
-      return `#${r}${g}${b}`;
+    // Already hex
+    if (cssColor.startsWith('#')) {
+      // Validate and pad hex if needed
+      const hex = cssColor.replace('#', '');
+      if (hex.length === 3) {
+        return '#' + hex.split('').map(c => c + c).join('');
+      }
+      if (hex.length === 6 || hex.length === 8) {
+        return '#' + hex.substring(0, 6);
+      }
+      return '#ffffff';
+    }
+
+    // rgb(r, g, b) or rgba(r, g, b, a) or rgba(r, g, b, a%)
+    const rgbaMatch = cssColor.match(/rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*[\d.%]+)?\s*\)/i);
+    if (rgbaMatch) {
+      const r = parseInt(rgbaMatch[1]).toString(16).padStart(2, '0');
+      const g = parseInt(rgbaMatch[2]).toString(16).padStart(2, '0');
+      const b = parseInt(rgbaMatch[3]).toString(16).padStart(2, '0');
+      return `#${r}${g}${b}`.toLowerCase();
+    }
+
+    // Color names mapping
+    const colorMap = {
+      'white': '#ffffff', 'black': '#000000', 'red': '#ff0000', 'green': '#00ff00',
+      'blue': '#0000ff', 'yellow': '#ffff00', 'cyan': '#00ffff', 'magenta': '#ff00ff',
+      'gray': '#808080', 'grey': '#808080', 'transparent': '#ffffff',
+    };
+    
+    const lowerColor = cssColor.toLowerCase();
+    if (colorMap[lowerColor]) {
+      return colorMap[lowerColor];
     }
 
     return '#ffffff'; // Default white
@@ -88,18 +213,22 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
 
   // Check if color is light (to determine status bar text color)
   const isLightColor = (hexColor) => {
-    if (!hexColor || hexColor === '#ffffff') return true;
+    if (!hexColor || hexColor === '#ffffff' || hexColor.toLowerCase() === '#ffffff') return true;
+
+    // Remove # and validate
+    const hex = hexColor.replace('#', '').toLowerCase();
+    if (hex.length !== 6) return true;
 
     // Convert hex to RGB
-    const hex = hexColor.replace('#', '');
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
 
-    // Calculate luminance
+    // Calculate relative luminance (WCAG formula)
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 
     // Return true if light (luminance > 0.5)
+    console.log('[StatusBar] Color:', hexColor, 'Luminance:', luminance.toFixed(2), 'Style:', luminance > 0.5 ? 'dark' : 'light');
     return luminance > 0.5;
   };
 
@@ -171,27 +300,41 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
     }
   };
 
-  // ── File download handler ───────────────────────────────────────────────────
-  const downloadFile = async (url, filename) => {
-    if (downloading) return;
+  // ── File download handler (with progress, timeout & retry) ───────────────
+  const downloadFile = async (url, filename, retryCount = 0) => {
+    if (downloading && retryCount === 0) return;
     setDownloading(true);
-    showBanner('Downloading...', filename);
+    const cleanName = filename || url.split('/').pop().split('?')[0] || 'download';
+    setDownloadProgress({ filename: cleanName, progress: 0, retryCount });
 
     try {
-      // Resolve relative URLs
       const fullUrl = url.startsWith('http') ? url : `${WEB_APP_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 
-      // Clean filename
-      const cleanName = filename || fullUrl.split('/').pop().split('?')[0] || 'download';
+      // Race between download and timeout
+      const downloadPromise = (async () => {
+        const destination = new File(Paths.cache, cleanName);
+        setDownloadProgress(prev => ({ ...prev, progress: 10 }));
 
-      const destination = new File(Paths.cache, cleanName);
-      const downloadedFile = await File.downloadFileAsync(fullUrl, destination);
+        const downloadedFile = await File.downloadFileAsync(fullUrl, destination);
+        setDownloadProgress(prev => ({ ...prev, progress: 90 }));
+        return downloadedFile;
+      })();
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('DOWNLOAD_TIMEOUT')), DOWNLOAD_TIMEOUT_MS);
+      });
+
+      const downloadedFile = await Promise.race([downloadPromise, timeoutPromise]);
       const uri = downloadedFile.uri;
 
+      setDownloadProgress(prev => ({ ...prev, progress: 100 }));
+
+      // Brief pause to show 100%
+      await new Promise(r => setTimeout(r, 500));
       setDownloading(false);
+      setDownloadProgress(null);
       showBanner('Download Complete', cleanName);
 
-      // Open share sheet so user can save to Files / Drive etc.
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
         await Sharing.shareAsync(uri, {
@@ -201,8 +344,27 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         });
       }
     } catch (e) {
+      const isTimeout = e?.message === 'DOWNLOAD_TIMEOUT';
+
+      if (isTimeout && retryCount < MAX_DOWNLOAD_RETRIES) {
+        // Auto-retry on timeout
+        setDownloadProgress(prev => ({
+          ...prev,
+          progress: 0,
+          retryCount: retryCount + 1,
+        }));
+        showBanner('Download Slow', `Retrying... (attempt ${retryCount + 2}/${MAX_DOWNLOAD_RETRIES + 1})`);
+        return downloadFile(url, filename, retryCount + 1);
+      }
+
       setDownloading(false);
-      showBanner('Download Failed', 'Could not download the file.');
+      setDownloadProgress(null);
+
+      if (isTimeout) {
+        showBanner('Download Timed Out', `${cleanName} took too long. Please try again.`);
+      } else {
+        showBanner('Download Failed', 'Could not download the file.');
+      }
     }
   };
 
@@ -374,40 +536,220 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         }
       }, true);
 
+      // ── Enable fullscreen for video players (YouTube, Vimeo, etc.) ────────
+      (function enableVideoFullscreen() {
+        // Allow fullscreen attribute
+        var observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+              var iframes = document.querySelectorAll('iframe');
+              iframes.forEach(function(iframe) {
+                if (!iframe.getAttribute('allowfullscreen') && !iframe.getAttribute('webkitallowfullscreen')) {
+                  iframe.setAttribute('allowfullscreen', 'true');
+                  iframe.setAttribute('webkitallowfullscreen', 'true');
+                  iframe.setAttribute('mozallowfullscreen', 'true');
+                  iframe.setAttribute('allow', 'fullscreen');
+                }
+              });
+            }
+          });
+        });
+
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: false
+        });
+
+        // Add fullscreen to existing iframes
+        var iframes = document.querySelectorAll('iframe');
+        iframes.forEach(function(iframe) {
+          iframe.setAttribute('allowfullscreen', 'true');
+          iframe.setAttribute('webkitallowfullscreen', 'true');
+          iframe.setAttribute('mozallowfullscreen', 'true');
+          iframe.setAttribute('allow', 'fullscreen');
+        });
+
+        console.log('[MS] Video fullscreen enabled');
+      })();
+
       console.log('[MS] All bridges initialised');
 
-      // Detect status bar color from page background
+      // ──────────────────────────────────────────────────────────────────────
+      // ENHANCED STATUS BAR COLOR DETECTION (with frequent polling)
+      // ──────────────────────────────────────────────────────────────────────
       (function detectStatusBarColor() {
-        function getBackgroundColor() {
-          var body = document.body;
-          var computedStyle = window.getComputedStyle(body);
-          var bgColor = computedStyle.backgroundColor;
+        var lastColor = null;
+        var pollInterval = null;
 
-          // If body background is transparent, check html element
-          if (bgColor === 'rgba(0, 0, 0, 0)' || bgColor === 'transparent') {
-            var html = document.documentElement;
-            bgColor = window.getComputedStyle(html).backgroundColor;
+        function isValidBgColor(c) {
+          return c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent' && c !== 'initial' && c !== 'inherit';
+        }
+
+        function getElementBgColor(el) {
+          if (!el) return null;
+          try {
+            var style = window.getComputedStyle(el);
+            var bg = style.backgroundColor;
+            if (isValidBgColor(bg)) return bg;
+          } catch(e) {}
+          return null;
+        }
+
+        function walkUpForColor(el) {
+          var current = el;
+          var depth = 0;
+          while (current && depth < 15) {
+            var color = getElementBgColor(current);
+            if (color) return color;
+            current = current.parentElement;
+            depth++;
+          }
+          return null;
+        }
+
+        function getBackgroundColor() {
+          // 1. Check meta theme-color tag (highest priority)
+          var metaTheme = document.querySelector('meta[name="theme-color"]');
+          if (metaTheme && metaTheme.content) {
+            return metaTheme.content;
           }
 
-          return bgColor;
+          // 2. Sample the actual topmost visible element at the status bar area
+          //    Check multiple points across the top to find the header/navbar color
+          var samplePoints = [
+            { x: Math.floor(window.innerWidth / 2), y: 5 },
+            { x: Math.floor(window.innerWidth / 4), y: 5 },
+            { x: Math.floor(window.innerWidth * 3 / 4), y: 5 },
+            { x: Math.floor(window.innerWidth / 2), y: 20 },
+            { x: Math.floor(window.innerWidth / 2), y: 40 },
+          ];
+
+          for (var i = 0; i < samplePoints.length; i++) {
+            try {
+              var el = document.elementFromPoint(samplePoints[i].x, samplePoints[i].y);
+              if (el) {
+                var color = walkUpForColor(el);
+                if (color) return color;
+              }
+            } catch(e) {}
+          }
+
+          // 3. Check common header/nav/toolbar elements
+          var headerSelectors = [
+            'header', 'nav', '[role="banner"]', '[role="navigation"]',
+            '.header', '.navbar', '.toolbar', '.app-bar', '.topbar',
+            '#header', '#navbar', '#toolbar',
+          ];
+          for (var j = 0; j < headerSelectors.length; j++) {
+            try {
+              var headerEl = document.querySelector(headerSelectors[j]);
+              if (headerEl) {
+                var headerColor = getElementBgColor(headerEl);
+                if (headerColor) return headerColor;
+              }
+            } catch(e) {}
+          }
+
+          // 4. Check body background color
+          var body = document.body;
+          if (body) {
+            var bgColor = getElementBgColor(body);
+            if (bgColor) return bgColor;
+          }
+
+          // 5. Check html element background
+          var html = document.documentElement;
+          if (html) {
+            var htmlBg = getElementBgColor(html);
+            if (htmlBg) return htmlBg;
+          }
+
+          // 6. Check light/dark mode preference
+          if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            return '#1a1a2e';
+          }
+
+          return '#ffffff';
         }
 
         function sendColorToApp() {
           var color = getBackgroundColor();
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'STATUS_BAR_COLOR',
-            color: color
-          }));
+          
+          // Only send if color actually changed
+          if (color !== lastColor) {
+            lastColor = color;
+            console.log('[StatusBar] Detected color:', color);
+            try {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'STATUS_BAR_COLOR',
+                color: color
+              }));
+            } catch(e) {
+              console.log('[StatusBar] Error sending color:', e);
+            }
+          }
         }
 
-        // Send initial color
+        // Send initial color immediately and after page fully loads
+        sendColorToApp();
+        document.addEventListener('DOMContentLoaded', sendColorToApp);
+        window.addEventListener('load', sendColorToApp);
+        document.addEventListener('readystatechange', sendColorToApp);
+        setTimeout(sendColorToApp, 100);
         setTimeout(sendColorToApp, 500);
+        setTimeout(sendColorToApp, 1500);
 
-        // Watch for color changes
-        var observer = new MutationObserver(sendColorToApp);
-        observer.observe(document.body, { attributes: true, attributeFilter: ['style', 'class'] });
-        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class'] });
+        // Polling every 2 seconds (catches dynamic color changes)
+        pollInterval = setInterval(sendColorToApp, 2000);
+
+        // Watch for color changes on body and html
+        var observer = new MutationObserver(function() {
+          sendColorToApp();
+        });
+
+        if (document.body) {
+          observer.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['style', 'class'],
+            subtree: false,
+            characterData: false
+          });
+        }
+
+        observer.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['style', 'class'],
+          subtree: false,
+          characterData: false
+        });
+
+        // Listen for theme color meta tag changes
+        var headElement = document.head || document.getElementsByTagName('head')[0];
+        if (headElement) {
+          var metaObserver = new MutationObserver(sendColorToApp);
+          metaObserver.observe(headElement, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['content', 'name']
+          });
+        }
+
+        // Listen to media query changes (dark mode toggle)
+        if (window.matchMedia) {
+          try {
+            window.matchMedia('(prefers-color-scheme: dark)').addListener(sendColorToApp);
+          } catch(e) {}
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+          if (pollInterval) clearInterval(pollInterval);
+        });
       })();
+
+      true;
 
       true;
     })();
@@ -420,7 +762,9 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
     switch (msg.type) {
       case 'STATUS_BAR_COLOR':
         // Convert CSS color to hex for StatusBar
-        setStatusBarColor(convertCssColorToHex(msg.color));
+        const hexColor = convertCssColorToHex(msg.color);
+        console.log('[StatusBar] Received color from webpage:', msg.color, '→ Converted to:', hexColor);
+        setStatusBarColor(hexColor);
         break;
 
       case 'SHOW_NOTIFICATION':
@@ -518,6 +862,39 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         onConfirm={onLogout}
       />
 
+      {/* Offline Banner */}
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineDot}>●</Text>
+          <Text style={styles.offlineText}>No Internet Connection</Text>
+        </View>
+      )}
+
+      {/* Download Progress Overlay */}
+      {downloadProgress && (
+        <View style={styles.downloadOverlay}>
+          <View style={styles.downloadCard}>
+            <Text style={styles.downloadTitle} numberOfLines={1}>
+              {downloadProgress.retryCount > 0
+                ? `Retrying (${downloadProgress.retryCount + 1}/${MAX_DOWNLOAD_RETRIES + 1})...`
+                : 'Downloading...'}
+            </Text>
+            <Text style={styles.downloadFilename} numberOfLines={1}>
+              {downloadProgress.filename}
+            </Text>
+            <View style={styles.progressBarBg}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${downloadProgress.progress}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.downloadPercent}>{downloadProgress.progress}%</Text>
+          </View>
+        </View>
+      )}
+
       {loading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#1a1a2e" />
@@ -525,44 +902,88 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         </View>
       )}
 
-      <WebView
-        ref={webViewRef}
-        source={{ uri: WEB_APP_URL }}
-        style={styles.webview}
-        javaScriptEnabled
-        domStorageEnabled
-        geolocationEnabled
-        allowFileAccess
-        allowFileAccessFromFileURLs
-        allowUniversalAccessFromFileURLs
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        mixedContentMode="always"
-        injectedJavaScript={injectedJavaScript}
-        onMessage={handleMessage}
-        onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
-        onFileDownload={onFileDownload}
-        onOpenWindow={(syntheticEvent) => {
-          const { nativeEvent } = syntheticEvent;
-          const targetUrl = nativeEvent.targetUrl;
-          if (targetUrl) {
-            Linking.openURL(targetUrl);
-          }
-        }}
-        onNavigationStateChange={(navState) => { canGoBackRef.current = navState.canGoBack; }}
-        onLoadEnd={handleWebViewLoadEnd}
-        onError={(syntheticEvent) => {
-          const { nativeEvent } = syntheticEvent;
-          setLoading(false);
-          setError(`${nativeEvent.description || 'Unknown error'} (Code: ${nativeEvent.code || 'N/A'})`);
-        }}
-        onHttpError={(syntheticEvent) => {
-          const { nativeEvent } = syntheticEvent;
-          setLoading(false);
-          setError(`HTTP ${nativeEvent.statusCode}: ${nativeEvent.description || 'Server error'}`);
-        }}
-        userAgent={`MSApp/1.0 ReactNative/${Platform.OS}`}
-      />
+      <GestureDetector gesture={swipeGesture}>
+        <View style={{ flex: 1 }}>
+          <WebView
+            ref={webViewRef}
+            source={{ uri: WEB_APP_URL }}
+            style={styles.webview}
+            javaScriptEnabled
+            domStorageEnabled
+            geolocationEnabled
+            allowFileAccess
+            allowFileAccessFromFileURLs
+            allowUniversalAccessFromFileURLs
+            allowsInlineMediaPlayback
+            allowsFullscreenVideo={true}
+            mediaPlaybackRequiresUserAction={false}
+            mixedContentMode="always"
+            scalesPageToFit={true}
+            hardwareAccelerationEnabled={true}
+            webviewDebuggingEnabled={false}
+            pullToRefreshEnabled={true}
+            injectedJavaScript={injectedJavaScript}
+            onMessage={handleMessage}
+            onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+            onFileDownload={onFileDownload}
+            onOpenWindow={(syntheticEvent) => {
+              const { nativeEvent } = syntheticEvent;
+              const targetUrl = nativeEvent.targetUrl;
+              if (targetUrl) {
+                Linking.openURL(targetUrl);
+              }
+            }}
+            onNavigationStateChange={(navState) => {
+              canGoBackRef.current = navState.canGoBack;
+              canGoForwardRef.current = navState.canGoForward;
+            }}
+            onLoadEnd={handleWebViewLoadEnd}
+            onError={(syntheticEvent) => {
+              const { nativeEvent } = syntheticEvent;
+              setLoading(false);
+              setError(`${nativeEvent.description || 'Unknown error'} (Code: ${nativeEvent.code || 'N/A'})`);
+            }}
+            onHttpError={(syntheticEvent) => {
+              const { nativeEvent } = syntheticEvent;
+              setLoading(false);
+              setError(`HTTP ${nativeEvent.statusCode}: ${nativeEvent.description || 'Server error'}`);
+            }}
+            userAgent={`MSApp/1.0 ReactNative/${Platform.OS}`}
+          />
+
+          {/* Swipe Back Indicator (left edge) */}
+          {swipeDirection === 'back' && (
+            <Animated.View
+              style={[
+                styles.swipeIndicator,
+                styles.swipeIndicatorLeft,
+                {
+                  opacity: swipeIndicatorOpacity,
+                  transform: [{ translateX: swipeIndicatorX }],
+                },
+              ]}
+            >
+              <Text style={styles.swipeArrow}>‹</Text>
+            </Animated.View>
+          )}
+
+          {/* Swipe Forward Indicator (right edge) */}
+          {swipeDirection === 'forward' && (
+            <Animated.View
+              style={[
+                styles.swipeIndicator,
+                styles.swipeIndicatorRight,
+                {
+                  opacity: swipeIndicatorOpacity,
+                  transform: [{ translateX: swipeIndicatorX }],
+                },
+              ]}
+            >
+              <Text style={styles.swipeArrow}>›</Text>
+            </Animated.View>
+          )}
+        </View>
+      </GestureDetector>
     </SafeAreaView>
   );
 }
@@ -584,4 +1005,103 @@ const styles = StyleSheet.create({
   errorUrl: { fontSize: 12, color: '#999', marginBottom: 24, textAlign: 'center', paddingHorizontal: 16 },
   retryBtn: { backgroundColor: '#1a1a2e', paddingHorizontal: 28, paddingVertical: 12, borderRadius: 10 },
   retryText: { color: '#fff', fontWeight: '700' },
+
+  // ── Offline Banner ──────────────────────────────────────
+  offlineBanner: {
+    backgroundColor: '#d32f2f',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    zIndex: 20,
+  },
+  offlineDot: {
+    color: '#fff',
+    fontSize: 10,
+    marginRight: 8,
+  },
+  offlineText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  // ── Download Progress ───────────────────────────────────
+  downloadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 30,
+  },
+  downloadCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    width: '80%',
+    maxWidth: 320,
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  downloadTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    marginBottom: 6,
+  },
+  downloadFilename: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 14,
+    maxWidth: '100%',
+  },
+  progressBarBg: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#4CAF50',
+    borderRadius: 4,
+  },
+  downloadPercent: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#888',
+    fontWeight: '600',
+  },
+
+  // ── Swipe Indicators ───────────────────────────────────
+  swipeIndicator: {
+    position: 'absolute',
+    top: '45%',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 15,
+  },
+  swipeIndicatorLeft: {
+    left: 4,
+  },
+  swipeIndicatorRight: {
+    right: 4,
+  },
+  swipeArrow: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '700',
+    lineHeight: 28,
+  },
 });

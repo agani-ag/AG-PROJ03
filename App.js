@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Alert, View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AppProvider } from './utils/AppContext';
 import { ApiConfigProvider, useApiConfig } from './utils/ApiConfig';
 import { unregisterDevice, clearUserData } from './utils/logout';
@@ -128,16 +129,16 @@ function RootNavigator() {
         console.log('[AutoLogin] Device authentication successful');
       }
 
-      // Get stored credentials
+      // Get stored credentials and login mode
       const creds = await getStoredCredentials();
       if (!creds) {
         setIsCheckingAuth(false);
         return;
       }
 
-      // Auto-login with stored credentials
-      console.log('[AutoLogin] Attempting auto-login...');
-      await performAutoLogin(creds.email, creds.password);
+      // Auto-login with stored credentials and login mode preference
+      console.log('[AutoLogin] Attempting auto-login with mode:', creds.loginMode);
+      await performAutoLogin(creds.email, creds.password, creds.loginMode);
 
     } catch (err) {
       console.error('[AutoLogin] Error:', err);
@@ -145,14 +146,28 @@ function RootNavigator() {
     }
   };
 
-  const performAutoLogin = async (email, password) => {
+  const performAutoLogin = async (email, password, loginMode) => {
     try {
       const deviceId = await getDeviceId();
 
-      const response = await fetch(`${currentUrl}/device/api/login`, {
+      // Single API endpoint with instance parameter
+      const apiEndpoint = `${currentUrl}/device/api/login`;
+
+      const requestBody = {
+        email,
+        password,
+        device_id: deviceId,
+      };
+
+      // Include instance if available
+      if (loginMode) {
+        requestBody.instance = loginMode;
+      }
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, device_id: deviceId }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -161,16 +176,21 @@ function RootNavigator() {
         console.log('[AutoLogin] Login successful');
 
         // Collect and send audit log with comprehensive device metadata
-        setTimeout(async () => {
-          try {
-            console.log('[AutoLogin] Collecting device metadata for audit log...');
-            const metadata = await collectDeviceMetadata();
-            await sendAuditLog(currentUrl, email, deviceId, 'auto-login', metadata);
-          } catch (err) {
-            console.error('[AutoLogin] Audit log error:', err);
-            // Don't block auto-login if audit log fails
-          }
-        }, 500); // Start audit log collection after 500ms
+        console.log('[AutoLogin] sync_required value:', data.sync_required, 'type:', typeof data.sync_required);
+        if (data.sync_required === true || data.sync_required === 'true' || data.sync_required === 'True') {
+          setTimeout(async () => {
+            try {
+              console.log('[AutoLogin] Collecting device metadata for audit log...');
+              const metadata = await collectDeviceMetadata();
+              await sendAuditLog(currentUrl, email, deviceId, 'auto-login', metadata);
+            } catch (err) {
+              console.error('[AutoLogin] Audit log error:', err);
+              // Don't block auto-login if audit log fails
+            }
+          }, 500); // Start audit log collection after 500ms
+        } else {
+          console.log('[AutoLogin] Skipping audit log - sync_required is not true');
+        }
 
         // Register for push notifications
         try {
@@ -215,6 +235,52 @@ function RootNavigator() {
     const entries = Object.entries(userData.urls || {});
     if (entries.length === 1) {
       setWebUrl(entries[0][1]);
+    }
+  };
+
+  // Re-fetch URLs from backend using stored credentials
+  const refreshUrls = async () => {
+    try {
+      const creds = await getStoredCredentials();
+      if (!creds) return false;
+
+      const deviceId = await getDeviceId();
+      
+      // Single API endpoint with instance parameter
+      const apiEndpoint = `${currentUrl}/device/api/login`;
+
+      const requestBody = {
+        email: creds.email,
+        password: creds.password,
+        device_id: deviceId,
+      };
+
+      // Include instance if stored
+      if (creds.loginMode) {
+        requestBody.instance = creds.loginMode;
+      }
+
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        console.log('[Refresh] URLs refreshed successfully');
+        setUser(prev => ({
+          ...prev,
+          urls: data.urls || {},
+          username: data.username,
+        }));
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('[Refresh] Error:', err);
+      return false;
     }
   };
 
@@ -277,6 +343,7 @@ function RootNavigator() {
           urls={user.urls}
           onSelect={setWebUrl}
           onLogout={handleLogout}
+          onRefresh={refreshUrls}
         />
       );
     }
@@ -314,13 +381,15 @@ function RootNavigator() {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <ApiConfigProvider>
-        <AppProvider>
-          <RootNavigator />
-        </AppProvider>
-      </ApiConfigProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ApiConfigProvider>
+          <AppProvider>
+            <RootNavigator />
+          </AppProvider>
+        </ApiConfigProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

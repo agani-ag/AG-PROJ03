@@ -22,6 +22,7 @@ export function ApiConfigProvider({ children }) {
   const [fallbackUrl, setFallbackUrl] = useState(DEFAULT_FALLBACK);
   const [currentUrl, setCurrentUrl] = useState(DEFAULT_API_BASE);
   const [isUsingFallback, setIsUsingFallback] = useState(false);
+  const [healthCheckData, setHealthCheckData] = useState(null);
 
   // Load saved URLs on mount
   useEffect(() => {
@@ -55,7 +56,7 @@ export function ApiConfigProvider({ children }) {
 
   /**
    * Health check — tries primary URL first, falls back if it fails.
-   * Returns the working URL.
+   * Returns the working URL and caches health check data.
    */
   const checkHealth = async () => {
     // Try primary URL
@@ -72,12 +73,15 @@ export function ApiConfigProvider({ children }) {
 
       if (res.ok) {
         var json = await res.json();
+        // Cache health check data (includes instances)
+        setHealthCheckData(json);
         // Save fallback URL from response
         if (json.fallback_url) {
           await updateFallback(json.fallback_url);
         }
         setCurrentUrl(apiBase);
         setIsUsingFallback(false);
+        console.log('[Health] Primary URL OK, instances:', json.instance);
         return apiBase;
       }
     } catch (err) {
@@ -98,12 +102,15 @@ export function ApiConfigProvider({ children }) {
 
       if (res.ok) {
         var json = await res.json();
+        // Cache health check data (includes instances)
+        setHealthCheckData(json);
         // Save fallback URL from response
         if (json.fallback_url) {
           await updateFallback(json.fallback_url);
         }
         setCurrentUrl(fallbackUrl);
         setIsUsingFallback(true);
+        console.log('[Health] Fallback URL OK, instances:', json.instance);
         return fallbackUrl;
       }
     } catch (err) {
@@ -132,6 +139,7 @@ export function ApiConfigProvider({ children }) {
         fallbackUrl,
         currentUrl,
         isUsingFallback,
+        healthCheckData,
         updateApiBase,
         updateFallback,
         checkHealth,

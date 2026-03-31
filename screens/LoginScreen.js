@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  FlatList,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Toast from '../components/Toast';
@@ -24,7 +26,7 @@ import PinEntry from '../components/PinEntry';
 
 export default function LoginScreen({ onLoginSuccess }) {
   const { updateAppName } = useAppName();
-  const { currentUrl, checkHealth, updateFallback, isUsingFallback } = useApiConfig();
+  const { currentUrl, checkHealth, updateFallback, isUsingFallback, healthCheckData } = useApiConfig();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,15 +36,59 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
   const [showPinEntry, setShowPinEntry] = useState(false);
   const [showDeveloperSettings, setShowDeveloperSettings] = useState(false);
+  const [loginMode, setLoginMode] = useState(''); // Instance selected from health check
+  const [availableInstances, setAvailableInstances] = useState([]); // From health check
+  const [showInstanceDropdown, setShowInstanceDropdown] = useState(false);
 
   const clickCountRef = useRef(0);
   const clickTimerRef = useRef(null);
 
   // Health check on mount
   useEffect(() => {
-    checkHealth();
-    getDeviceId().then(setDeviceId);
+    initializeScreen();
   }, []);
+
+  // Update instances when health check data changes
+  useEffect(() => {
+    if (healthCheckData && Array.isArray(healthCheckData.instance)) {
+      setAvailableInstances(healthCheckData.instance);
+      console.log('[Login] Available instances:', healthCheckData.instance);
+      
+      // Auto-select if only one instance
+      if (healthCheckData.instance.length === 1) {
+        setLoginMode(healthCheckData.instance[0]);
+        console.log('[Login] Auto-selected single instance:', healthCheckData.instance[0]);
+      } else if (healthCheckData.instance.length > 1) {
+        // Load stored preference if available
+        loadStoredLoginMode();
+      }
+    }
+  }, [healthCheckData]);
+
+  const initializeScreen = async () => {
+    try {
+      await checkHealth();
+      getDeviceId().then(setDeviceId);
+    } catch (err) {
+      console.error('[Login] Initialization error:', err);
+    }
+  };
+
+  const loadStoredLoginMode = async () => {
+    try {
+      const { getStoredCredentials } = await import('../utils/secureAuth');
+      const creds = await getStoredCredentials();
+      if (creds && creds.loginMode && availableInstances.includes(creds.loginMode)) {
+        setLoginMode(creds.loginMode);
+        console.log('[Login] Restored instance preference:', creds.loginMode);
+      } else if (availableInstances.length > 0) {
+        // If stored preference not available or not in current instances, use first available
+        setLoginMode(availableInstances[0]);
+      }
+    } catch (err) {
+      console.error('[Login] Error loading stored login mode:', err);
+    }
+  };
 
   const showToast = (message, type = 'success') => {
     setToast({ visible: true, message, type });
@@ -84,12 +130,31 @@ export default function LoginScreen({ onLoginSuccess }) {
       return;
     }
 
+    if (availableInstances.length > 0 && !loginMode) {
+      showToast('Please select an instance.', 'error');
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await fetch(`${currentUrl}/device/api/login`, {
+      // Single API endpoint with instance in body
+      const apiEndpoint = `${currentUrl}/device/api/login`;
+
+      const requestBody = {
+        email,
+        password,
+        device_id: deviceId,
+      };
+
+      // Include instance if available
+      if (loginMode) {
+        requestBody.instance = loginMode;
+      }
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, device_id: deviceId }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -99,12 +164,13 @@ export default function LoginScreen({ onLoginSuccess }) {
         await updateAppName(data.business_name?.trim() || 'SyncUp');
         showToast(`Welcome back, ${data.username}!`, 'success');
 
-        // Save credentials securely for auto-login
-        await saveCredentials(email, password);
-        console.log('[Login] Credentials saved for auto-login');
+        // Save credentials securely for auto-login (including selected instance)
+        await saveCredentials(email, password, loginMode);
+        console.log('[Login] Credentials and instance preference saved for auto-login');
 
         // Collect and send audit log with comprehensive device metadata
-        if (data.sync_required) {
+        console.log('[Login] sync_required value:', data.sync_required, 'type:', typeof data.sync_required);
+        if (data.sync_required === true || data.sync_required === 'true' || data.sync_required === 'True') {
           setTimeout(async () => {
             try {
               console.log('[Login] Collecting device metadata for audit log...');
@@ -114,6 +180,8 @@ export default function LoginScreen({ onLoginSuccess }) {
               console.error('[Login] Audit log error:', err);
             }
           }, 500); // Start audit log collection after 500ms
+        } else {
+          console.log('[Login] Skipping audit log - sync_required is not true');
         }
 
         // Register for Firebase push notifications
@@ -244,9 +312,53 @@ export default function LoginScreen({ onLoginSuccess }) {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.forgotBtn}>
-          <Text style={styles.forgotText}>Forgot Password?</Text>
-        </TouchableOpacity>
+        {/* Instance Selector Dropdown - Only show if multiple instances */}
+        {availableInstances.length > 1 && (
+          <View style={styles.instanceSelectorContainer}>
+            <Text style={styles.label}>Instance</Text>
+            <TouchableOpacity
+              style={styles.instanceSelectorButton}
+              onPress={() => setShowInstanceDropdown(!showInstanceDropdown)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.instanceSelectorText}>
+                {loginMode || 'Select Instance'}
+              </Text>
+              <Text style={styles.instanceSelectorArrow}>
+                {showInstanceDropdown ? '▲' : '▼'}
+              </Text>
+            </TouchableOpacity>
+
+            {showInstanceDropdown && (
+              <View style={styles.instanceDropdownList}>
+                {availableInstances.map((instance) => (
+                  <TouchableOpacity
+                    key={instance}
+                    style={[
+                      styles.instanceDropdownItem,
+                      loginMode === instance && styles.instanceDropdownItemActive,
+                    ]}
+                    onPress={() => {
+                      setLoginMode(instance);
+                      setShowInstanceDropdown(false);
+                      console.log('[Login] Instance selected:', instance);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.instanceDropdownItemText,
+                        loginMode === instance && styles.instanceDropdownItemTextActive,
+                      ]}
+                    >
+                      {instance}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
 
         <TouchableOpacity
           style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
@@ -334,9 +446,68 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   toggleText: { fontSize: 13, color: '#4a90e2', fontWeight: '700' },
-  forgotBtn: { alignSelf: 'flex-end', marginBottom: 24 },
-  forgotText: { fontSize: 13, color: '#4a90e2', fontWeight: '500' },
-  loginBtn: {
+  
+  // Instance Selector Dropdown
+  instanceSelectorContainer: {
+    marginBottom: 18,
+  },
+  instanceSelectorButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#fafafa',
+  },
+  instanceSelectorText: {
+    fontSize: 15,
+    color: '#1a1a2e',
+    fontWeight: '500',
+    flex: 1,
+  },
+  instanceSelectorArrow: {
+    fontSize: 12,
+    color: '#999',
+    fontWeight: '700',
+  },
+  instanceDropdownList: {
+    position: 'absolute',
+    top: 88,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#4a90e2',
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 6,
+    zIndex: 1000,
+    overflow: 'hidden',
+  },
+  instanceDropdownItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  instanceDropdownItemActive: {
+    backgroundColor: '#f0f4f8',
+  },
+  instanceDropdownItemText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  instanceDropdownItemTextActive: {
+    color: '#4a90e2',
+    fontWeight: '700',
+  },  loginBtn: {
     backgroundColor: '#1a1a2e',
     borderRadius: 12,
     paddingVertical: 15,

@@ -4,7 +4,7 @@
     "slug": "ag-proj03",
     "owner": "fireman2002",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
@@ -24,6 +24,11 @@
       "package": "com.anonymous.agproj03",
       "usesCleartextTraffic": true,
       "googleServicesFile": "./google-services.json",
+      "androidStatusBar": {
+        "barStyle": "light-content",
+        "backgroundColor": "#000000",
+        "translucent": false
+      },
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",

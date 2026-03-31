@@ -89,12 +89,12 @@ export async function authenticateWithDevice() {
 /**
  * Save user credentials securely
  */
-export async function saveCredentials(email, password) {
+export async function saveCredentials(email, password, loginMode = 'S1') {
   try {
-    const data = JSON.stringify({ email, password, savedAt: Date.now() });
+    const data = JSON.stringify({ email, password, loginMode, savedAt: Date.now() });
     await SecureStore.setItemAsync(CRED_KEY, data);
     await SecureStore.setItemAsync(REMEMBER_KEY, 'true');
-    console.log('[Auth] Credentials saved securely');
+    console.log('[Auth] Credentials and login mode saved securely');
     return true;
   } catch (err) {
     console.error('[Auth] Save credentials error:', err);
@@ -103,7 +103,7 @@ export async function saveCredentials(email, password) {
 }
 
 /**
- * Get stored credentials
+ * Get stored credentials and login mode
  */
 export async function getStoredCredentials() {
   try {
@@ -118,8 +118,8 @@ export async function getStoredCredentials() {
     }
 
     const creds = JSON.parse(data);
-    console.log('[Auth] Retrieved stored credentials');
-    return { email: creds.email, password: creds.password };
+    console.log('[Auth] Retrieved stored credentials and login mode');
+    return { email: creds.email, password: creds.password, loginMode: creds.loginMode };
   } catch (err) {
     console.error('[Auth] Get credentials error:', err);
     return null;

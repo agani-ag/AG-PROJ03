@@ -9,8 +9,8 @@ import {
   Vibration,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { DEVELOPER_PIN } from '@env';
 
-const DEVELOPER_PIN = '220822'; // Example PIN - change as needed
 export default function PinEntry({ visible, onClose, onSuccess }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);

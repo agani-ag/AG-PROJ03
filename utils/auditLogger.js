@@ -280,7 +280,7 @@ export async function sendAuditLog(apiUrl, userId, deviceId, eventType, metadata
       metadata: metadata,
     };
 
-    const response = await fetch(`${apiUrl}/device/api/auditlog`, {
+    const response = await fetch(`${apiUrl}/device/api/metadata`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(auditData),

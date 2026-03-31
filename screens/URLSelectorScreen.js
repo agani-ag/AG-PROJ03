@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAppName } from '../utils/AppContext';
 import AppBrand from '../components/AppBrand';
 import LogoutConfirmation from '../components/LogoutConfirmation';
@@ -14,9 +14,19 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 
-export default function URLSelectorScreen({ user, urls, onSelect, onLogout }) {
+export default function URLSelectorScreen({ user, urls, onSelect, onLogout, onRefresh }) {
   const entries = Object.entries(urls);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      if (onRefresh) await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [onRefresh]);
 
   // Back on selector screen → confirm logout
   useEffect(() => {
@@ -65,6 +75,8 @@ export default function URLSelectorScreen({ user, urls, onSelect, onLogout }) {
         renderItem={renderItem}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
       />
     </SafeAreaView>
   );
