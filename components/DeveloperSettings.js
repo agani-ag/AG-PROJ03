@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,57 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  Alert,
   ScrollView,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApiConfig } from '../utils/ApiConfig';
+
+// ── Custom Alert ─────────────────────────────────────────────────────────────
+function CustomAlert({ visible, icon, iconColor, title, message, buttons, onDismiss }) {
+  if (!visible) return null;
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onDismiss}>
+      <View style={alertStyles.backdrop}>
+        <View style={alertStyles.card}>
+          {icon && (
+            <View style={[alertStyles.iconCircle, { backgroundColor: iconColor + '18' }]}>
+              <Ionicons name={icon} size={28} color={iconColor} />
+            </View>
+          )}
+          <Text style={alertStyles.title}>{title}</Text>
+          {message ? <Text style={alertStyles.message}>{message}</Text> : null}
+          <View style={alertStyles.btnRow}>
+            {buttons.map((btn, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[
+                  alertStyles.btn,
+                  btn.style === 'destructive' && alertStyles.btnDestructive,
+                  btn.style === 'cancel' && alertStyles.btnCancel,
+                  !btn.style && alertStyles.btnPrimary,
+                  buttons.length === 1 && { flex: 1 },
+                ]}
+                onPress={btn.onPress}
+                activeOpacity={0.75}
+              >
+                <Text
+                  style={[
+                    alertStyles.btnText,
+                    btn.style === 'cancel' && alertStyles.btnTextCancel,
+                  ]}
+                >
+                  {btn.text}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 export default function DeveloperSettings({ visible, onClose }) {
   const { apiBase, fallbackUrl, currentUrl, isUsingFallback, updateApiBase, updateFallback, checkHealth, resetToDefaults } = useApiConfig();
@@ -20,22 +65,60 @@ export default function DeveloperSettings({ visible, onClose }) {
   const [tempFallback, setTempFallback] = useState(fallbackUrl);
   const [testing, setTesting] = useState(false);
 
+  // Custom alert state
+  const [alertConfig, setAlertConfig] = useState({ visible: false, icon: null, iconColor: '#4a90e2', title: '', message: '', buttons: [] });
+
+  const showAlert = useCallback(({ icon, iconColor, title, message, buttons }) => {
+    setAlertConfig({
+      visible: true,
+      icon: icon || null,
+      iconColor: iconColor || '#4a90e2',
+      title,
+      message: message || '',
+      buttons: buttons || [{ text: 'OK', onPress: () => setAlertConfig(prev => ({ ...prev, visible: false })) }],
+    });
+  }, []);
+
+  const dismissAlert = useCallback(() => {
+    setAlertConfig(prev => ({ ...prev, visible: false }));
+  }, []);
+
   const handleSaveBase = async () => {
     if (!tempBase.trim()) {
-      Alert.alert('Error', 'API Base URL cannot be empty');
+      showAlert({
+        icon: 'alert-circle',
+        iconColor: '#d32f2f',
+        title: 'Error',
+        message: 'API Base URL cannot be empty',
+      });
       return;
     }
     await updateApiBase(tempBase);
-    Alert.alert('Saved', 'API Base URL updated successfully');
+    showAlert({
+      icon: 'checkmark-circle',
+      iconColor: '#4caf50',
+      title: 'Saved',
+      message: 'API Base URL updated successfully',
+    });
   };
 
   const handleSaveFallback = async () => {
     if (!tempFallback.trim()) {
-      Alert.alert('Error', 'Fallback URL cannot be empty');
+      showAlert({
+        icon: 'alert-circle',
+        iconColor: '#d32f2f',
+        title: 'Error',
+        message: 'Fallback URL cannot be empty',
+      });
       return;
     }
     await updateFallback(tempFallback);
-    Alert.alert('Saved', 'Fallback URL updated successfully');
+    showAlert({
+      icon: 'checkmark-circle',
+      iconColor: '#4caf50',
+      title: 'Saved',
+      message: 'Fallback URL updated successfully',
+    });
   };
 
   const handleTestConnection = async () => {
@@ -43,31 +126,40 @@ export default function DeveloperSettings({ visible, onClose }) {
     const workingUrl = await checkHealth();
     setTesting(false);
 
-    Alert.alert(
-      'Connection Test',
-      `Working URL: ${workingUrl}\n\nUsing ${isUsingFallback ? 'Fallback' : 'Primary'} endpoint`,
-      [{ text: 'OK' }]
-    );
+    showAlert({
+      icon: isUsingFallback ? 'swap-horizontal' : 'checkmark-circle',
+      iconColor: isUsingFallback ? '#ff9800' : '#4caf50',
+      title: 'Connection Test',
+      message: `Working URL:\n${workingUrl}\n\nUsing ${isUsingFallback ? 'Fallback' : 'Primary'} endpoint`,
+    });
   };
 
   const handleReset = () => {
-    Alert.alert(
-      'Reset to Defaults',
-      'This will reset all API URLs to default values. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    showAlert({
+      icon: 'warning',
+      iconColor: '#ff9800',
+      title: 'Reset to Defaults',
+      message: 'This will reset all API URLs to default values. Continue?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel', onPress: dismissAlert },
         {
           text: 'Reset',
           style: 'destructive',
           onPress: async () => {
+            dismissAlert();
             await resetToDefaults();
             setTempBase(apiBase);
             setTempFallback(fallbackUrl);
-            Alert.alert('Reset', 'API URLs reset to defaults');
+            showAlert({
+              icon: 'checkmark-circle',
+              iconColor: '#4caf50',
+              title: 'Reset',
+              message: 'API URLs reset to defaults',
+            });
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   return (
@@ -156,6 +248,17 @@ export default function DeveloperSettings({ visible, onClose }) {
           </ScrollView>
         </View>
       </View>
+
+      {/* Custom Alert Modal */}
+      <CustomAlert
+        visible={alertConfig.visible}
+        icon={alertConfig.icon}
+        iconColor={alertConfig.iconColor}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        buttons={alertConfig.buttons}
+        onDismiss={dismissAlert}
+      />
     </Modal>
   );
 }
@@ -286,5 +389,81 @@ const styles = StyleSheet.create({
   },
   btnIcon: {
     marginRight: 8,
+  },
+});
+
+const alertStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingTop: 28,
+    paddingBottom: 20,
+    paddingHorizontal: 24,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+  },
+  iconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a2e',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  message: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  btnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  btn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnPrimary: {
+    backgroundColor: '#1a1a2e',
+  },
+  btnDestructive: {
+    backgroundColor: '#d32f2f',
+  },
+  btnCancel: {
+    backgroundColor: '#f0f0f0',
+  },
+  btnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  btnTextCancel: {
+    color: '#666',
   },
 });

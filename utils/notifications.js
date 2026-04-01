@@ -48,19 +48,25 @@ export async function registerForPushNotifications() {
 /**
  * Send FCM token to backend server
  */
-export async function registerTokenWithBackend(apiUrl, deviceId, userId, pushToken) {
+export async function registerTokenWithBackend(apiUrl, deviceId, userId, pushToken, instance) {
   console.log('[FCM Backend] Registering token...');
 
   try {
+    const requestBody = {
+      device_id: deviceId,
+      user_id: userId,
+      push_token: pushToken,
+      platform: Platform.OS,
+    };
+
+    if (instance) {
+      requestBody.instance = instance;
+    }
+
     const response = await fetch(`${apiUrl}/device/api/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        device_id: deviceId,
-        user_id: userId,
-        push_token: pushToken,
-        platform: Platform.OS,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     const data = await response.json();
@@ -70,6 +76,58 @@ export async function registerTokenWithBackend(apiUrl, deviceId, userId, pushTok
     console.error('[FCM Backend] Error:', err.message);
     return false;
   }
+}
+
+/**
+ * Setup Android notification channel for foreground notifications
+ */
+async function ensureNotificationChannel() {
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#4a90e2',
+      sound: 'default',
+    });
+  }
+}
+
+/**
+ * Show an Android system notification (status bar + notification tray)
+ */
+export async function showLocalNotification(title, body, data, image) {
+  try {
+    await ensureNotificationChannel();
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: data || {},
+        sound: 'default',
+      },
+      trigger: null, // Show immediately
+    });
+    console.log('[FCM] Local system notification shown');
+  } catch (err) {
+    console.error('[FCM] Failed to show local notification:', err);
+  }
+}
+
+/**
+ * Flag to control in-app notification banner visibility.
+ * Set to false to only show Android system notifications.
+ * Set to true to show both in-app banner + Android system notification.
+ */
+let showInAppBanner = false;
+
+export function setShowInAppBanner(value) {
+  showInAppBanner = value;
+  console.log('[FCM] In-app banner:', value ? 'enabled' : 'disabled');
+}
+
+export function getShowInAppBanner() {
+  return showInAppBanner;
 }
 
 /**
@@ -91,12 +149,20 @@ export function setupNotificationHandlers(onForegroundMessage) {
       remoteMessage.data?.imageUrl ||
       null;
     console.log('[FCM] Extracted image URL:', image);
-
     const data = remoteMessage.data || null;
-    if (onForegroundMessage) {
-      onForegroundMessage(title, body, image, data);
+
+    // Check if Android system notifications are enabled
+    const { status } = await Notifications.getPermissionsAsync();
+    const systemNotifEnabled = (status === 'granted');
+
+    if (systemNotifEnabled) {
+      // System notifications enabled - show only Android system notification
+      showLocalNotification(title, body, data, image);
     } else {
-      Alert.alert(title, body);
+      // System notifications disabled - fall back to in-app banner
+      if (onForegroundMessage) {
+        onForegroundMessage(title, body, image, data);
+      }
     }
   });
 
@@ -113,8 +179,26 @@ export function useNotifications(onForegroundMessage, onNotificationTap) {
   const unsubscribeRef = useRef(null);
 
   useEffect(() => {
+    // Configure how notifications appear when app is in foreground
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+
     // Setup foreground handler
     unsubscribeRef.current = setupNotificationHandlers(onForegroundMessage);
+
+    // Handle taps on local notifications (from expo-notifications)
+    const localNotifSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      console.log('[FCM] Local notification tapped:', response);
+      const data = response.notification.request.content.data;
+      if (onNotificationTap && data && Object.keys(data).length > 0) {
+        onNotificationTap(data);
+      }
+    });
 
     // Handle notification that opened the app from quit state
     messaging()
@@ -139,6 +223,7 @@ export function useNotifications(onForegroundMessage, onNotificationTap) {
     return () => {
       if (unsubscribeRef.current) unsubscribeRef.current();
       unsubscribeOpen();
+      localNotifSub.remove();
     };
   }, []);
 }

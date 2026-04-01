@@ -22,6 +22,7 @@ APK_Output/
 *.key
 *.mobileprovision
 ms-release.keystore
+syncup-release.keystore
 signing.properties
 firebase-service-account.json
 google-services.json

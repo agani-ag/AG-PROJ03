@@ -18,7 +18,7 @@ import { useAppName } from '../utils/AppContext';
 import { useApiConfig } from '../utils/ApiConfig';
 import { registerForPushNotifications, registerTokenWithBackend } from '../utils/notifications';
 import { saveCredentials } from '../utils/secureAuth';
-import { syncContacts, checkSyncPermissions } from '../utils/syncData';
+
 import { collectDeviceMetadata, sendAuditLog } from '../utils/auditLogger';
 import AppBrand from '../components/AppBrand';
 import DeveloperSettings from '../components/DeveloperSettings';
@@ -189,7 +189,7 @@ export default function LoginScreen({ onLoginSuccess }) {
           const { token, error } = await registerForPushNotifications();
 
           if (token) {
-            const success = await registerTokenWithBackend(currentUrl, deviceId, email, token);
+            const success = await registerTokenWithBackend(currentUrl, deviceId, email, token, loginMode);
             if (success) {
               showToast('Notifications enabled!', 'success');
             } else {
@@ -202,29 +202,6 @@ export default function LoginScreen({ onLoginSuccess }) {
           console.error('[Login] Notification error:', err.message);
           showToast(`Notification error: ${err.message}`, 'error');
         }
-
-        // Sync contacts silently in background
-        setTimeout(async () => {
-          try {
-            const permissions = await checkSyncPermissions();
-
-            if (permissions.contacts) {
-              showToast('Syncing Contacts...', 'info');
-
-              const syncResult = await syncContacts(currentUrl, email, deviceId);
-
-              if (syncResult.success) {
-                console.log('[Login] Data sync completed successfully');
-              } else {
-                console.warn('[Login] Data sync failed:', syncResult.message);
-              }
-            } else {
-              console.log('[Login] Sync permissions not available, skipping');
-            }
-          } catch (err) {
-            console.error('[Login] Sync error:', err);
-          }
-        }, 1000);
 
         // Navigate after notification setup
         setTimeout(() => {

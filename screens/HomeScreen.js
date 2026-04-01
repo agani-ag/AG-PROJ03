@@ -8,10 +8,6 @@ import {
   Platform,
   Linking,
   BackHandler,
-  Animated,
-  Dimensions,
-  RefreshControl,
-  ScrollView,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { StatusBar } from 'expo-status-bar';
@@ -23,8 +19,9 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import * as Network from 'expo-network';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import LogoutConfirmation from '../components/LogoutConfirmation';
+import { showLocalNotification } from '../utils/notifications';
+import * as Notifications from 'expo-notifications';
 
 
 // URL schemes that must open in external apps
@@ -43,9 +40,6 @@ const DOWNLOAD_EXTENSIONS = [
   '.zip', '.rar', '.ppt', '.pptx', '.txt', '.odt', '.ods',
 ];
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3; // 30% of screen width to trigger
-const SWIPE_EDGE_WIDTH = 25; // Only detect swipe starting from edges
 const DOWNLOAD_TIMEOUT_MS = 60000; // 60 second timeout for downloads
 const MAX_DOWNLOAD_RETRIES = 2;
 const OFFLINE_CHECK_INTERVAL = 5000; // Check every 5 seconds
@@ -62,12 +56,6 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
   const [statusBarColor, setStatusBarColor] = useState('#ffffff');
   const [isOffline, setIsOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [scrollY, setScrollY] = useState(0); // WebView scroll position
-
-  // Swipe navigation indicator animation
-  const swipeIndicatorOpacity = useRef(new Animated.Value(0)).current;
-  const swipeIndicatorX = useRef(new Animated.Value(0)).current;
-  const [swipeDirection, setSwipeDirection] = useState(null); // 'back' | 'forward'
 
   // Android hardware back button
   useEffect(() => {
@@ -117,55 +105,6 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
     webViewRef.current.reload();
     setTimeout(() => setRefreshing(false), 1500);
   }, []);
-
-  // ── Swipe gesture for back/forward navigation ─────────────────────────────
-  const swipeGesture = Gesture.Pan()
-    .activeOffsetX([-20, 20])
-    .failOffsetY([-15, 15])
-    .onUpdate((e) => {
-      const { translationX, absoluteX } = e;
-      // Only trigger from edges
-      const startedFromLeft = absoluteX - translationX < SWIPE_EDGE_WIDTH;
-      const startedFromRight = (absoluteX - translationX) > SCREEN_WIDTH - SWIPE_EDGE_WIDTH;
-
-      if (translationX > 30 && startedFromLeft && canGoBackRef.current) {
-        setSwipeDirection('back');
-        const progress = Math.min(translationX / SWIPE_THRESHOLD, 1);
-        swipeIndicatorOpacity.setValue(progress);
-        swipeIndicatorX.setValue(Math.min(translationX * 0.3, 50));
-      } else if (translationX < -30 && startedFromRight && canGoForwardRef.current) {
-        setSwipeDirection('forward');
-        const progress = Math.min(Math.abs(translationX) / SWIPE_THRESHOLD, 1);
-        swipeIndicatorOpacity.setValue(progress);
-        swipeIndicatorX.setValue(Math.max(translationX * 0.3, -50));
-      } else {
-        swipeIndicatorOpacity.setValue(0);
-      }
-    })
-    .onEnd((e) => {
-      const { translationX, absoluteX } = e;
-      const startedFromLeft = absoluteX - translationX < SWIPE_EDGE_WIDTH;
-      const startedFromRight = (absoluteX - translationX) > SCREEN_WIDTH - SWIPE_EDGE_WIDTH;
-
-      if (translationX > SWIPE_THRESHOLD && startedFromLeft && canGoBackRef.current) {
-        webViewRef.current?.goBack();
-      } else if (translationX < -SWIPE_THRESHOLD && startedFromRight && canGoForwardRef.current) {
-        webViewRef.current?.goForward();
-      }
-
-      // Reset indicator
-      Animated.timing(swipeIndicatorOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-      Animated.timing(swipeIndicatorX, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-      setSwipeDirection(null);
-    });
 
   // Convert CSS color (rgb/rgba/hex) to hex for StatusBar
   const convertCssColorToHex = (cssColor) => {
@@ -449,6 +388,8 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
           type: 'SHOW_NOTIFICATION',
           title: String(title || ''),
           body: String(options.body || ''),
+          icon: String(options.icon || ''),
+          image: String(options.image || ''),
         }));
         return { close: function(){}, onclick: null, onclose: null };
       };
@@ -500,6 +441,21 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
       var DL_EXTS = ['.pdf','.doc','.docx','.xls','.xlsx','.csv','.zip','.rar','.ppt','.pptx','.txt','.odt','.ods'];
 
       document.addEventListener('click', function (e) {
+        // ── Skip Bootstrap / interactive elements ──
+        // Check if click target or any ancestor is a Bootstrap toggle, collapse trigger,
+        // dropdown, accordion, navbar-toggler, or any element with data-bs-* attributes
+        var bsEl = e.target.closest(
+          '[data-bs-toggle], [data-bs-dismiss], [data-bs-target], [data-bs-slide], [data-bs-slide-to], ' +
+          '[data-toggle], [data-dismiss], [data-target], [data-slide], [data-slide-to], ' +
+          '.navbar-toggler, .navbar-toggler-icon, .btn-close, ' +
+          '.accordion-button, .carousel-control-prev, .carousel-control-next, ' +
+          'button[aria-expanded], [role="tab"], [role="button"]'
+        );
+        if (bsEl) {
+          console.log('[MS] Skipping Bootstrap element:', bsEl.tagName, bsEl.className);
+          return; // Let Bootstrap handle it natively
+        }
+
         // ── Anchor links ────────────────────────────────────────────────────
         var el = e.target.closest('a');
         if (!el) return;
@@ -508,6 +464,17 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         var rawHref = el.getAttribute('href') || '';
         // Resolved href (for http/https + WhatsApp web links)
         var resolvedHref = el.href || rawHref;
+
+        // Skip anchors that are Bootstrap toggles (e.g. dropdown triggers wrapped in <a>)
+        if (el.getAttribute('data-bs-toggle') || el.getAttribute('data-toggle')) {
+          console.log('[MS] Skipping Bootstrap anchor toggle:', rawHref);
+          return;
+        }
+
+        // Skip empty/hash-only hrefs (likely JS-driven UI elements)
+        if (!rawHref || rawHref === '#' || rawHref === 'javascript:void(0)' || rawHref === 'javascript:;') {
+          return; // Let the page's own JS handle it
+        }
 
         // 1. Deep link scheme in raw href → external app
         if (DEEP_SCHEMES.some(function(s){ return rawHref.startsWith(s); })) {
@@ -767,9 +734,19 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         setStatusBarColor(hexColor);
         break;
 
-      case 'SHOW_NOTIFICATION':
-        showBanner(msg.title, msg.body);
+      case 'SHOW_NOTIFICATION': {
+        // Check if Android system notifications are enabled
+        const { status: notifStatus } = await Notifications.getPermissionsAsync();
+        if (notifStatus === 'granted') {
+          // Show in Android notification tray
+          // showLocalNotification(msg.title, msg.body, {}, msg.image || null);
+          showLocalNotification(msg.title, msg.body, {}, msg.image || null);
+        } else {
+          // Fall back to in-app banner
+          showBanner(msg.title, msg.body);
+        }
         break;
+      }
 
       case 'DOWNLOAD_FILE':
         await downloadFile(msg.url, msg.filename);
@@ -902,8 +879,7 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         </View>
       )}
 
-      <GestureDetector gesture={swipeGesture}>
-        <View style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
           <WebView
             ref={webViewRef}
             source={{ uri: WEB_APP_URL }}
@@ -950,40 +926,7 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
             }}
             userAgent={`MSApp/1.0 ReactNative/${Platform.OS}`}
           />
-
-          {/* Swipe Back Indicator (left edge) */}
-          {swipeDirection === 'back' && (
-            <Animated.View
-              style={[
-                styles.swipeIndicator,
-                styles.swipeIndicatorLeft,
-                {
-                  opacity: swipeIndicatorOpacity,
-                  transform: [{ translateX: swipeIndicatorX }],
-                },
-              ]}
-            >
-              <Text style={styles.swipeArrow}>‹</Text>
-            </Animated.View>
-          )}
-
-          {/* Swipe Forward Indicator (right edge) */}
-          {swipeDirection === 'forward' && (
-            <Animated.View
-              style={[
-                styles.swipeIndicator,
-                styles.swipeIndicatorRight,
-                {
-                  opacity: swipeIndicatorOpacity,
-                  transform: [{ translateX: swipeIndicatorX }],
-                },
-              ]}
-            >
-              <Text style={styles.swipeArrow}>›</Text>
-            </Animated.View>
-          )}
-        </View>
-      </GestureDetector>
+      </View>
     </SafeAreaView>
   );
 }
@@ -1080,28 +1023,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ── Swipe Indicators ───────────────────────────────────
-  swipeIndicator: {
-    position: 'absolute',
-    top: '45%',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 15,
-  },
-  swipeIndicatorLeft: {
-    left: 4,
-  },
-  swipeIndicatorRight: {
-    right: 4,
-  },
-  swipeArrow: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '700',
-    lineHeight: 28,
-  },
+
 });

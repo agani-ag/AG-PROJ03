@@ -196,7 +196,7 @@ function RootNavigator() {
         try {
           const { token } = await registerForPushNotifications();
           if (token) {
-            await registerTokenWithBackend(currentUrl, deviceId, email, token);
+            await registerTokenWithBackend(currentUrl, deviceId, email, token, loginMode);
           }
         } catch (err) {
           console.warn('[AutoLogin] Push notification registration failed:', err);

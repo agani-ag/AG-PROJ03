@@ -1,11 +1,11 @@
 @echo off
-title MS App - Release APK Builder
+title SyncUp App - Release APK Builder
 color 0A
 setlocal enabledelayedexpansion
 
 echo.
 echo  ============================================
-echo    MS App ^| Release APK Builder
+echo    SyncUp App ^| Release APK Builder
 echo    Internal Distribution  ^|  No Expo Account
 echo  ============================================
 echo.
@@ -14,7 +14,7 @@ echo.
 set "PROJECT_ROOT=%~dp0"
 set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 set "OUTPUT_DIR=%PROJECT_ROOT%\APK_Output"
-set "KEYSTORE_FILE=%PROJECT_ROOT%\ms-release.keystore"
+set "KEYSTORE_FILE=%PROJECT_ROOT%\syncup-release.keystore"
 set "SIGNING_PROPS=%PROJECT_ROOT%\signing.properties"
 
 
@@ -102,7 +102,7 @@ if not exist "%SIGNING_PROPS%" (
 
     (
         echo KEYSTORE_PASS=!KEYSTORE_PASS!
-        echo KEY_ALIAS=ms-key
+        echo KEY_ALIAS=syncup-key
         echo KEY_PASS=!KEYSTORE_PASS!
     ) > "%SIGNING_PROPS%"
 
@@ -134,7 +134,7 @@ echo [5/7] Checking release keystore...
 
 if not exist "%KEYSTORE_FILE%" (
     echo        Keystore not found — generating one-time release keystore...
-    echo        ^(Keep ms-release.keystore safe — losing it means you cannot update the app^)
+    echo        ^(Keep syncup-release.keystore safe — losing it means you cannot update the app^)
     echo.
 
     keytool -genkey -v ^
@@ -145,7 +145,7 @@ if not exist "%KEYSTORE_FILE%" (
         -validity 36500 ^
         -storepass "!KEYSTORE_PASS!" ^
         -keypass "!KEY_PASS!" ^
-        -dname "CN=MS App, OU=Internal, O=MS, L=City, S=State, C=IN" ^
+        -dname "CN=SyncUp App, OU=Internal, O=SyncUp, L=City, S=State, C=IN" ^
         -noprompt
 
     if !errorlevel! neq 0 (
@@ -153,9 +153,9 @@ if not exist "%KEYSTORE_FILE%" (
         pause & exit /b 1
     )
     echo.
-    echo        Keystore generated: ms-release.keystore
+    echo        Keystore generated: syncup-release.keystore
 ) else (
-    echo        Found: ms-release.keystore
+    echo        Found: syncup-release.keystore
 )
 
 
@@ -231,12 +231,8 @@ if not exist "%OUTPUT_DIR%" mkdir "%OUTPUT_DIR%"
 
 set "APK_SRC=%PROJECT_ROOT%\android\app\build\outputs\apk\release\app-release.apk"
 
-for /f "tokens=2-4 delims=/ " %%a in ('date /t') do set "D=%%c%%a%%b"
-for /f "tokens=1-2 delims=: " %%a in ('time /t') do (
-    set "T=%%a%%b"
-    set "T=!T: =0!"
-)
-set "APK_OUT=%OUTPUT_DIR%\MS-release-%D%-%T%.apk"
+for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmm"') do set "DT=%%i"
+set "APK_OUT=%OUTPUT_DIR%\SyncUp-release-%DT%.apk"
 
 copy "%APK_SRC%" "%APK_OUT%" >nul
 
@@ -264,4 +260,7 @@ echo              ^(Allow "Install unknown apps" if prompted^)
 echo.
 echo  Opening output folder...
 explorer "%OUTPUT_DIR%"
-pause
+
+echo  Closing in 5 seconds...
+timeout /t 5 /nobreak >nul
+exit
