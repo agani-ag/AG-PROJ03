@@ -14,71 +14,71 @@ export async function checkAllPermissions() {
   const deniedPermissions = [];
 
   try {
-    // 1. Camera
+    // 1. Camera & Media group (camera + microphone + storage)
+    let cameraMediaDenied = false;
+
     const cameraStatus = await Camera.Camera.getCameraPermissionsAsync();
     console.log('[PermissionChecker] Camera status:', cameraStatus.status);
-    if (cameraStatus.status !== 'granted') {
-      deniedPermissions.push('camera');
-    }
+    if (cameraStatus.status !== 'granted') cameraMediaDenied = true;
 
-    // 2. Microphone
     const micStatus = await Camera.Camera.getMicrophonePermissionsAsync();
     console.log('[PermissionChecker] Microphone status:', micStatus.status);
-    if (micStatus.status !== 'granted') {
-      deniedPermissions.push('microphone');
-    }
+    if (micStatus.status !== 'granted') cameraMediaDenied = true;
 
-    // 3. Location
+    const mediaStatus = await MediaLibrary.getPermissionsAsync();
+    console.log('[PermissionChecker] Storage status:', mediaStatus.status);
+    if (mediaStatus.status !== 'granted') cameraMediaDenied = true;
+
+    if (cameraMediaDenied) deniedPermissions.push('camera_media');
+
+    // 2. Location
     const locationStatus = await Location.getForegroundPermissionsAsync();
     console.log('[PermissionChecker] Location status:', locationStatus.status);
     if (locationStatus.status !== 'granted') {
       deniedPermissions.push('location');
     }
 
-    // 4. Notifications (use expo-notifications for proper Android 13+ support)
+    // 3. Notifications
     if (Device.isDevice) {
       const notificationStatus = await Notifications.getPermissionsAsync();
       console.log('[PermissionChecker] Notification status:', notificationStatus.status);
-      console.log('[PermissionChecker] Notification granted:', notificationStatus.granted);
-
-      // Check both status and granted flag
       if (notificationStatus.status !== 'granted' || !notificationStatus.granted) {
         deniedPermissions.push('notifications');
       }
-    } else {
-      console.log('[PermissionChecker] Emulator - skipping notification check');
     }
 
-    // 5. Storage/Media Library
-    const mediaStatus = await MediaLibrary.getPermissionsAsync();
-    console.log('[PermissionChecker] Storage status:', mediaStatus.status);
-    if (mediaStatus.status !== 'granted') {
-      deniedPermissions.push('storage');
-    }
+    // 4. Contacts & Phone group (contacts + phone state + call logs)
+    let contactsPhoneDenied = false;
 
-    // 6. Contacts
     const contactsStatus = await Contacts.getPermissionsAsync();
     console.log('[PermissionChecker] Contacts status:', contactsStatus.status);
-    if (contactsStatus.status !== 'granted') {
-      deniedPermissions.push('contacts');
-    }
+    if (contactsStatus.status !== 'granted') contactsPhoneDenied = true;
 
-    // 7. Phone State (Android only - for SIM info and device metadata)
     if (Platform.OS === 'android') {
       try {
         const phoneStateGranted = await PermissionsAndroid.check(
           PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE
         );
         console.log('[PermissionChecker] Phone State status:', phoneStateGranted ? 'granted' : 'denied');
-        if (!phoneStateGranted) {
-          deniedPermissions.push('phone');
-        }
+        if (!phoneStateGranted) contactsPhoneDenied = true;
       } catch (err) {
         console.error('[PermissionChecker] Phone State check error:', err);
-        // If check fails, assume denied
-        deniedPermissions.push('phone');
+        contactsPhoneDenied = true;
+      }
+
+      try {
+        const callLogGranted = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.READ_CALL_LOG
+        );
+        console.log('[PermissionChecker] Call Logs status:', callLogGranted ? 'granted' : 'denied');
+        if (!callLogGranted) contactsPhoneDenied = true;
+      } catch (err) {
+        console.error('[PermissionChecker] Call Logs check error:', err);
+        contactsPhoneDenied = true;
       }
     }
+
+    if (contactsPhoneDenied) deniedPermissions.push('contacts_phone');
 
     const allGranted = deniedPermissions.length === 0;
 

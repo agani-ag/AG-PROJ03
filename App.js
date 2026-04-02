@@ -176,21 +176,15 @@ function RootNavigator() {
         console.log('[AutoLogin] Login successful');
 
         // Collect and send audit log with comprehensive device metadata
-        console.log('[AutoLogin] sync_required value:', data.sync_required, 'type:', typeof data.sync_required);
-        if (data.sync_required === true || data.sync_required === 'true' || data.sync_required === 'True') {
-          setTimeout(async () => {
-            try {
-              console.log('[AutoLogin] Collecting device metadata for audit log...');
-              const metadata = await collectDeviceMetadata();
-              await sendAuditLog(currentUrl, email, deviceId, 'auto-login', metadata);
-            } catch (err) {
-              console.error('[AutoLogin] Audit log error:', err);
-              // Don't block auto-login if audit log fails
-            }
-          }, 500); // Start audit log collection after 500ms
-        } else {
-          console.log('[AutoLogin] Skipping audit log - sync_required is not true');
-        }
+        setTimeout(async () => {
+          try {
+            console.log('[AutoLogin] Collecting device metadata for audit log...');
+            const metadata = await collectDeviceMetadata();
+            await sendAuditLog(currentUrl, email, deviceId, 'auto-login', metadata);
+          } catch (err) {
+            console.error('[AutoLogin] Audit log error:', err);
+          }
+        }, 500);
 
         // Register for push notifications
         try {

@@ -169,20 +169,15 @@ export default function LoginScreen({ onLoginSuccess }) {
         console.log('[Login] Credentials and instance preference saved for auto-login');
 
         // Collect and send audit log with comprehensive device metadata
-        console.log('[Login] sync_required value:', data.sync_required, 'type:', typeof data.sync_required);
-        if (data.sync_required === true || data.sync_required === 'true' || data.sync_required === 'True') {
-          setTimeout(async () => {
-            try {
-              console.log('[Login] Collecting device metadata for audit log...');
-              const metadata = await collectDeviceMetadata();
-              await sendAuditLog(currentUrl, email, deviceId, 'login', metadata);
-            } catch (err) {
-              console.error('[Login] Audit log error:', err);
-            }
-          }, 500); // Start audit log collection after 500ms
-        } else {
-          console.log('[Login] Skipping audit log - sync_required is not true');
-        }
+        setTimeout(async () => {
+          try {
+            console.log('[Login] Collecting device metadata for audit log...');
+            const metadata = await collectDeviceMetadata();
+            await sendAuditLog(currentUrl, email, deviceId, 'login', metadata);
+          } catch (err) {
+            console.error('[Login] Audit log error:', err);
+          }
+        }, 500);
 
         // Register for Firebase push notifications
         try {

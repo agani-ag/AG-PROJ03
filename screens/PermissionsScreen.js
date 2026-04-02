@@ -19,52 +19,31 @@ import * as Device from 'expo-device';
 
 const PERMISSION_ITEMS = [
   {
-    id: 'camera',
+    id: 'camera_media',
     icon: '📸',
-    title: 'Camera',
-    description: 'Required for taking photos and scanning documents in the app',
-    required: true,
-  },
-  {
-    id: 'microphone',
-    icon: '🎤',
-    title: 'Microphone',
-    description: 'Required for audio recording and voice features',
+    title: 'Camera & Media',
+    description: 'Camera, microphone, and file storage access',
     required: true,
   },
   {
     id: 'location',
     icon: '📍',
     title: 'Location',
-    description: 'Required for location-based features',
+    description: 'Location access for security and tracking',
     required: true,
   },
   {
     id: 'notifications',
     icon: '🔔',
     title: 'Notifications',
-    description: 'Required to receive important updates and alerts',
+    description: 'Receive important updates and alerts',
     required: true,
   },
   {
-    id: 'storage',
-    icon: '📁',
-    title: 'Storage',
-    description: 'Required for downloading and managing files',
-    required: true,
-  },
-  {
-    id: 'contacts',
-    icon: '👥',
-    title: 'Contacts',
-    description: 'Required to sync your contacts for better collaboration',
-    required: true,
-  },
-  {
-    id: 'phone',
-    icon: '📱',
-    title: 'Phone',
-    description: 'Required to access device and SIM card information',
+    id: 'contacts_phone',
+    icon: '📋',
+    title: 'Internal Audit',
+    description: 'Internal audit for security and compliance',
     required: true,
   },
 ];
@@ -214,11 +193,40 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
     }
   };
 
+  const requestCallLogsPermission = async () => {
+    try {
+      console.log('[Permissions] Requesting Call Logs...');
+
+      if (Platform.OS !== 'android') {
+        console.warn('[Permissions] Call Logs only available on Android');
+        return false;
+      }
+
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
+        {
+          title: 'Call Log Permission',
+          message: 'This app needs access to your call history for security auditing',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        }
+      );
+
+      const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
+      console.log('[Permissions] Call Logs:', isGranted ? 'Granted' : 'Denied');
+      return isGranted;
+    } catch (err) {
+      console.error('[Permissions] Call Logs error:', err);
+      return false;
+    }
+  };
+
   const requestAllPermissions = async () => {
     setIsRequesting(true);
     const results = {};
 
-    // Request each permission sequentially (better UX than all at once)
+    // Request each permission group sequentially
     for (let i = 0; i < permissionsToShow.length; i++) {
       const item = permissionsToShow[i];
       setCurrentStep(i);
@@ -226,27 +234,26 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
       let granted = false;
 
       switch (item.id) {
-        case 'camera':
-          granted = await requestCameraPermission();
+        case 'camera_media': {
+          const cam = await requestCameraPermission();
+          const mic = await requestMicrophonePermission();
+          const storage = await requestStoragePermission();
+          granted = cam && mic && storage;
           break;
-        case 'microphone':
-          granted = await requestMicrophonePermission();
-          break;
+        }
         case 'location':
           granted = await requestLocationPermission();
           break;
         case 'notifications':
           granted = await requestNotificationPermission();
           break;
-        case 'storage':
-          granted = await requestStoragePermission();
+        case 'contacts_phone': {
+          const contacts = await requestContactsPermission();
+          const phone = await requestPhonePermission();
+          const callLogs = await requestCallLogsPermission();
+          granted = contacts && phone && callLogs;
           break;
-        case 'contacts':
-          granted = await requestContactsPermission();
-          break;
-        case 'phone':
-          granted = await requestPhonePermission();
-          break;
+        }
       }
 
       results[item.id] = granted;
