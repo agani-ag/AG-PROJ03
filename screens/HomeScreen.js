@@ -786,8 +786,7 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
       }
 
       case 'OPEN_CAMERA': {
-        const { status } = await Camera.Camera.requestCameraPermissionsAsync();
-        if (status !== 'granted') return;
+        // Camera permission already granted on PermissionsScreen
         webViewRef.current?.injectJavaScript(`document.dispatchEvent(new CustomEvent('ms_camera_ready')); true;`);
         break;
       }

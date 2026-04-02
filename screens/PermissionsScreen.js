@@ -10,9 +10,7 @@ import {
   Linking,
   PermissionsAndroid,
 } from 'react-native';
-import * as Camera from 'expo-camera';
 import * as Location from 'expo-location';
-import * as MediaLibrary from 'expo-media-library';
 import * as Notifications from 'expo-notifications';
 import * as Contacts from 'expo-contacts';
 import * as Device from 'expo-device';
@@ -22,7 +20,7 @@ const PERMISSION_ITEMS = [
     id: 'camera_media',
     icon: '📸',
     title: 'Camera & Media',
-    description: 'Camera, microphone, and file storage access',
+    description: 'Camera, microphone, and media access for photos and files',
     required: true,
   },
   {
@@ -33,17 +31,10 @@ const PERMISSION_ITEMS = [
     required: true,
   },
   {
-    id: 'notifications',
-    icon: '🔔',
-    title: 'Notifications',
-    description: 'Receive important updates and alerts',
-    required: true,
-  },
-  {
-    id: 'contacts_phone',
-    icon: '📋',
-    title: 'Internal Audit',
-    description: 'Internal audit for security and compliance',
+    id: 'essentials',
+    icon: '🔐',
+    title: 'App Essentials',
+    description: 'Notifications, contacts, and device info for security',
     required: true,
   },
 ];
@@ -60,32 +51,6 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
     : PERMISSION_ITEMS;
 
   const isReRequest = deniedOnly.length > 0;
-
-  const requestCameraPermission = async () => {
-    try {
-      console.log('[Permissions] Requesting Camera...');
-      const { status } = await Camera.Camera.requestCameraPermissionsAsync();
-      const granted = status === 'granted';
-      console.log('[Permissions] Camera:', granted ? 'Granted' : 'Denied');
-      return granted;
-    } catch (err) {
-      console.error('[Permissions] Camera error:', err);
-      return false;
-    }
-  };
-
-  const requestMicrophonePermission = async () => {
-    try {
-      console.log('[Permissions] Requesting Microphone...');
-      const { status } = await Camera.Camera.requestMicrophonePermissionsAsync();
-      const granted = status === 'granted';
-      console.log('[Permissions] Microphone:', granted ? 'Granted' : 'Denied');
-      return granted;
-    } catch (err) {
-      console.error('[Permissions] Microphone error:', err);
-      return false;
-    }
-  };
 
   const requestLocationPermission = async () => {
     try {
@@ -128,22 +93,6 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
       return granted;
     } catch (err) {
       console.error('[Permissions] Notifications error:', err);
-      return false;
-    }
-  };
-
-  const requestStoragePermission = async () => {
-    try {
-      console.log('[Permissions] Requesting Storage...');
-
-      // On Android 13+, media library permission is more granular
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      const granted = status === 'granted';
-
-      console.log('[Permissions] Storage:', granted ? 'Granted' : 'Denied');
-      return granted;
-    } catch (err) {
-      console.error('[Permissions] Storage error:', err);
       return false;
     }
   };
@@ -226,41 +175,84 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
     setIsRequesting(true);
     const results = {};
 
-    // Request each permission group sequentially
-    for (let i = 0; i < permissionsToShow.length; i++) {
-      const item = permissionsToShow[i];
-      setCurrentStep(i);
-
-      let granted = false;
-
-      switch (item.id) {
-        case 'camera_media': {
-          const cam = await requestCameraPermission();
-          const mic = await requestMicrophonePermission();
-          const storage = await requestStoragePermission();
-          granted = cam && mic && storage;
-          break;
+    try {
+      // ── Step 1: Camera & Media ──
+      setCurrentStep(0);
+      if (Platform.OS === 'android') {
+        const mediaPerms = [
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        ];
+        // Android 13+ uses granular media permissions
+        if (Platform.Version >= 33) {
+          mediaPerms.push('android.permission.READ_MEDIA_IMAGES');
+          mediaPerms.push('android.permission.READ_MEDIA_VIDEO');
+        } else {
+          mediaPerms.push(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
+          mediaPerms.push(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
         }
-        case 'location':
-          granted = await requestLocationPermission();
-          break;
-        case 'notifications':
-          granted = await requestNotificationPermission();
-          break;
-        case 'contacts_phone': {
-          const contacts = await requestContactsPermission();
-          const phone = await requestPhonePermission();
-          const callLogs = await requestCallLogsPermission();
-          granted = contacts && phone && callLogs;
-          break;
+
+        console.log('[Permissions] Requesting camera & media batch...');
+        const mediaResults = await PermissionsAndroid.requestMultiple(mediaPerms);
+        console.log('[Permissions] Camera & Media results:', JSON.stringify(mediaResults));
+
+        const G = PermissionsAndroid.RESULTS.GRANTED;
+        const cameraOk = mediaResults[PermissionsAndroid.PERMISSIONS.CAMERA] === G;
+        const micOk = mediaResults[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === G;
+        results['camera_media'] = cameraOk && micOk;
+        setPermissions({ ...results });
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // ── Step 2: Location (MUST be separate — Android shows special "While using" flow) ──
+      setCurrentStep(1);
+      results['location'] = await requestLocationPermission();
+      setPermissions({ ...results });
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // ── Step 3: Essentials batch (Contacts + Phone + Call Logs + Notifications) ──
+      setCurrentStep(2);
+
+      if (Platform.OS === 'android') {
+        const androidPerms = [
+          PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
+          PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+          PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
+        ];
+
+        // Add POST_NOTIFICATIONS to the batch on Android 13+
+        if (Platform.Version >= 33) {
+          androidPerms.push('android.permission.POST_NOTIFICATIONS');
+        }
+
+        console.log('[Permissions] Requesting essentials batch...');
+        const batchResults = await PermissionsAndroid.requestMultiple(androidPerms);
+        console.log('[Permissions] Batch results:', JSON.stringify(batchResults));
+
+        const G = PermissionsAndroid.RESULTS.GRANTED;
+
+        const contactsGranted = batchResults[PermissionsAndroid.PERMISSIONS.READ_CONTACTS] === G;
+        const phoneGranted = batchResults[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] === G;
+        const callLogsGranted = batchResults[PermissionsAndroid.PERMISSIONS.READ_CALL_LOG] === G;
+
+        let notifGranted = true;
+        if (Platform.Version >= 33) {
+          notifGranted = batchResults['android.permission.POST_NOTIFICATIONS'] === G;
+        }
+
+        results['essentials'] = contactsGranted && phoneGranted && callLogsGranted && notifGranted;
+        setPermissions({ ...results });
+
+        // Sync Expo contacts internal state (no extra dialog since native permission already granted)
+        if (contactsGranted) {
+          try { await Contacts.requestPermissionsAsync(); } catch (e) {}
         }
       }
 
-      results[item.id] = granted;
-      setPermissions({ ...results });
-
-      // Small delay between requests for better UX
-      await new Promise(resolve => setTimeout(resolve, 300));
+    } catch (err) {
+      console.error('[Permissions] Batch request error:', err);
     }
 
     setCurrentStep(permissionsToShow.length);

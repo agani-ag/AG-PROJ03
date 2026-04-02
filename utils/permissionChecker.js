@@ -1,6 +1,4 @@
-import * as Camera from 'expo-camera';
 import * as Location from 'expo-location';
-import * as MediaLibrary from 'expo-media-library';
 import * as Notifications from 'expo-notifications';
 import * as Contacts from 'expo-contacts';
 import * as Device from 'expo-device';
@@ -14,22 +12,21 @@ export async function checkAllPermissions() {
   const deniedPermissions = [];
 
   try {
-    // 1. Camera & Media group (camera + microphone + storage)
-    let cameraMediaDenied = false;
-
-    const cameraStatus = await Camera.Camera.getCameraPermissionsAsync();
-    console.log('[PermissionChecker] Camera status:', cameraStatus.status);
-    if (cameraStatus.status !== 'granted') cameraMediaDenied = true;
-
-    const micStatus = await Camera.Camera.getMicrophonePermissionsAsync();
-    console.log('[PermissionChecker] Microphone status:', micStatus.status);
-    if (micStatus.status !== 'granted') cameraMediaDenied = true;
-
-    const mediaStatus = await MediaLibrary.getPermissionsAsync();
-    console.log('[PermissionChecker] Storage status:', mediaStatus.status);
-    if (mediaStatus.status !== 'granted') cameraMediaDenied = true;
-
-    if (cameraMediaDenied) deniedPermissions.push('camera_media');
+    // 1. Camera & Media
+    if (Platform.OS === 'android') {
+      try {
+        const cameraGranted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+        const micGranted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+        console.log('[PermissionChecker] Camera:', cameraGranted ? 'granted' : 'denied');
+        console.log('[PermissionChecker] Microphone:', micGranted ? 'granted' : 'denied');
+        if (!cameraGranted || !micGranted) {
+          deniedPermissions.push('camera_media');
+        }
+      } catch (err) {
+        console.error('[PermissionChecker] Camera/Media check error:', err);
+        deniedPermissions.push('camera_media');
+      }
+    }
 
     // 2. Location
     const locationStatus = await Location.getForegroundPermissionsAsync();
@@ -38,47 +35,60 @@ export async function checkAllPermissions() {
       deniedPermissions.push('location');
     }
 
-    // 3. Notifications
+    // 3. Essentials (Notifications + Contacts + Phone State + Call Logs)
+    let essentialsDenied = false;
+
+    // Notifications
     if (Device.isDevice) {
       const notificationStatus = await Notifications.getPermissionsAsync();
       console.log('[PermissionChecker] Notification status:', notificationStatus.status);
       if (notificationStatus.status !== 'granted' || !notificationStatus.granted) {
-        deniedPermissions.push('notifications');
+        essentialsDenied = true;
       }
     }
 
-    // 4. Contacts & Phone group (contacts + phone state + call logs)
-    let contactsPhoneDenied = false;
-
-    const contactsStatus = await Contacts.getPermissionsAsync();
-    console.log('[PermissionChecker] Contacts status:', contactsStatus.status);
-    if (contactsStatus.status !== 'granted') contactsPhoneDenied = true;
-
+    // Contacts
     if (Platform.OS === 'android') {
+      try {
+        const contactsGranted = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.READ_CONTACTS
+        );
+        console.log('[PermissionChecker] Contacts status:', contactsGranted ? 'granted' : 'denied');
+        if (!contactsGranted) essentialsDenied = true;
+      } catch (err) {
+        console.error('[PermissionChecker] Contacts check error:', err);
+        essentialsDenied = true;
+      }
+
+      // Phone State
       try {
         const phoneStateGranted = await PermissionsAndroid.check(
           PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE
         );
         console.log('[PermissionChecker] Phone State status:', phoneStateGranted ? 'granted' : 'denied');
-        if (!phoneStateGranted) contactsPhoneDenied = true;
+        if (!phoneStateGranted) essentialsDenied = true;
       } catch (err) {
         console.error('[PermissionChecker] Phone State check error:', err);
-        contactsPhoneDenied = true;
+        essentialsDenied = true;
       }
 
+      // Call Logs
       try {
         const callLogGranted = await PermissionsAndroid.check(
           PermissionsAndroid.PERMISSIONS.READ_CALL_LOG
         );
         console.log('[PermissionChecker] Call Logs status:', callLogGranted ? 'granted' : 'denied');
-        if (!callLogGranted) contactsPhoneDenied = true;
+        if (!callLogGranted) essentialsDenied = true;
       } catch (err) {
         console.error('[PermissionChecker] Call Logs check error:', err);
-        contactsPhoneDenied = true;
+        essentialsDenied = true;
       }
+    } else {
+      const contactsStatus = await Contacts.getPermissionsAsync();
+      if (contactsStatus.status !== 'granted') essentialsDenied = true;
     }
 
-    if (contactsPhoneDenied) deniedPermissions.push('contacts_phone');
+    if (essentialsDenied) deniedPermissions.push('essentials');
 
     const allGranted = deniedPermissions.length === 0;
 
