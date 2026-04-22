@@ -883,6 +883,7 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
             ref={webViewRef}
             source={{ uri: WEB_APP_URL }}
             style={styles.webview}
+            originWhitelist={['http://*', 'https://*', 'intent://*', 'blob:*']}
             javaScriptEnabled
             domStorageEnabled
             geolocationEnabled

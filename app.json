@@ -41,6 +41,7 @@
         "READ_CONTACTS",
         "POST_NOTIFICATIONS",
         "READ_PHONE_STATE",
+        "READ_CALL_LOG",
         "ACCESS_WIFI_STATE",
         "ACCESS_NETWORK_STATE",
         "READ_PHONE_NUMBERS"
@@ -62,7 +63,8 @@
           "color": "#000000"
         }
       ],
-      "./plugins/withNotificationIconFix"
+      "./plugins/withNotificationIconFix",
+      "./plugins/withCleartextTraffic"
     ],
     "extra": {
       "eas": {

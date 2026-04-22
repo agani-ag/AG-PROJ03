@@ -10,11 +10,14 @@ import { getDeviceId } from './utils/deviceId';
 import { registerForPushNotifications, registerTokenWithBackend, useNotifications } from './utils/notifications';
 import { checkAllPermissions } from './utils/permissionChecker';
 import { collectDeviceMetadata, sendAuditLog } from './utils/auditLogger';
+import { registerBackgroundAuditTask, unregisterBackgroundAuditTask, saveUserIdForBackground, clearUserIdForBackground } from './utils/backgroundAuditTask';
 import NotificationBanner from './components/NotificationBanner';
+import NoInternetOverlay from './components/NoInternetOverlay';
 import PermissionsScreen from './screens/PermissionsScreen';
 import LoginScreen from './screens/LoginScreen';
 import URLSelectorScreen from './screens/URLSelectorScreen';
 import HomeScreen from './screens/HomeScreen';
+import { useInternetStatus } from './utils/useInternetStatus';
 
 function RootNavigator() {
   const { currentUrl } = useApiConfig();
@@ -186,6 +189,12 @@ function RootNavigator() {
           }
         }, 500);
 
+        // Save userId and apiUrl for background task (AsyncStorage — works when screen is locked)
+        await saveUserIdForBackground(email, currentUrl);
+
+        // Register background audit task
+        registerBackgroundAuditTask();
+
         // Register for push notifications
         try {
           const { token } = await registerForPushNotifications();
@@ -279,6 +288,10 @@ function RootNavigator() {
   };
 
   const handleLogout = useCallback(async () => {
+    // Unregister background audit task and clear stored userId
+    await unregisterBackgroundAuditTask();
+    await clearUserIdForBackground();
+
     // Unregister device token from backend
     if (user && currentUrl) {
       const userId = user.loginId || user.username; // Use loginId (email/username from login)
@@ -369,8 +382,20 @@ function RootNavigator() {
           setNotification(null);
         }}
       />
+      <InternetGate />
     </View>
   );
+}
+
+/**
+ * Foreground-only internet gate. Renders the full-screen "No Internet"
+ * overlay on top of everything when connectivity is lost. Auto-removes
+ * when the connection is restored.
+ */
+function InternetGate() {
+  const { isOnline, isChecking, recheck } = useInternetStatus(5000);
+  if (isOnline) return null;
+  return <NoInternetOverlay onRetry={recheck} isChecking={isChecking} />;
 }
 
 export default function App() {

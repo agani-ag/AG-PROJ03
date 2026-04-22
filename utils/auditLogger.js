@@ -536,12 +536,21 @@ export async function sendAuditLog(apiUrl, userId, deviceId, eventType, metadata
       metadata: metadata,
     };
 
-    const response = await fetch(`${apiUrl}/device/api/metadata`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(auditData),
-      timeout: 10000, // 10 second timeout - don't block login too long
-    });
+    // React Native's fetch ignores the `timeout` option — must use AbortController
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+
+    let response;
+    try {
+      response = await fetch(`${apiUrl}/device/api/metadata`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(auditData),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     const result = await response.json();
 
@@ -554,7 +563,6 @@ export async function sendAuditLog(apiUrl, userId, deviceId, eventType, metadata
     }
   } catch (err) {
     console.error('[AuditLog] ✗ Audit log send error:', err);
-    // Return error but don't throw - audit log failure shouldn't prevent login
     return { success: false, error: err.message };
   }
 }

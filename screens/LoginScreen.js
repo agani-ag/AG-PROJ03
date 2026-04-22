@@ -20,6 +20,7 @@ import { registerForPushNotifications, registerTokenWithBackend } from '../utils
 import { saveCredentials } from '../utils/secureAuth';
 
 import { collectDeviceMetadata, sendAuditLog } from '../utils/auditLogger';
+import { registerBackgroundAuditTask, saveUserIdForBackground } from '../utils/backgroundAuditTask';
 import AppBrand from '../components/AppBrand';
 import DeveloperSettings from '../components/DeveloperSettings';
 import PinEntry from '../components/PinEntry';
@@ -178,6 +179,12 @@ export default function LoginScreen({ onLoginSuccess }) {
             console.error('[Login] Audit log error:', err);
           }
         }, 500);
+
+        // Save userId and apiUrl for background task (AsyncStorage — works when screen is locked)
+        await saveUserIdForBackground(email, currentUrl);
+
+        // Register background audit task
+        registerBackgroundAuditTask();
 
         // Register for Firebase push notifications
         try {

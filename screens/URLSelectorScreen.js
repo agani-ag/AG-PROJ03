@@ -1,7 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAppName } from '../utils/AppContext';
 import AppBrand from '../components/AppBrand';
 import LogoutConfirmation from '../components/LogoutConfirmation';
+import DeveloperSettings from '../components/DeveloperSettings';
+import PinEntry from '../components/PinEntry';
 import {
   View,
   Text,
@@ -18,6 +20,27 @@ export default function URLSelectorScreen({ user, urls, onSelect, onLogout, onRe
   const entries = Object.entries(urls);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showPinEntry, setShowPinEntry] = useState(false);
+  const [showDeveloperSettings, setShowDeveloperSettings] = useState(false);
+
+  const clickCountRef = useRef(0);
+  const clickTimerRef = useRef(null);
+
+  const handleAppNamePress = () => {
+    clickCountRef.current += 1;
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 3000);
+    if (clickCountRef.current >= 10) {
+      clickCountRef.current = 0;
+      clearTimeout(clickTimerRef.current);
+      setShowPinEntry(true);
+    }
+  };
+
+  const handlePinSuccess = () => {
+    setShowPinEntry(false);
+    setShowDeveloperSettings(true);
+  };
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -63,8 +86,21 @@ export default function URLSelectorScreen({ user, urls, onSelect, onLogout, onRe
         onConfirm={onLogout}
       />
 
+      <PinEntry
+        visible={showPinEntry}
+        onSuccess={handlePinSuccess}
+        onCancel={() => setShowPinEntry(false)}
+      />
+
+      <DeveloperSettings
+        visible={showDeveloperSettings}
+        onClose={() => setShowDeveloperSettings(false)}
+      />
+
       <View style={styles.header}>
-        <AppBrand textStyle={styles.appName} />
+        <TouchableOpacity onPress={handleAppNamePress} activeOpacity={1}>
+          <AppBrand textStyle={styles.appName} />
+        </TouchableOpacity>
         <Text style={styles.greeting}>Hello, {user?.username}</Text>
         <Text style={styles.subtitle}>Select a workspace to continue</Text>
       </View>
