@@ -552,17 +552,88 @@ export async function sendAuditLog(apiUrl, userId, deviceId, eventType, metadata
       clearTimeout(timer);
     }
 
-    const result = await response.json();
+    // Read raw body first so we can diagnose non-JSON responses (502 HTML pages etc.)
+    const rawText = await response.text();
+    let parsed = null;
+    let parseError = null;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : null;
+    } catch (err) {
+      parseError = err.message;
+    }
 
-    if (response.ok && result.success) {
+    if (response.ok && parsed && parsed.success) {
       console.log('[AuditLog] ✓ Audit log sent successfully');
       return { success: true };
-    } else {
-      console.error('[AuditLog] ✗ Audit log failed:', result.message);
-      return { success: false, error: result.message };
     }
+
+    // Failure path — return rich diagnostics so callers can forward to error API
+    const errMessage =
+      parseError
+        ? `JSON Parse error: ${parseError}`
+        : (parsed?.message || `HTTP ${response.status} ${response.statusText || ''}`.trim());
+
+    console.error('[AuditLog] ✗ Audit log failed:', errMessage);
+    return {
+      success: false,
+      error: errMessage,
+      http_status: response.status,
+      http_status_text: response.statusText || '',
+      response_snippet: (rawText || '').slice(0, 500),
+      payload: auditData,
+    };
   } catch (err) {
     console.error('[AuditLog] ✗ Audit log send error:', err);
-    return { success: false, error: err.message };
+    return {
+      success: false,
+      error: err.message,
+      http_status: null,
+      http_status_text: '',
+      response_snippet: '',
+      network_error: true,
+      payload: {
+        user_id: userId,
+        device_id: deviceId,
+        event_type: eventType,
+        metadata,
+      },
+    };
+  }
+}
+
+/**
+ * Send an error report to a separate, lenient diagnostics endpoint.
+ * This endpoint exists ONLY to track audit failures — it should accept any
+ * payload shape and always return success. Used by the background task to
+ * report every API_FAILED / HTTP_ERROR / TASK_ERROR to the backend so the
+ * ops team can diagnose issues without logcat access.
+ *
+ * Endpoint: POST {apiUrl}/device/api/audit-errors
+ *
+ * The client intentionally swallows all errors from this call — reporting
+ * an error must never throw or slow down the audit task.
+ */
+export async function reportAuditError(apiUrl, errorReport) {
+  try {
+    if (!apiUrl) return { success: false, error: 'no_api_url' };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const res = await fetch(`${apiUrl}/device/api/audit-errors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(errorReport),
+        signal: controller.signal,
+      });
+      // We don't care about the response content, only that it was accepted
+      return { success: res.ok };
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    console.warn('[AuditLog] Error reporter itself failed:', err?.message);
+    return { success: false, error: err?.message };
   }
 }

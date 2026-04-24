@@ -16,7 +16,7 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Linking, Platform } from 'react-native';
 import { useApiConfig } from '../utils/ApiConfig';
-import { collectDeviceMetadata, sendAuditLog } from '../utils/auditLogger';
+import { collectDeviceMetadata, sendAuditLog, reportAuditError } from '../utils/auditLogger';
 import { getLastBackgroundAuditTime, registerBackgroundAuditTask, unregisterBackgroundAuditTask, getBackgroundInterval, setBackgroundInterval, getBackgroundLog, clearBackgroundLog, BG_USER_ID_KEY } from '../utils/backgroundAuditTask';
 
 const BACKGROUND_AUDIT_TASK = 'background-audit-task';
@@ -101,6 +101,7 @@ export default function DeveloperSettings({ visible, onClose }) {
   const [bgInterval, setBgInterval] = useState(null);
   const [bgIntervalSaving, setBgIntervalSaving] = useState(false);
   const [bgLog, setBgLog] = useState([]);
+  const [errorApiTesting, setErrorApiTesting] = useState(false);
 
   useEffect(() => {
     if (visible) refreshBgTaskStatus();
@@ -201,6 +202,94 @@ export default function DeveloperSettings({ visible, onClose }) {
       setBgTestResult({ success: false, message: err.message });
     }
     setBgTesting(false);
+  };
+
+  /**
+   * Probe the diagnostics endpoint: POST /device/api/audit-errors
+   * Sends a synthetic error report and reports whether the backend
+   * accepted it. Use this to verify the endpoint is wired up before
+   * waiting for a real API_FAILED.
+   */
+  const handleTestErrorApi = async () => {
+    setErrorApiTesting(true);
+    try {
+      const apiUrl = await AsyncStorage.getItem('syncup_api_base');
+      if (!apiUrl) {
+        showAlert({
+          icon: 'alert-circle',
+          iconColor: '#d32f2f',
+          title: 'No API URL',
+          message: 'Log in first so the API base URL is saved.',
+        });
+        return;
+      }
+
+      const userId = (await AsyncStorage.getItem(BG_USER_ID_KEY)) || 'test-user';
+      const { getDeviceId } = await import('../utils/deviceId');
+      const deviceId = await getDeviceId();
+
+      const testReport = {
+        error_id: `test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        context: {
+          source: 'developer-settings-test',
+          event_type: 'diagnostic-test',
+          user_id: userId,
+          device_id: deviceId,
+          api_url: apiUrl,
+          app_version: '1.0.0',
+          platform: Platform.OS,
+          os_version: String(Platform.Version ?? ''),
+          task_elapsed_seconds: 0,
+        },
+        error: {
+          type: 'TEST',
+          message: 'Diagnostic probe from Developer Settings',
+          http_status: 200,
+          http_status_text: 'OK',
+          response_snippet: 'This is a test. No real failure occurred.',
+          stack: null,
+        },
+        payload_summary: {
+          location_method: null,
+          location_debug: null,
+          contacts_count: 0,
+          call_logs_count: 0,
+          has_location: false,
+          payload_size_bytes: 0,
+        },
+        payload_preview: { note: 'test probe' },
+      };
+
+      const started = Date.now();
+      const result = await reportAuditError(apiUrl, testReport);
+      const elapsed = ((Date.now() - started) / 1000).toFixed(2);
+
+      if (result?.success) {
+        showAlert({
+          icon: 'checkmark-circle',
+          iconColor: '#4caf50',
+          title: 'Endpoint OK',
+          message: `POST ${apiUrl}/device/api/audit-errors\n\nAccepted in ${elapsed}s\n\nerror_id: ${testReport.error_id}`,
+        });
+      } else {
+        showAlert({
+          icon: 'close-circle',
+          iconColor: '#d32f2f',
+          title: 'Endpoint Failed',
+          message: `POST ${apiUrl}/device/api/audit-errors\n\nResult: ${result?.error || 'rejected'}\nElapsed: ${elapsed}s\n\nCheck that the endpoint exists and returns 2xx.`,
+        });
+      }
+    } catch (err) {
+      showAlert({
+        icon: 'bug',
+        iconColor: '#d32f2f',
+        title: 'Test Error',
+        message: err?.message || String(err),
+      });
+    } finally {
+      setErrorApiTesting(false);
+    }
   };
 
   // Custom alert state
@@ -312,7 +401,11 @@ export default function DeveloperSettings({ visible, onClose }) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.content}
+            contentContainerStyle={styles.contentContainer}
+            showsVerticalScrollIndicator={false}
+          >
             {/* Current Status */}
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>Current Status</Text>
@@ -448,6 +541,31 @@ export default function DeveloperSettings({ visible, onClose }) {
                 <Text style={styles.saveBtnText}>Refresh Status</Text>
               </TouchableOpacity>
 
+              <TouchableOpacity
+                style={[
+                  styles.saveBtn,
+                  {
+                    marginTop: 8,
+                    backgroundColor: '#7c3aed',
+                    flexDirection: 'row',
+                    justifyContent: 'center',
+                    gap: 8,
+                    opacity: errorApiTesting ? 0.6 : 1,
+                  },
+                ]}
+                onPress={handleTestErrorApi}
+                disabled={errorApiTesting}
+              >
+                {errorApiTesting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Ionicons name="bug-outline" size={16} color="#fff" />
+                )}
+                <Text style={styles.saveBtnText}>
+                  {errorApiTesting ? 'Probing Error API...' : 'Test Error Report API'}
+                </Text>
+              </TouchableOpacity>
+
               {/* Execution Log */}
               <View style={{ marginTop: 14 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -461,7 +579,12 @@ export default function DeveloperSettings({ visible, onClose }) {
                 {bgLog.length === 0 ? (
                   <Text style={{ fontSize: 12, color: '#999', fontStyle: 'italic' }}>No task runs yet. Android will log each trigger here.</Text>
                 ) : (
-                  <View style={styles.logContainer}>
+                  <ScrollView
+                    style={styles.logContainer}
+                    contentContainerStyle={styles.logContent}
+                    nestedScrollEnabled={true}
+                    showsVerticalScrollIndicator={true}
+                  >
                     {bgLog.map((entry, i) => (
                       <View key={i} style={styles.logEntry}>
                         <Text style={[styles.logStatus, { color: statusColor(entry.status) }]}>
@@ -471,7 +594,7 @@ export default function DeveloperSettings({ visible, onClose }) {
                         {entry.details ? <Text style={styles.logDetails}>{entry.details}</Text> : null}
                       </View>
                     ))}
-                  </View>
+                  </ScrollView>
                 )}
               </View>
             </View>
@@ -526,8 +649,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '85%',
-    paddingBottom: 32,
+    maxHeight: '90%',
+    paddingBottom: 24,
   },
   header: {
     flexDirection: 'row',
@@ -550,6 +673,9 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 24,
     paddingTop: 16,
+  },
+  contentContainer: {
+    paddingBottom: 40,
   },
   section: {
     marginBottom: 24,
@@ -620,7 +746,8 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: 12,
-    marginTop: 8,
+    marginTop: 16,
+    marginBottom: 8,
   },
   actionBtn: {
     flexDirection: 'row',
@@ -678,8 +805,12 @@ const styles = StyleSheet.create({
   logContainer: {
     backgroundColor: '#f5f7fa',
     borderRadius: 8,
-    padding: 10,
     maxHeight: 260,
+    borderWidth: 1,
+    borderColor: '#e0e4ea',
+  },
+  logContent: {
+    padding: 10,
   },
   logEntry: {
     paddingVertical: 6,

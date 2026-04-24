@@ -34,6 +34,7 @@
         "RECORD_AUDIO",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "READ_MEDIA_IMAGES",
@@ -64,7 +65,17 @@
         }
       ],
       "./plugins/withNotificationIconFix",
-      "./plugins/withCleartextTraffic"
+      "./plugins/withCleartextTraffic",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "SyncUp needs location access, including in the background, to record audit data while the app is running or closed.",
+          "locationAlwaysPermission": "Allow SyncUp to access location in the background for audit sync.",
+          "locationWhenInUsePermission": "Allow SyncUp to access location while you use the app.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
     ],
     "extra": {
       "eas": {

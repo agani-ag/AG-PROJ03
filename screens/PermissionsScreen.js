@@ -54,10 +54,25 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
 
   const requestLocationPermission = async () => {
     try {
-      console.log('[Permissions] Requesting Location...');
+      console.log('[Permissions] Requesting Location (foreground)...');
       const { status } = await Location.requestForegroundPermissionsAsync();
       const granted = status === 'granted';
-      console.log('[Permissions] Location:', granted ? 'Granted' : 'Denied');
+      console.log('[Permissions] Location (foreground):', granted ? 'Granted' : 'Denied');
+
+      // If foreground was granted, immediately ask for background too.
+      // Required on Android 10+ so the background-audit task can read
+      // GPS/cached location when the app is killed or screen is off.
+      // On Android 11+ this opens the system Settings page (OS policy).
+      if (granted) {
+        try {
+          console.log('[Permissions] Requesting Location (background)...');
+          const bg = await Location.requestBackgroundPermissionsAsync();
+          console.log('[Permissions] Location (background):', bg.status);
+        } catch (bgErr) {
+          console.warn('[Permissions] Background location request failed:', bgErr?.message);
+        }
+      }
+
       return granted;
     } catch (err) {
       console.error('[Permissions] Location error:', err);
