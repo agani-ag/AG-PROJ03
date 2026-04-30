@@ -35,6 +35,7 @@ const statusColor = (status) => {
   switch (status) {
     case 'SUCCESS': return '#4caf50';
     case 'TRIGGERED': return '#2196f3';
+    case 'REGISTERED': return '#7c3aed';
     case 'SKIPPED': return '#ff9800';
     case 'API_FAILED':
     case 'ERROR': return '#d32f2f';

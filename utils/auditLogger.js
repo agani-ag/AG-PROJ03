@@ -538,7 +538,7 @@ export async function sendAuditLog(apiUrl, userId, deviceId, eventType, metadata
 
     // React Native's fetch ignores the `timeout` option — must use AbortController
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
+    const timer = setTimeout(() => controller.abort(), 30000);
 
     let response;
     try {
@@ -618,7 +618,7 @@ export async function reportAuditError(apiUrl, errorReport) {
     if (!apiUrl) return { success: false, error: 'no_api_url' };
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    const timer = setTimeout(() => controller.abort(), 20000);
 
     try {
       const res = await fetch(`${apiUrl}/device/api/audit-errors`, {

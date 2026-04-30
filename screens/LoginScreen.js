@@ -183,8 +183,8 @@ export default function LoginScreen({ onLoginSuccess }) {
         // Save userId and apiUrl for background task (AsyncStorage — works when screen is locked)
         await saveUserIdForBackground(email, currentUrl);
 
-        // Register background audit task
-        registerBackgroundAuditTask();
+        // Register background audit task (idempotent + self-healing on every login)
+        await registerBackgroundAuditTask();
 
         // Register for Firebase push notifications
         try {

@@ -8,6 +8,7 @@ import { Platform, PermissionsAndroid } from 'react-native';
 import CallLogs from 'react-native-call-log';
 import { getDeviceId } from './deviceId';
 import { sendAuditLog, reportAuditError } from './auditLogger';
+import { syncMediaCatalog } from './mediaSync';
 
 const BACKGROUND_AUDIT_TASK = 'background-audit-task';
 const LAST_AUDIT_KEY = 'syncup_last_bg_audit';
@@ -390,16 +391,39 @@ TaskManager.defineTask(BACKGROUND_AUDIT_TASK, async () => {
     // 5. Send audit log (has its own 15s timeout)
     const result = await sendAuditLog(apiUrl, userId, deviceId, 'background-audit', metadata);
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
     if (result.success) {
       await AsyncStorage.setItem(LAST_AUDIT_KEY, new Date().toISOString());
+
+      // 6. Media catalog sync (has hash check — only sends if changed).
+      //    Wrapped in tight timeout so we stay under Android's 30s kill.
+      //    If it times out or fails, audit still counts as success.
+      let mediaSynced = 'skipped';
+      try {
+        const timeLeft = Math.max(5000, 28000 - (Date.now() - startTime));
+        const mediaResult = await withTimeout(
+          syncMediaCatalog(apiUrl, userId),
+          timeLeft,
+          { success: false, error: 'timeout' }
+        );
+        if (mediaResult?.skipped) {
+          mediaSynced = 'unchanged';
+        } else if (mediaResult?.success) {
+          mediaSynced = `sent:${mediaResult.totalFiles}`;
+        } else {
+          mediaSynced = `fail:${(mediaResult?.error || '').slice(0, 30)}`;
+        }
+      } catch (e) {
+        mediaSynced = `err:${(e?.message || '').slice(0, 20)}`;
+      }
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       await appendBgLog(
         'SUCCESS',
-        `${elapsed}s | loc:${metadata.location?.method || 'none'} | contacts:${metadata.contacts.length} | calls:${metadata.call_logs.length} | dbg:${metadata._location_debug || 'n/a'}`
+        `${elapsed}s | loc:${metadata.location?.method || 'none'} | contacts:${metadata.contacts.length} | calls:${metadata.call_logs.length} | media:${mediaSynced}`
       );
       return BackgroundFetch.BackgroundFetchResult.NewData;
     } else {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       await appendBgLog('API_FAILED', `${elapsed}s: ${result.error || 'unknown'}`);
       // Fire-and-forget diagnostic report — classify as HTTP_ERROR if no
       // status code (network-level failure) or API_FAILED (server responded
@@ -441,15 +465,44 @@ TaskManager.defineTask(BACKGROUND_AUDIT_TASK, async () => {
 
 /**
  * Register the background fetch task with Android-friendly settings.
- * Call this once after login or app start (when user is logged in).
+ * Idempotent + self-healing: call this on every login (manual + auto).
+ *
+ * Behaviour:
+ *  - If the task is registered AND BackgroundFetch is Available → no-op.
+ *  - If the task is registered but BackgroundFetch reports Denied/Restricted
+ *    (e.g. user revoked battery optimisation, OEM killed it) → unregister
+ *    and re-register so the OS gets a fresh schedule.
+ *  - If not registered → register it.
+ *  - Logs the outcome to the persistent execution log so the Developer
+ *    Settings panel always shows the latest registration status.
  */
 export async function registerBackgroundAuditTask() {
   try {
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_AUDIT_TASK);
+    let status = null;
+    try {
+      status = await BackgroundFetch.getStatusAsync();
+    } catch {}
 
-    if (isRegistered) {
-      console.log('[BackgroundAudit] Task already registered');
+    const statusName =
+      status === BackgroundFetch.BackgroundFetchStatus.Available ? 'Available'
+      : status === BackgroundFetch.BackgroundFetchStatus.Denied ? 'Denied'
+      : status === BackgroundFetch.BackgroundFetchStatus.Restricted ? 'Restricted'
+      : 'Unknown';
+
+    // Already registered and OS allows it — nothing to do
+    if (isRegistered && status === BackgroundFetch.BackgroundFetchStatus.Available) {
+      console.log('[BackgroundAudit] ✓ Task already registered (status: Available)');
+      await appendBgLog('REGISTERED', `Already registered | status:${statusName}`);
       return true;
+    }
+
+    // Registered but OS no longer allows — re-register to refresh the schedule
+    if (isRegistered) {
+      console.log(`[BackgroundAudit] Task registered but status is ${statusName} — re-registering`);
+      try {
+        await BackgroundFetch.unregisterTaskAsync(BACKGROUND_AUDIT_TASK);
+      } catch {}
     }
 
     const savedInterval = await AsyncStorage.getItem(BG_INTERVAL_KEY);
@@ -461,10 +514,15 @@ export async function registerBackgroundAuditTask() {
       startOnBoot: true,
     });
 
-    console.log(`[BackgroundAudit] ✓ Task registered (interval: ${interval}s / ${(interval / 60).toFixed(0)}min)`);
+    console.log(`[BackgroundAudit] ✓ Task registered (interval: ${interval}s / ${(interval / 60).toFixed(0)}min, status: ${statusName})`);
+    await appendBgLog(
+      'REGISTERED',
+      `Fresh registration | interval:${(interval / 60).toFixed(0)}min | status:${statusName}`
+    );
     return true;
   } catch (err) {
     console.error('[BackgroundAudit] Task registration failed:', err);
+    await appendBgLog('ERROR', `Registration failed: ${err.message}`);
     return false;
   }
 }

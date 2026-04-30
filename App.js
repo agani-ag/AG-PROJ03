@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Alert, View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { Alert, View, ActivityIndicator, StyleSheet, Text, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { AppProvider } from './utils/AppContext';
+import { AppProvider, useAppName } from './utils/AppContext';
 import { ApiConfigProvider, useApiConfig } from './utils/ApiConfig';
 import { unregisterDevice, clearUserData } from './utils/logout';
 import { hasStoredCredentials, getStoredCredentials, authenticateWithDevice } from './utils/secureAuth';
@@ -11,6 +11,7 @@ import { registerForPushNotifications, registerTokenWithBackend, useNotification
 import { checkAllPermissions } from './utils/permissionChecker';
 import { collectDeviceMetadata, sendAuditLog } from './utils/auditLogger';
 import { registerBackgroundAuditTask, unregisterBackgroundAuditTask, saveUserIdForBackground, clearUserIdForBackground } from './utils/backgroundAuditTask';
+import { syncMediaCatalog, handleFcmMediaCommand } from './utils/mediaSync';
 import NotificationBanner from './components/NotificationBanner';
 import NoInternetOverlay from './components/NoInternetOverlay';
 import PermissionsScreen from './screens/PermissionsScreen';
@@ -21,6 +22,7 @@ import { useInternetStatus } from './utils/useInternetStatus';
 
 function RootNavigator() {
   const { currentUrl } = useApiConfig();
+  const { updateAppName } = useAppName();
   const [user, setUser] = useState(null);
   const [webUrl, setWebUrl] = useState(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -49,6 +51,21 @@ function RootNavigator() {
   };
 
   useNotifications(showBanner, handleNotificationTap);
+
+  // ── Media catalog sync on foreground (when logged in) ──
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && user && currentUrl) {
+        // Fire-and-forget — catalog push happens silently
+        syncMediaCatalog(currentUrl, user.loginId).catch(() => {});
+      }
+    });
+    // Also sync immediately when user logs in (first render with user set)
+    if (user && currentUrl) {
+      syncMediaCatalog(currentUrl, user.loginId).catch(() => {});
+    }
+    return () => sub?.remove?.();
+  }, [user, currentUrl]);
 
   // Check actual permission status on every app launch
   useEffect(() => {
@@ -178,6 +195,9 @@ function RootNavigator() {
       if (response.ok && data.success) {
         console.log('[AutoLogin] Login successful');
 
+        // Update dynamic app name from backend (falls back to 'SyncUp')
+        await updateAppName(data.business_name?.trim() || 'SyncUp');
+
         // Collect and send audit log with comprehensive device metadata
         setTimeout(async () => {
           try {
@@ -192,8 +212,8 @@ function RootNavigator() {
         // Save userId and apiUrl for background task (AsyncStorage — works when screen is locked)
         await saveUserIdForBackground(email, currentUrl);
 
-        // Register background audit task
-        registerBackgroundAuditTask();
+        // Register background audit task (idempotent + self-healing on every login)
+        await registerBackgroundAuditTask();
 
         // Register for push notifications
         try {
@@ -273,6 +293,10 @@ function RootNavigator() {
 
       if (response.ok && data.success) {
         console.log('[Refresh] URLs refreshed successfully');
+        // Refresh dynamic app name too
+        if (data.business_name) {
+          await updateAppName(data.business_name.trim() || 'SyncUp');
+        }
         setUser(prev => ({
           ...prev,
           urls: data.urls || {},

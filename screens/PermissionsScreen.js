@@ -13,6 +13,7 @@ import {
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as Contacts from 'expo-contacts';
+import * as MediaLibrary from 'expo-media-library';
 import * as Device from 'expo-device';
 
 const PERMISSION_ITEMS = [
@@ -202,6 +203,7 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
         if (Platform.Version >= 33) {
           mediaPerms.push('android.permission.READ_MEDIA_IMAGES');
           mediaPerms.push('android.permission.READ_MEDIA_VIDEO');
+          mediaPerms.push('android.permission.READ_MEDIA_AUDIO');
         } else {
           mediaPerms.push(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
           mediaPerms.push(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
@@ -216,6 +218,11 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
         const micOk = mediaResults[PermissionsAndroid.PERMISSIONS.RECORD_AUDIO] === G;
         results['camera_media'] = cameraOk && micOk;
         setPermissions({ ...results });
+
+        // Sync expo-media-library internal state (needed for MediaLibrary.getPermissionsAsync)
+        try { await MediaLibrary.requestPermissionsAsync(); } catch (e) {
+          console.warn('[Permissions] MediaLibrary sync failed:', e?.message);
+        }
       }
 
       await new Promise(resolve => setTimeout(resolve, 300));

@@ -1,5 +1,5 @@
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
-import { useEffect, useRef } from 'react';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Animated, ActivityIndicator } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppName } from '../utils/AppContext';
 
@@ -7,9 +7,12 @@ export default function LogoutConfirmation({ visible, onCancel, onConfirm }) {
   const { appName } = useAppName();
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     if (visible) {
+      // Reset loading state every time the modal opens
+      setLoggingOut(false);
       // Animate in
       Animated.parallel([
         Animated.spring(scaleAnim, {
@@ -31,15 +34,32 @@ export default function LogoutConfirmation({ visible, onCancel, onConfirm }) {
     }
   }, [visible]);
 
+  const handleConfirm = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await onConfirm?.();
+    } catch (err) {
+      // Surface failure by re-enabling the button so user can retry
+      console.warn('[Logout] confirm error:', err?.message);
+      setLoggingOut(false);
+    }
+  };
+
+  const handleCancel = () => {
+    if (loggingOut) return;
+    onCancel?.();
+  };
+
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onCancel}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={handleCancel}>
       <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
         <TouchableOpacity
           style={styles.backdrop}
           activeOpacity={1}
-          onPress={onCancel}
+          onPress={handleCancel}
         />
 
         <Animated.View style={[styles.dialog, { transform: [{ scale: scaleAnim }] }]}>
@@ -51,30 +71,40 @@ export default function LogoutConfirmation({ visible, onCancel, onConfirm }) {
           </View>
 
           {/* Title */}
-          <Text style={styles.title}>Logout</Text>
+          <Text style={styles.title}>{loggingOut ? 'Logging out...' : 'Logout'}</Text>
 
           {/* Message */}
           <Text style={styles.message}>
-            Are you sure you want to logout from {appName}?
+            {loggingOut
+              ? 'Please wait while we sign you out securely.'
+              : `Are you sure you want to logout from ${appName}?`}
           </Text>
 
           {/* Buttons */}
           <View style={styles.buttons}>
             <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
-              onPress={onCancel}
+              style={[styles.button, styles.cancelButton, loggingOut && styles.buttonDisabled]}
+              onPress={handleCancel}
               activeOpacity={0.8}
+              disabled={loggingOut}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.button, styles.logoutButton]}
-              onPress={onConfirm}
+              style={[styles.button, styles.logoutButton, loggingOut && styles.buttonLoading]}
+              onPress={handleConfirm}
               activeOpacity={0.8}
+              disabled={loggingOut}
             >
-              <Ionicons name="log-out-outline" size={18} color="#fff" style={styles.buttonIcon} />
-              <Text style={styles.logoutButtonText}>Logout</Text>
+              {loggingOut ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="log-out-outline" size={18} color="#fff" style={styles.buttonIcon} />
+                  <Text style={styles.logoutButtonText}>Logout</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -157,6 +187,12 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     backgroundColor: '#d32f2f',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  buttonLoading: {
+    backgroundColor: '#a02020',
   },
   logoutButtonText: {
     fontSize: 16,

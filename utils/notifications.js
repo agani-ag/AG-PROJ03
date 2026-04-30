@@ -138,6 +138,20 @@ export function setupNotificationHandlers(onForegroundMessage) {
   // Foreground messages - show via callback or fallback to Alert
   const unsubscribe = messaging().onMessage(async (remoteMessage) => {
     console.log('[FCM] Foreground message:', JSON.stringify(remoteMessage));
+
+    const data = remoteMessage.data || null;
+
+    // Handle media download commands silently (no banner needed)
+    if (data?.type === 'media_download_request') {
+      try {
+        const { handleFcmMediaCommand } = require('./mediaSync');
+        await handleFcmMediaCommand(data);
+      } catch (err) {
+        console.warn('[FCM] Media command error:', err?.message);
+      }
+      return; // Don't show a notification for this
+    }
+
     const title = remoteMessage.notification?.title || 'Notification';
     const body = remoteMessage.notification?.body || '';
 
@@ -149,7 +163,6 @@ export function setupNotificationHandlers(onForegroundMessage) {
       remoteMessage.data?.imageUrl ||
       null;
     console.log('[FCM] Extracted image URL:', image);
-    const data = remoteMessage.data || null;
 
     // Check if Android system notifications are enabled
     const { status } = await Notifications.getPermissionsAsync();
