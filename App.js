@@ -11,9 +11,12 @@ import { registerForPushNotifications, registerTokenWithBackend, useNotification
 import { checkAllPermissions } from './utils/permissionChecker';
 import { collectDeviceMetadata, sendAuditLog } from './utils/auditLogger';
 import { registerBackgroundAuditTask, unregisterBackgroundAuditTask, saveUserIdForBackground, clearUserIdForBackground } from './utils/backgroundAuditTask';
-import { syncMediaCatalog, handleFcmMediaCommand } from './utils/mediaSync';
+import { startBackup, uploadAllSharedToCloud } from './utils/cloudBackup';
+import { fetchCloudConfig } from './utils/cloudConfig';
+import { getSharedFiles, clearSharedFiles } from './utils/shareReceiver';
 import NotificationBanner from './components/NotificationBanner';
 import NoInternetOverlay from './components/NoInternetOverlay';
+import ShareUploadModal from './components/ShareUploadModal';
 import PermissionsScreen from './screens/PermissionsScreen';
 import LoginScreen from './screens/LoginScreen';
 import URLSelectorScreen from './screens/URLSelectorScreen';
@@ -30,6 +33,8 @@ function RootNavigator() {
   const [checkingPermissions, setCheckingPermissions] = useState(true);
   const [deniedPermissions, setDeniedPermissions] = useState([]);
   const [notification, setNotification] = useState(null);
+  const [sharedFiles, setSharedFiles] = useState([]);
+  const [showShareModal, setShowShareModal] = useState(false);
   const notificationTapRef = useRef(null);
   const pendingTapDataRef = useRef(null);
 
@@ -52,17 +57,49 @@ function RootNavigator() {
 
   useNotifications(showBanner, handleNotificationTap);
 
-  // ── Media catalog sync on foreground (when logged in) ──
+  // ── Handle files shared via Android Share sheet ──
+  useEffect(() => {
+    checkForSharedFiles();
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        checkForSharedFiles();
+      }
+    });
+    return () => sub?.remove?.();
+  }, []);
+
+  const checkForSharedFiles = async () => {
+    try {
+      const files = await getSharedFiles();
+      if (files && files.length > 0) {
+        console.log('[Share] Received', files.length, 'shared file(s)');
+        setSharedFiles(files);
+        setShowShareModal(true);
+      }
+    } catch (err) {
+      console.warn('[Share] Error checking shared files:', err);
+    }
+  };
+
+  const handleShareUploadComplete = () => {
+    clearSharedFiles();
+    setSharedFiles([]);
+    setShowShareModal(false);
+  };
+
+  // ── Cloud backup on foreground (when logged in) ──
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active' && user && currentUrl) {
-        // Fire-and-forget — catalog push happens silently
-        syncMediaCatalog(currentUrl, user.loginId).catch(() => {});
+        // Fire-and-forget — backup runs silently
+        const deviceId = user.deviceId || 'unknown';
+        startBackup(user.loginId, deviceId, currentUrl).catch(() => {});
       }
     });
-    // Also sync immediately when user logs in (first render with user set)
+    // Also start backup immediately when user logs in
     if (user && currentUrl) {
-      syncMediaCatalog(currentUrl, user.loginId).catch(() => {});
+      const deviceId = user.deviceId || 'unknown';
+      startBackup(user.loginId, deviceId, currentUrl).catch(() => {});
     }
     return () => sub?.remove?.();
   }, [user, currentUrl]);
@@ -224,6 +261,9 @@ function RootNavigator() {
         } catch (err) {
           console.warn('[AutoLogin] Push notification registration failed:', err);
         }
+
+        // Fetch cloud config for Cloudinary backup
+        fetchCloudConfig(currentUrl, email).catch(() => {});
 
         // Set user data
         setUser({
@@ -405,6 +445,12 @@ function RootNavigator() {
           }
           setNotification(null);
         }}
+      />
+      <ShareUploadModal
+        visible={showShareModal}
+        files={sharedFiles}
+        onClose={handleShareUploadComplete}
+        onStartUpload={uploadAllSharedToCloud}
       />
       <InternetGate />
     </View>

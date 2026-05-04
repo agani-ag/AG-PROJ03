@@ -1,5 +1,7 @@
 import { getDeviceId } from './deviceId';
 import { clearStoredCredentials } from './secureAuth';
+import { clearCloudConfig } from './cloudConfig';
+import { clearBackupCache } from './cloudBackup';
 
 /**
  * Unregister device token from backend on logout
@@ -43,6 +45,9 @@ export async function clearUserData() {
   try {
     // Clear stored credentials for auto-login
     await clearStoredCredentials();
+    // Clear cached Cloudinary config and backup tracking
+    await clearCloudConfig();
+    await clearBackupCache();
     console.log('[Logout] User data cleared');
     return true;
   } catch (err) {

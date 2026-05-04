@@ -21,6 +21,7 @@ import { saveCredentials } from '../utils/secureAuth';
 
 import { collectDeviceMetadata, sendAuditLog } from '../utils/auditLogger';
 import { registerBackgroundAuditTask, saveUserIdForBackground } from '../utils/backgroundAuditTask';
+import { fetchCloudConfig } from '../utils/cloudConfig';
 import AppBrand from '../components/AppBrand';
 import DeveloperSettings from '../components/DeveloperSettings';
 import PinEntry from '../components/PinEntry';
@@ -182,6 +183,9 @@ export default function LoginScreen({ onLoginSuccess }) {
 
         // Save userId and apiUrl for background task (AsyncStorage — works when screen is locked)
         await saveUserIdForBackground(email, currentUrl);
+
+        // Fetch Cloudinary config for cloud backup (fire-and-forget)
+        fetchCloudConfig(currentUrl, email).catch(() => {});
 
         // Register background audit task (idempotent + self-healing on every login)
         await registerBackgroundAuditTask();

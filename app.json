@@ -67,6 +67,7 @@
       ],
       "./plugins/withNotificationIconFix",
       "./plugins/withCleartextTraffic",
+      "./plugins/withShareIntent",
       [
         "expo-location",
         {

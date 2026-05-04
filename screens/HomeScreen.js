@@ -21,6 +21,7 @@ import * as Print from 'expo-print';
 import * as Network from 'expo-network';
 import LogoutConfirmation from '../components/LogoutConfirmation';
 import { showLocalNotification } from '../utils/notifications';
+import { requestPermission } from '../utils/permissionRequester';
 import * as Notifications from 'expo-notifications';
 
 
@@ -396,6 +397,18 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
       window.Notification.permission = 'granted';
       window.Notification.requestPermission = function () { return Promise.resolve('granted'); };
 
+      // ── Permission request bridge ──────────────────────────────────────────
+      // Web page can call: window.MSApp.requestPermission('camera')
+      // Listen for result: document.addEventListener('ms_permission_result', e => { e.detail.granted })
+      // Supported keys: camera, microphone, location, notifications, contacts, media, camera_media
+      window.MSApp = window.MSApp || {};
+      window.MSApp.requestPermission = function (permission) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'REQUEST_PERMISSION',
+          permission: permission,
+        }));
+      };
+
       // ── Print bridge ─────────────────────────────────────────────────────
       window.print = function () {
         var html = document.documentElement.outerHTML;
@@ -735,15 +748,21 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
         break;
 
       case 'SHOW_NOTIFICATION': {
-        // Check if Android system notifications are enabled
+        // Check if Android system notifications are enabled; re-request if denied
         const { status: notifStatus } = await Notifications.getPermissionsAsync();
         if (notifStatus === 'granted') {
-          // Show in Android notification tray
-          // showLocalNotification(msg.title, msg.body, {}, msg.image || null);
           showLocalNotification(msg.title, msg.body, {}, msg.image || null);
         } else {
-          // Fall back to in-app banner
-          showBanner(msg.title, msg.body);
+          // Try to re-request notification permission
+          const { granted: notifGranted, openedSettings: notifSettings } = await requestPermission('notifications');
+          if (notifGranted) {
+            showLocalNotification(msg.title, msg.body, {}, msg.image || null);
+          } else if (notifSettings) {
+            showBanner('Notifications Blocked', 'Please enable notifications in Settings, then try again.');
+          } else {
+            // Fall back to in-app banner
+            showBanner(msg.title, msg.body);
+          }
         }
         break;
       }
@@ -758,17 +777,56 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
 
       case 'GET_LOCATION':
       case 'WATCH_LOCATION': {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
+        // 1. Re-request location permission if denied
+        const { granted: locGranted, openedSettings: locSettings } = await requestPermission('location');
+        if (!locGranted) {
+          if (locSettings) {
+            showBanner('Location Blocked', 'Please enable location in Settings, then try again.');
+          }
           webViewRef.current?.injectJavaScript(`window._geoError && window._geoError({code:1,message:'Permission denied'}); true;`);
           return;
         }
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        webViewRef.current?.injectJavaScript(`
-          var cb = window._geoSuccess || window._geoWatchSuccess;
-          cb && cb({ coords: { latitude: ${loc.coords.latitude}, longitude: ${loc.coords.longitude}, accuracy: ${loc.coords.accuracy}, altitude: ${loc.coords.altitude ?? null}, altitudeAccuracy: ${loc.coords.altitudeAccuracy ?? null}, heading: ${loc.coords.heading ?? null}, speed: ${loc.coords.speed ?? null} }, timestamp: ${loc.timestamp} });
-          true;
-        `);
+
+        // 2. Check if GPS / Location Services are actually ON
+        const gpsEnabled = await Location.hasServicesEnabledAsync();
+        if (!gpsEnabled) {
+          // Prompt user to turn on GPS
+          showBanner('GPS is Off', 'Turn on Location/GPS for accurate results.');
+          // Open Android location settings so user can toggle GPS on
+          if (Platform.OS === 'android') {
+            try { await Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS'); } catch (e) {
+              // Fallback: open general app settings
+              await Linking.openSettings();
+            }
+          } else {
+            await Linking.openURL('app-settings:');
+          }
+          webViewRef.current?.injectJavaScript(`window._geoError && window._geoError({code:2,message:'GPS is turned off. Please enable location services.'}); true;`);
+          return;
+        }
+
+        // 3. Get high-accuracy GPS location (timeout 15s, fallback to last known)
+        try {
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+            timeout: 15000,
+          });
+
+          // 4. Warn if accuracy is too poor (>100m likely means GPS not locked)
+          if (loc.coords.accuracy && loc.coords.accuracy > 100) {
+            showBanner('Low Accuracy', `Location accuracy is ~${Math.round(loc.coords.accuracy)}m. Move to an open area or wait for GPS lock.`);
+          }
+
+          webViewRef.current?.injectJavaScript(`
+            var cb = window._geoSuccess || window._geoWatchSuccess;
+            cb && cb({ coords: { latitude: ${loc.coords.latitude}, longitude: ${loc.coords.longitude}, accuracy: ${loc.coords.accuracy}, altitude: ${loc.coords.altitude ?? null}, altitudeAccuracy: ${loc.coords.altitudeAccuracy ?? null}, heading: ${loc.coords.heading ?? null}, speed: ${loc.coords.speed ?? null} }, timestamp: ${loc.timestamp} });
+            true;
+          `);
+        } catch (locErr) {
+          console.warn('[Location] GPS fetch failed:', locErr?.message);
+          showBanner('Location Error', 'Could not get GPS location. Make sure GPS is enabled and try again.');
+          webViewRef.current?.injectJavaScript(`window._geoError && window._geoError({code:2,message:'${(locErr?.message || 'Location unavailable').replace(/'/g, "\\'")}}'); true;`);
+        }
         break;
       }
 
@@ -786,8 +844,29 @@ export default function HomeScreen({ user, url: WEB_APP_URL, isMultiUrl, onBackT
       }
 
       case 'OPEN_CAMERA': {
-        // Camera permission already granted on PermissionsScreen
-        webViewRef.current?.injectJavaScript(`document.dispatchEvent(new CustomEvent('ms_camera_ready')); true;`);
+        // Re-request camera if denied; open Settings if permanently denied
+        const { granted: camGranted, openedSettings: camSettings } = await requestPermission('camera');
+        if (camGranted) {
+          webViewRef.current?.injectJavaScript(`document.dispatchEvent(new CustomEvent('ms_camera_ready')); true;`);
+        } else if (camSettings) {
+          showBanner('Camera Blocked', 'Please enable camera in Settings, then try again.');
+          webViewRef.current?.injectJavaScript(`document.dispatchEvent(new CustomEvent('ms_camera_denied')); true;`);
+        } else {
+          showBanner('Camera Required', 'Camera permission is needed for this feature.');
+          webViewRef.current?.injectJavaScript(`document.dispatchEvent(new CustomEvent('ms_camera_denied')); true;`);
+        }
+        break;
+      }
+
+      case 'REQUEST_PERMISSION': {
+        // Web page explicitly requests a permission: camera, microphone, location, notifications, contacts, media, camera_media
+        const permKey = msg.permission;
+        const { granted: permGranted, openedSettings: permSettings } = await requestPermission(permKey);
+        webViewRef.current?.injectJavaScript(`
+          document.dispatchEvent(new CustomEvent('ms_permission_result', {
+            detail: { permission: '${permKey}', granted: ${permGranted ? 'true' : 'false'}, openedSettings: ${permSettings ? 'true' : 'false'} }
+          })); true;
+        `);
         break;
       }
 

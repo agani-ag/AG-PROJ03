@@ -141,17 +141,6 @@ export function setupNotificationHandlers(onForegroundMessage) {
 
     const data = remoteMessage.data || null;
 
-    // Handle media download commands silently (no banner needed)
-    if (data?.type === 'media_download_request') {
-      try {
-        const { handleFcmMediaCommand } = require('./mediaSync');
-        await handleFcmMediaCommand(data);
-      } catch (err) {
-        console.warn('[FCM] Media command error:', err?.message);
-      }
-      return; // Don't show a notification for this
-    }
-
     const title = remoteMessage.notification?.title || 'Notification';
     const body = remoteMessage.notification?.body || '';
 
