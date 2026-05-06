@@ -4,9 +4,11 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDeviceId } from './deviceId';
+import { reportAuditError } from './auditLogger';
 
 const CLOUD_CONFIG_KEY = 'syncup_cloud_config';
 const CONFIG_TTL = 60 * 60 * 1000; // 1 hour
+const KEY_API_BASE = 'syncup_api_base';
 
 /**
  * Fetch Cloudinary config from backend and cache it.
@@ -30,7 +32,18 @@ export async function fetchCloudConfig(apiUrl, userId) {
     clearTimeout(timer);
 
     if (!response.ok) {
+      const respText = await response.text().catch(() => '');
       console.warn('[CloudConfig] Fetch failed: HTTP', response.status);
+      reportAuditError(apiUrl, {
+        source: 'cloud_config',
+        action: 'fetch_config',
+        error: `HTTP ${response.status}`,
+        user_id: userId,
+        device_id: deviceId,
+        http_status: response.status,
+        response_snippet: respText.slice(0, 200),
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
       return null;
     }
 
@@ -44,6 +57,18 @@ export async function fetchCloudConfig(apiUrl, userId) {
     return config;
   } catch (err) {
     console.warn('[CloudConfig] Fetch error:', err?.message);
+    // Try to report even if apiUrl was the one that failed
+    const reportUrl = apiUrl || await AsyncStorage.getItem(KEY_API_BASE).catch(() => null);
+    if (reportUrl) {
+      reportAuditError(reportUrl, {
+        source: 'cloud_config',
+        action: 'fetch_config',
+        error: err?.message || 'Unknown fetch error',
+        user_id: userId || 'unknown',
+        network_error: true,
+        timestamp: new Date().toISOString(),
+      }).catch(() => {});
+    }
     return null;
   }
 }

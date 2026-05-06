@@ -92,10 +92,12 @@ export default function URLSelectorScreen({ user, urls, onSelect, onLogout, onRe
         onCancel={() => setShowPinEntry(false)}
       />
 
-      <DeveloperSettings
-        visible={showDeveloperSettings}
-        onClose={() => setShowDeveloperSettings(false)}
-      />
+      {showDeveloperSettings ? (
+        <DeveloperSettings
+          onClose={() => setShowDeveloperSettings(false)}
+        />
+      ) : (
+      <>
 
       <View style={styles.header}>
         <TouchableOpacity onPress={handleAppNamePress} activeOpacity={1}>
@@ -114,6 +116,8 @@ export default function URLSelectorScreen({ user, urls, onSelect, onLogout, onRe
         refreshing={refreshing}
         onRefresh={handleRefresh}
       />
+      </>
+      )}
     </SafeAreaView>
   );
 }

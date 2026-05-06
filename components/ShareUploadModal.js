@@ -7,7 +7,10 @@ import {
   FlatList,
   ActivityIndicator,
   TouchableOpacity,
+  Animated,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 /**
  * Full-screen modal that shows when files are shared to the app.
@@ -16,17 +19,33 @@ import {
  */
 export default function ShareUploadModal({ visible, files, onClose, onStartUpload }) {
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState({}); // { fileIndex: { chunk, total, status } }
+  const [progress, setProgress] = useState({});
   const [overallResult, setOverallResult] = useState(null);
   const [overallPercent, setOverallPercent] = useState(0);
   const [currentFileName, setCurrentFileName] = useState('');
   const startTimeRef = useRef(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (visible && files.length > 0 && !uploading && !overallResult) {
       startUpload();
     }
   }, [visible, files]);
+
+  useEffect(() => {
+    if (uploading) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 0.5, duration: 900, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [uploading]);
 
   const startUpload = async () => {
     setUploading(true);
@@ -41,7 +60,6 @@ export default function ShareUploadModal({ visible, files, onClose, onStartUploa
         ...prev,
         [fileIndex]: { chunk, total: totalChunks, fileName, status: chunk === totalChunks ? 'done' : 'uploading' },
       }));
-      // Overall percentage across all files
       const pct = Math.round(((fileIndex * 100) + (chunk / totalChunks * 100)) / totalFiles);
       setOverallPercent(pct);
     });
@@ -60,15 +78,15 @@ export default function ShareUploadModal({ visible, files, onClose, onStartUploa
   };
 
   const getFileIcon = (mimeType) => {
-    if (!mimeType) return '📄';
-    if (mimeType.startsWith('image/')) return '🖼️';
-    if (mimeType.startsWith('video/')) return '🎬';
-    if (mimeType.startsWith('audio/')) return '🎵';
-    if (mimeType.includes('pdf')) return '📕';
-    if (mimeType.includes('zip') || mimeType.includes('rar')) return '📦';
-    if (mimeType.includes('document') || mimeType.includes('word')) return '📝';
-    if (mimeType.includes('sheet') || mimeType.includes('excel')) return '📊';
-    return '📄';
+    if (!mimeType) return { name: 'document-outline', color: '#6B7280' };
+    if (mimeType.startsWith('image/')) return { name: 'image-outline', color: '#8B5CF6' };
+    if (mimeType.startsWith('video/')) return { name: 'videocam-outline', color: '#EC4899' };
+    if (mimeType.startsWith('audio/')) return { name: 'musical-notes-outline', color: '#F59E0B' };
+    if (mimeType.includes('pdf')) return { name: 'reader-outline', color: '#EF4444' };
+    if (mimeType.includes('zip') || mimeType.includes('rar')) return { name: 'file-tray-stacked-outline', color: '#6366F1' };
+    if (mimeType.includes('document') || mimeType.includes('word')) return { name: 'document-text-outline', color: '#3B82F6' };
+    if (mimeType.includes('sheet') || mimeType.includes('excel')) return { name: 'grid-outline', color: '#10B981' };
+    return { name: 'document-outline', color: '#6B7280' };
   };
 
   const formatSize = (bytes) => {
@@ -91,81 +109,112 @@ export default function ShareUploadModal({ visible, files, onClose, onStartUploa
     const icon = getFileIcon(item.mimeType);
     const size = formatSize(item.size);
 
-    let statusIcon = '⏳';
-    let statusColor = '#666';
+    let statusIcon = 'time-outline';
+    let statusColor = '#CBD5E1';
     let pct = 0;
     if (fileProgress) {
       pct = Math.round((fileProgress.chunk / fileProgress.total) * 100);
       if (fileProgress.status === 'done') {
-        statusIcon = '✅';
-        statusColor = '#2e7d32';
+        statusIcon = 'checkmark-circle';
+        statusColor = '#10B981';
         pct = 100;
       } else {
-        statusIcon = `${pct}%`;
-        statusColor = '#1565c0';
+        statusIcon = 'cloud-upload-outline';
+        statusColor = '#3B82F6';
       }
     }
 
     return (
       <View style={styles.fileRow}>
-        <Text style={styles.fileIcon}>{icon}</Text>
+        <View style={[styles.fileIconContainer, { backgroundColor: `${icon.color}14` }]}>
+          <Ionicons name={icon.name} size={22} color={icon.color} />
+        </View>
         <View style={styles.fileInfo}>
           <Text style={styles.fileName} numberOfLines={1}>{fileName}</Text>
           <Text style={styles.fileMeta}>
-            {size ? `${size}  •  ` : ''}{item.mimeType || 'unknown type'}
+            {size}{size && item.mimeType ? '  \u00B7  ' : ''}{item.mimeType || ''}
           </Text>
           {fileProgress && (
-            <View style={styles.progressBar}>
-              <View style={[
-                styles.progressFill,
+            <View style={styles.progressBarTrack}>
+              <Animated.View style={[
+                styles.progressBarFill,
                 { width: `${pct}%` },
-                fileProgress.status === 'done' && styles.progressDone,
+                fileProgress.status === 'done' && styles.progressBarDone,
               ]} />
             </View>
           )}
-          {fileProgress && fileProgress.status !== 'done' && (
-            <Text style={styles.chunkText}>
-              Chunk {fileProgress.chunk}/{fileProgress.total}
-            </Text>
+        </View>
+        <View style={styles.statusContainer}>
+          {fileProgress && fileProgress.status !== 'done' ? (
+            <Text style={styles.percentText}>{pct}%</Text>
+          ) : (
+            <Ionicons name={statusIcon} size={20} color={statusColor} />
           )}
         </View>
-        <Text style={[styles.statusIcon, { color: statusColor }]}>{statusIcon}</Text>
       </View>
     );
   };
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>
-            {uploading ? '⬆️ Uploading Files...' : overallResult ? '📤 Upload Complete' : '📎 Shared Files'}
-          </Text>
-          <Text style={styles.headerSubtitle}>
-            {files.length} file{files.length !== 1 ? 's' : ''} shared to SyncUp
-          </Text>
+          <View style={styles.headerRow}>
+            <View style={[styles.headerBadge, uploading && styles.headerBadgeActive, overallResult && styles.headerBadgeDone]}>
+              <Animated.View style={{ opacity: uploading ? pulseAnim : 1 }}>
+                <Ionicons
+                  name={overallResult ? 'cloud-done' : uploading ? 'cloud-upload' : 'share'}
+                  size={22}
+                  color={overallResult ? '#10B981' : '#3B82F6'}
+                />
+              </Animated.View>
+            </View>
+            <View style={styles.headerText}>
+              <Text style={styles.headerTitle}>
+                {uploading ? 'Uploading Files' : overallResult ? 'Upload Complete' : 'Shared Files'}
+              </Text>
+              <Text style={styles.headerSubtitle}>
+                {files.length} file{files.length !== 1 ? 's' : ''} shared to SyncUp
+              </Text>
+            </View>
+            {!uploading && (
+              <TouchableOpacity style={styles.closeIcon} onPress={handleClose} activeOpacity={0.7}>
+                <Ionicons name="close" size={20} color="#64748B" />
+              </TouchableOpacity>
+            )}
+          </View>
           {uploading && (
-            <Text style={styles.headerMeta}>
-              Upload continues in background • {getElapsedTime()}
-            </Text>
+            <View style={styles.headerMetaRow}>
+              <Ionicons name="information-circle-outline" size={13} color="#94A3B8" />
+              <Text style={styles.headerMeta}>Upload continues in background  \u00B7  {getElapsedTime()}</Text>
+            </View>
           )}
         </View>
 
-        {/* Overall Progress Bar */}
+        {/* Overall Progress */}
         {(uploading || overallResult) && (
-          <View style={styles.overallProgress}>
-            <View style={styles.overallProgressRow}>
-              <Text style={styles.overallLabel}>
-                {uploading ? `Uploading: ${currentFileName}` : 'Complete'}
+          <View style={styles.progressSection}>
+            <View style={styles.progressTopRow}>
+              <View style={styles.progressLabelRow}>
+                <Ionicons
+                  name={overallPercent === 100 ? 'checkmark-circle' : 'arrow-up-circle-outline'}
+                  size={15}
+                  color={overallPercent === 100 ? '#10B981' : '#3B82F6'}
+                />
+                <Text style={styles.progressLabel} numberOfLines={1}>
+                  {uploading ? currentFileName : 'All files uploaded'}
+                </Text>
+              </View>
+              <Text style={[styles.progressPercent, overallPercent === 100 && styles.progressPercentDone]}>
+                {overallPercent}%
               </Text>
-              <Text style={styles.overallPercent}>{overallPercent}%</Text>
             </View>
-            <View style={styles.overallBar}>
+            <View style={styles.progressTrack}>
               <View style={[
-                styles.overallBarFill,
+                styles.progressTrackFill,
                 { width: `${overallPercent}%` },
-                overallPercent === 100 && styles.overallBarDone,
+                overallPercent === 100 && styles.progressTrackDone,
               ]} />
             </View>
           </View>
@@ -178,39 +227,58 @@ export default function ShareUploadModal({ visible, files, onClose, onStartUploa
           renderItem={renderFile}
           style={styles.list}
           contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
         />
 
         {/* Result Summary */}
         {overallResult && (
-          <View style={[styles.resultCard, overallResult.failed > 0 ? styles.resultError : styles.resultSuccess]}>
-            <Text style={styles.resultText}>
-              ✅ {overallResult.succeeded} succeeded{overallResult.failed > 0 ? `, ❌ ${overallResult.failed} failed` : ''}
-            </Text>
-            {overallResult.error && (
-              <Text style={styles.resultErrorText}>{overallResult.error}</Text>
-            )}
+          <View style={[styles.resultCard, overallResult.failed > 0 ? styles.resultCardError : styles.resultCardSuccess]}>
+            <Ionicons
+              name={overallResult.failed > 0 ? 'alert-circle' : 'shield-checkmark'}
+              size={18}
+              color={overallResult.failed > 0 ? '#EF4444' : '#10B981'}
+            />
+            <View style={styles.resultTextWrap}>
+              <Text style={styles.resultText}>
+                {overallResult.succeeded} uploaded successfully
+                {overallResult.failed > 0 ? `  \u00B7  ${overallResult.failed} failed` : ''}
+              </Text>
+              {overallResult.error && (
+                <Text style={styles.resultError}>{overallResult.error}</Text>
+              )}
+            </View>
           </View>
         )}
 
         {/* Loading Indicator */}
         {uploading && (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color="#1565c0" />
-            <Text style={styles.loadingText}>
-              Uploading — safe to minimize app
-            </Text>
+          <View style={styles.loadingBar}>
+            <ActivityIndicator size="small" color="#3B82F6" />
+            <Text style={styles.loadingText}>Secure upload in progress</Text>
           </View>
         )}
 
-        {/* Close Button */}
+        {/* Action Button */}
         {!uploading && (
-          <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-            <Text style={styles.closeButtonText}>
-              {overallResult ? 'Done' : 'Cancel'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.bottomBar}>
+            <TouchableOpacity
+              style={[styles.actionBtn, overallResult ? styles.actionBtnSuccess : styles.actionBtnNeutral]}
+              onPress={handleClose}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={overallResult ? 'checkmark' : 'close'}
+                size={18}
+                color="#FFFFFF"
+                style={styles.actionBtnIcon}
+              />
+              <Text style={styles.actionBtnText}>
+                {overallResult ? 'Done' : 'Cancel'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }
@@ -218,91 +286,154 @@ export default function ShareUploadModal({ visible, files, onClose, onStartUploa
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-    paddingTop: 50,
+    backgroundColor: '#F8FAFC',
   },
+
+  // ── Header ──────────────────────────────────────────────
   header: {
     paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 16,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    backgroundColor: '#fff',
+    borderBottomColor: '#F1F5F9',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  headerBadgeActive: {
+    backgroundColor: '#DBEAFE',
+  },
+  headerBadgeDone: {
+    backgroundColor: '#ECFDF5',
+  },
+  headerText: {
+    flex: 1,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: '#0F172A',
+    letterSpacing: -0.3,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  closeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+  headerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
   },
   headerMeta: {
     fontSize: 12,
-    color: '#1565c0',
-    marginTop: 4,
-    fontStyle: 'italic',
+    color: '#94A3B8',
+    marginLeft: 6,
   },
-  overallProgress: {
-    backgroundColor: '#fff',
+
+  // ── Overall Progress ────────────────────────────────────
+  progressSection: {
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#F1F5F9',
   },
-  overallProgressRow: {
+  progressTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  overallLabel: {
-    fontSize: 13,
-    color: '#333',
+  progressLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
-    marginRight: 10,
+    marginRight: 12,
   },
-  overallPercent: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1565c0',
+  progressLabel: {
+    fontSize: 13,
+    color: '#374151',
+    marginLeft: 6,
+    flex: 1,
   },
-  overallBar: {
-    height: 8,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 4,
+  progressPercent: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#3B82F6',
+  },
+  progressPercentDone: {
+    color: '#10B981',
+  },
+  progressTrack: {
+    height: 5,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 2.5,
     overflow: 'hidden',
   },
-  overallBarFill: {
+  progressTrackFill: {
     height: '100%',
-    backgroundColor: '#1565c0',
-    borderRadius: 4,
+    backgroundColor: '#3B82F6',
+    borderRadius: 2.5,
   },
-  overallBarDone: {
-    backgroundColor: '#2e7d32',
+  progressTrackDone: {
+    backgroundColor: '#10B981',
   },
+
+  // ── File List ───────────────────────────────────────────
   list: {
     flex: 1,
   },
   listContent: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
   },
   fileRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
     elevation: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
   },
-  fileIcon: {
-    fontSize: 28,
+  fileIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 12,
   },
   fileInfo: {
@@ -311,83 +442,120 @@ const styles = StyleSheet.create({
   fileName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: '#0F172A',
+    letterSpacing: -0.1,
   },
   fileMeta: {
-    fontSize: 12,
-    color: '#888',
+    fontSize: 11,
+    color: '#94A3B8',
     marginTop: 2,
   },
-  progressBar: {
-    height: 4,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 2,
-    marginTop: 6,
+  progressBarTrack: {
+    height: 3,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 1.5,
+    marginTop: 8,
     overflow: 'hidden',
   },
-  progressFill: {
+  progressBarFill: {
     height: '100%',
-    backgroundColor: '#1565c0',
-    borderRadius: 2,
+    backgroundColor: '#3B82F6',
+    borderRadius: 1.5,
   },
-  progressDone: {
-    backgroundColor: '#2e7d32',
+  progressBarDone: {
+    backgroundColor: '#10B981',
   },
-  chunkText: {
-    fontSize: 10,
-    color: '#1565c0',
-    marginTop: 2,
+  statusContainer: {
+    marginLeft: 10,
+    minWidth: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  statusIcon: {
-    fontSize: 14,
+  percentText: {
+    fontSize: 12,
     fontWeight: '700',
-    marginLeft: 8,
-    minWidth: 32,
-    textAlign: 'right',
+    color: '#3B82F6',
   },
+
+  // ── Result Card ─────────────────────────────────────────
   resultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginHorizontal: 16,
     padding: 14,
-    borderRadius: 10,
-    marginBottom: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
   },
-  resultSuccess: {
-    backgroundColor: '#e8f5e9',
+  resultCardSuccess: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
   },
-  resultError: {
-    backgroundColor: '#fce4ec',
+  resultCardError: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  resultTextWrap: {
+    flex: 1,
+    marginLeft: 10,
   },
   resultText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: '#1E293B',
   },
-  resultErrorText: {
+  resultError: {
     fontSize: 12,
-    color: '#c62828',
-    marginTop: 4,
+    color: '#DC2626',
+    marginTop: 3,
   },
-  loadingRow: {
+
+  // ── Loading ─────────────────────────────────────────────
+  loadingBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
   },
   loadingText: {
     marginLeft: 10,
-    fontSize: 14,
-    color: '#1565c0',
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#64748B',
   },
-  closeButton: {
-    margin: 16,
-    backgroundColor: '#1565c0',
-    borderRadius: 10,
-    paddingVertical: 14,
+
+  // ── Bottom Action ───────────────────────────────────────
+  bottomBar: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  actionBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    paddingVertical: 14,
   },
-  closeButtonText: {
-    color: '#fff',
-    fontSize: 16,
+  actionBtnSuccess: {
+    backgroundColor: '#10B981',
+  },
+  actionBtnNeutral: {
+    backgroundColor: '#64748B',
+  },
+  actionBtnIcon: {
+    marginRight: 8,
+  },
+  actionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });

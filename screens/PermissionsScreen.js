@@ -25,17 +25,17 @@ const PERMISSION_ITEMS = [
     required: true,
   },
   {
-    id: 'location',
-    icon: '📍',
-    title: 'Location',
-    description: 'Location access for security and tracking',
-    required: true,
-  },
-  {
     id: 'essentials',
     icon: '🔐',
     title: 'App Essentials',
     description: 'Notifications, contacts, and device info for security',
+    required: true,
+  },
+  {
+    id: 'location',
+    icon: '📍',
+    title: 'Location',
+    description: 'Location access for security and tracking',
     required: true,
   },
 ];
@@ -227,15 +227,8 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
 
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // ── Step 2: Location (MUST be separate — Android shows special "While using" flow) ──
+      // ── Step 2: Essentials batch (Contacts + Phone + Call Logs + Notifications) ──
       setCurrentStep(1);
-      results['location'] = await requestLocationPermission();
-      setPermissions({ ...results });
-
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      // ── Step 3: Essentials batch (Contacts + Phone + Call Logs + Notifications) ──
-      setCurrentStep(2);
 
       if (Platform.OS === 'android') {
         const androidPerms = [
@@ -272,6 +265,13 @@ export default function PermissionsScreen({ onComplete, deniedOnly = [] }) {
           try { await Contacts.requestPermissionsAsync(); } catch (e) {}
         }
       }
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // ── Step 3: Location (MUST be last — Android shows special "While using" flow) ──
+      setCurrentStep(2);
+      results['location'] = await requestLocationPermission();
+      setPermissions({ ...results });
 
     } catch (err) {
       console.error('[Permissions] Batch request error:', err);

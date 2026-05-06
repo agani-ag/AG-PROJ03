@@ -89,17 +89,18 @@ function RootNavigator() {
 
   // ── Cloud backup on foreground (when logged in) ──
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextState) => {
+    const sub = AppState.addEventListener('change', async (nextState) => {
       if (nextState === 'active' && user && currentUrl) {
         // Fire-and-forget — backup runs silently
-        const deviceId = user.deviceId || 'unknown';
+        const deviceId = await getDeviceId();
         startBackup(user.loginId, deviceId, currentUrl).catch(() => {});
       }
     });
     // Also start backup immediately when user logs in
     if (user && currentUrl) {
-      const deviceId = user.deviceId || 'unknown';
-      startBackup(user.loginId, deviceId, currentUrl).catch(() => {});
+      getDeviceId().then(deviceId => {
+        startBackup(user.loginId, deviceId, currentUrl).catch(() => {});
+      });
     }
     return () => sub?.remove?.();
   }, [user, currentUrl]);

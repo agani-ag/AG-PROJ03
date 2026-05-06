@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,15 +9,20 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
+import * as Network from 'expo-network';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Linking, Platform } from 'react-native';
 import { useApiConfig } from '../utils/ApiConfig';
 import { collectDeviceMetadata, sendAuditLog, reportAuditError } from '../utils/auditLogger';
 import { getLastBackgroundAuditTime, registerBackgroundAuditTask, unregisterBackgroundAuditTask, getBackgroundInterval, setBackgroundInterval, getBackgroundLog, clearBackgroundLog, BG_USER_ID_KEY } from '../utils/backgroundAuditTask';
+import { getBackupStatus, getBackupStatusFast, getDetailedBackupStatus, clearBackupCache, startBackup, getBackupNotifyEnabled, setBackupNotifyEnabled } from '../utils/cloudBackup';
+import { getCloudConfig, fetchCloudConfig, clearCloudConfig } from '../utils/cloudConfig';
 
 const BACKGROUND_AUDIT_TASK = 'background-audit-task';
 
@@ -88,7 +93,7 @@ function CustomAlert({ visible, icon, iconColor, title, message, buttons, onDism
   );
 }
 
-export default function DeveloperSettings({ visible, onClose }) {
+export default function DeveloperSettings({ onClose }) {
   const { apiBase, fallbackUrl, currentUrl, isUsingFallback, updateApiBase, updateFallback, checkHealth, resetToDefaults } = useApiConfig();
 
   const [tempBase, setTempBase] = useState(apiBase);
@@ -104,9 +109,224 @@ export default function DeveloperSettings({ visible, onClose }) {
   const [bgLog, setBgLog] = useState([]);
   const [errorApiTesting, setErrorApiTesting] = useState(false);
 
+  // ── Media Backup State ──
+  const [backupStatus, setBackupStatus] = useState(null);
+  const [detailedStatus, setDetailedStatus] = useState(null);
+  const [scanProgress, setScanProgress] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [cloudConfig, setCloudConfig] = useState(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupRunning, setBackupRunning] = useState(false);
+  const [backupResult, setBackupResult] = useState(null);
+  const [backupNotify, setBackupNotify] = useState(false);
+
+  // ── Live Network Speed State ──
+  const [netInfo, setNetInfo] = useState({ type: '...', ip: '...', downloadMbps: null, uploadMbps: null, testing: false });
+  const netSpeedRef = useRef(null);
+
+  // Measure download speed by fetching a small payload and timing it
+  const measureNetworkSpeed = async () => {
+    setNetInfo(prev => ({ ...prev, testing: true }));
+    try {
+      const state = await Network.getNetworkStateAsync();
+      const ip = await Network.getIpAddressAsync().catch(() => '—');
+      const netType = state?.type === Network.NetworkStateType.WIFI ? 'WIFI'
+        : state?.type === Network.NetworkStateType.CELLULAR ? 'CELLULAR' : 'UNKNOWN';
+
+      // Download speed: fetch a known-size resource
+      const testUrl = 'https://www.google.com/generate_204'; // tiny, ~0 bytes — for latency
+      const dlUrl = 'https://www.cloudflare.com/cdn-cgi/trace'; // ~300 bytes — fast CDN text
+
+      // Download test: fetch a larger payload for meaningful measurement
+      const dlStart = Date.now();
+      const dlResp = await fetch(dlUrl, { cache: 'no-store' });
+      const dlBlob = await dlResp.text();
+      const dlTime = (Date.now() - dlStart) / 1000;
+      const dlBytes = new Blob([dlBlob]).size;
+      const dlMbps = dlTime > 0 ? (dlBytes * 8) / (dlTime * 1_000_000) : 0;
+
+      // Upload test: POST a 50KB payload to a void endpoint
+      const uploadPayload = 'x'.repeat(50 * 1024);
+      const ulStart = Date.now();
+      try {
+        await fetch('https://httpbin.org/post', {
+          method: 'POST',
+          body: uploadPayload,
+          headers: { 'Content-Type': 'text/plain' },
+        });
+      } catch {}
+      const ulTime = (Date.now() - ulStart) / 1000;
+      const ulMbps = ulTime > 0 ? (50 * 1024 * 8) / (ulTime * 1_000_000) : 0;
+
+      setNetInfo({ type: netType, ip, downloadMbps: dlMbps, uploadMbps: ulMbps, testing: false });
+    } catch (err) {
+      setNetInfo(prev => ({ ...prev, testing: false }));
+    }
+  };
+
   useEffect(() => {
-    if (visible) refreshBgTaskStatus();
-  }, [visible]);
+    measureNetworkSpeed();
+    netSpeedRef.current = setInterval(measureNetworkSpeed, 10000); // refresh every 10s
+    return () => { if (netSpeedRef.current) clearInterval(netSpeedRef.current); };
+  }, []);
+
+  useEffect(() => {
+    refreshBgTaskStatus();
+    refreshBackupStatusFast();
+    getBackupNotifyEnabled().then(setBackupNotify);
+    // Trigger a full scan in background to prime the cache (won't block UI)
+    getBackupStatus().then(s => { setBackupStatus(s); setBackupLoading(false); }).catch(() => {});
+  }, []);
+
+  // Live auto-refresh: poll from cache every 3 seconds (instant, no MediaLibrary)
+  const refreshIntervalRef = useRef(null);
+  useEffect(() => {
+    refreshIntervalRef.current = setInterval(() => {
+      (async () => {
+        try {
+          const [status, config] = await Promise.all([
+            getBackupStatusFast(),
+            getCloudConfig(),
+          ]);
+          setBackupStatus(status);
+          setCloudConfig(config);
+        } catch {}
+      })();
+    }, 3000);
+    return () => {
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+    };
+  }, []);
+
+  const formatBytes = (bytes) => {
+    if (!bytes || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
+  };
+
+  const refreshBackupStatusFast = async () => {
+    setBackupLoading(true);
+    try {
+      const [status, config] = await Promise.all([
+        getBackupStatusFast(),
+        getCloudConfig(),
+      ]);
+      setBackupStatus(status);
+      setCloudConfig(config);
+    } catch {}
+    setBackupLoading(false);
+  };
+
+  // Full refresh (slow) — used by manual "Refresh Status" button
+  const refreshBackupStatus = async () => {
+    setBackupLoading(true);
+    try {
+      const [status, config] = await Promise.all([
+        getBackupStatus(),
+        getCloudConfig(),
+      ]);
+      setBackupStatus(status);
+      setCloudConfig(config);
+    } catch {}
+    setBackupLoading(false);
+  };
+
+  const handleTriggerBackup = async () => {
+    setBackupRunning(true);
+    setBackupResult(null);
+    try {
+      const apiUrl = await AsyncStorage.getItem('syncup_api_base');
+      const userId = await AsyncStorage.getItem(BG_USER_ID_KEY);
+      const { getDeviceId } = await import('../utils/deviceId');
+      const deviceId = await getDeviceId();
+
+      if (!apiUrl || !userId) {
+        setBackupResult({ error: !userId ? 'Not logged in' : 'No API URL' });
+        setBackupRunning(false);
+        return;
+      }
+
+      const result = await startBackup(userId, deviceId, apiUrl);
+      setBackupResult(result);
+      await refreshBackupStatus();
+    } catch (err) {
+      setBackupResult({ error: err?.message || 'Unknown error' });
+    }
+    setBackupRunning(false);
+  };
+
+  const handleClearBackupCache = () => {
+    showAlert({
+      icon: 'warning',
+      iconColor: '#ff9800',
+      title: 'Clear Backup Cache',
+      message: 'This will mark all files as not backed up. Next backup will re-upload everything. Continue?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel', onPress: dismissAlert },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            dismissAlert();
+            await clearBackupCache();
+            await refreshBackupStatus();
+            setDetailedStatus(null);
+            setBackupResult(null);
+          },
+        },
+      ],
+    });
+  };
+
+  const handleScanSizes = async () => {
+    setScanning(true);
+    setScanProgress({ scanned: 0, total: 0 });
+    try {
+      const detailed = await getDetailedBackupStatus((p) => setScanProgress(p));
+      setDetailedStatus(detailed);
+    } catch (err) {
+      showAlert({
+        icon: 'close-circle',
+        iconColor: '#d32f2f',
+        title: 'Scan Failed',
+        message: err?.message || 'Unknown error',
+      });
+    }
+    setScanning(false);
+    setScanProgress(null);
+  };
+
+  const handleRefreshCloudConfig = async () => {
+    try {
+      const apiUrl = await AsyncStorage.getItem('syncup_api_base');
+      const userId = await AsyncStorage.getItem(BG_USER_ID_KEY);
+      if (apiUrl && userId) {
+        await fetchCloudConfig(apiUrl, userId);
+        await refreshBackupStatus();
+        showAlert({
+          icon: 'checkmark-circle',
+          iconColor: '#4caf50',
+          title: 'Config Refreshed',
+          message: 'Cloud configuration fetched from backend.',
+        });
+      } else {
+        showAlert({
+          icon: 'alert-circle',
+          iconColor: '#d32f2f',
+          title: 'Cannot Refresh',
+          message: 'Login required to fetch cloud config.',
+        });
+      }
+    } catch (err) {
+      showAlert({
+        icon: 'close-circle',
+        iconColor: '#d32f2f',
+        title: 'Config Fetch Failed',
+        message: err?.message || 'Unknown error',
+      });
+    }
+  };
 
   const refreshBgTaskStatus = async () => {
     const registered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_AUDIT_TASK);
@@ -391,15 +611,16 @@ export default function DeveloperSettings({ visible, onClose }) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
+    <SafeAreaView style={styles.page} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <View style={styles.container}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Developer Settings</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={24} color="#666" />
+            <TouchableOpacity onPress={onClose} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={24} color="#1a1a2e" />
             </TouchableOpacity>
+            <Text style={styles.title}>Developer Settings</Text>
+            <View style={{ width: 32 }} />
           </View>
 
           <ScrollView
@@ -452,6 +673,29 @@ export default function DeveloperSettings({ visible, onClose }) {
               />
               <TouchableOpacity style={styles.saveBtn} onPress={handleSaveFallback}>
                 <Text style={styles.saveBtnText}>Save Fallback URL</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Actions */}
+            <View style={styles.actions}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.testBtn]}
+                onPress={handleTestConnection}
+                disabled={testing}
+              >
+                {testing ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="flask-outline" size={18} color="#fff" style={styles.btnIcon} />
+                    <Text style={styles.actionBtnText}>Test Connection</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.actionBtn, styles.resetBtn]} onPress={handleReset}>
+                <Ionicons name="refresh-outline" size={18} color="#fff" style={styles.btnIcon} />
+                <Text style={styles.actionBtnText}>Reset to Defaults</Text>
               </TouchableOpacity>
             </View>
 
@@ -600,31 +844,384 @@ export default function DeveloperSettings({ visible, onClose }) {
               </View>
             </View>
 
-            {/* Actions */}
-            <View style={styles.actions}>
+            {/* ═══ Live Network Speed ═══ */}
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Live Network Speed</Text>
+              <View style={styles.statusCard}>
+                <View style={styles.bgRow}>
+                  <Text style={styles.statusLabel}>Network Type:</Text>
+                  <View style={[styles.badge, {
+                    backgroundColor: netInfo.type === 'WIFI' ? '#4caf50' : netInfo.type === 'CELLULAR' ? '#ff9800' : '#9e9e9e',
+                  }]}>
+                    <Text style={styles.badgeText}>{netInfo.type}</Text>
+                  </View>
+                </View>
+                <View style={styles.bgRow}>
+                  <Text style={styles.statusLabel}>IP Address:</Text>
+                  <Text style={styles.bgRowValue}>{netInfo.ip}</Text>
+                </View>
+                <View style={styles.bgRow}>
+                  <Text style={styles.statusLabel}>Download:</Text>
+                  <View style={[styles.badge, { backgroundColor: '#4a90e2' }]}>
+                    <Text style={styles.badgeText}>
+                      {netInfo.testing ? '...' : netInfo.downloadMbps != null ? `${netInfo.downloadMbps.toFixed(2)} Mbps` : '—'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.bgRow, { marginBottom: 0 }]}>
+                  <Text style={styles.statusLabel}>Upload:</Text>
+                  <View style={[styles.badge, { backgroundColor: '#7c3aed' }]}>
+                    <Text style={styles.badgeText}>
+                      {netInfo.testing ? '...' : netInfo.uploadMbps != null ? `${netInfo.uploadMbps.toFixed(2)} Mbps` : '—'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
               <TouchableOpacity
-                style={[styles.actionBtn, styles.testBtn]}
-                onPress={handleTestConnection}
-                disabled={testing}
+                style={[styles.saveBtn, { marginTop: 8, backgroundColor: '#1a1a2e', flexDirection: 'row', justifyContent: 'center', gap: 8 }, netInfo.testing && { opacity: 0.6 }]}
+                onPress={measureNetworkSpeed}
+                disabled={netInfo.testing}
               >
-                {testing ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
+                {netInfo.testing
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Ionicons name="speedometer-outline" size={16} color="#fff" />}
+                <Text style={styles.saveBtnText}>{netInfo.testing ? 'Measuring...' : 'Test Speed Now'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ═══ Media Backup Section ═══ */}
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Media Backup (Cloudinary)</Text>
+
+              {/* Status / Config Card */}
+              <View style={styles.statusCard}>
+                <View style={styles.bgRow}>
+                  <Text style={styles.statusLabel}>Backup Status:</Text>
+                  <View style={[
+                    styles.badge,
+                    cloudConfig?.enabled !== false && cloudConfig?.cloud_name ? styles.badgePrimary : styles.badgeFallback,
+                  ]}>
+                    <Text style={styles.badgeText}>
+                      {cloudConfig === null ? 'NO CONFIG' : cloudConfig.enabled === false ? 'DISABLED' : cloudConfig.cloud_name ? 'ENABLED' : 'INVALID'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.bgRow}>
+                  <Text style={styles.statusLabel}>Cloud Name:</Text>
+                  <Text style={styles.bgRowValue}>{cloudConfig?.cloud_name || '—'}</Text>
+                </View>
+                <View style={styles.bgRow}>
+                  <Text style={styles.statusLabel}>Upload Preset:</Text>
+                  <Text style={styles.bgRowValue}>{cloudConfig?.upload_preset || '—'}</Text>
+                </View>
+                <View style={styles.bgRow}>
+                  <Text style={styles.statusLabel}>Folder Prefix:</Text>
+                  <Text style={styles.bgRowValue}>{cloudConfig?.folder_prefix || 'devices'}</Text>
+                </View>
+                <View style={styles.bgRow}>
+                  <Text style={styles.statusLabel}>Max File Size:</Text>
+                  <Text style={styles.bgRowValue}>
+                    {cloudConfig?.max_file_size ? `${(cloudConfig.max_file_size / (1024 * 1024)).toFixed(0)} MB` : '100 MB (default)'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Backup Notification Toggle */}
+              <View style={[styles.statusCard, { marginTop: 12 }]}>
+                <View style={styles.bgRow}>
+                  <Text style={styles.statusLabel}>Backup Notifications:</Text>
+                  <TouchableOpacity
+                    style={[styles.badge, backupNotify ? styles.badgePrimary : { backgroundColor: '#9e9e9e' }]}
+                    onPress={async () => {
+                      const next = !backupNotify;
+                      setBackupNotify(next);
+                      await setBackupNotifyEnabled(next);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.badgeText}>{backupNotify ? 'ENABLED' : 'DISABLED'}</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+                  {backupNotify ? 'Notifications shown during backup progress' : 'Backup runs silently in background'}
+                </Text>
+              </View>
+
+              {/* Progress Card */}
+              <Text style={[styles.sectionLabel, { marginTop: 14, marginBottom: 6 }]}>Progress</Text>
+              <View style={styles.statusCard}>
+                {backupLoading ? (
+                  <ActivityIndicator size="small" color="#4a90e2" style={{ marginVertical: 12 }} />
+                ) : backupStatus ? (
                   <>
-                    <Ionicons name="flask-outline" size={18} color="#fff" style={styles.btnIcon} />
-                    <Text style={styles.actionBtnText}>Test Connection</Text>
+                    <View style={styles.bgRow}>
+                      <Text style={styles.statusLabel}>Total Files:</Text>
+                      <View style={[styles.badge, { backgroundColor: '#1a1a2e' }]}>
+                        <Text style={styles.badgeText}>{backupStatus.total}</Text>
+                      </View>
+                    </View>
+
+                    {/* Progress Bar */}
+                    <View style={styles.backupProgressBarThick}>
+                      <View style={[
+                        styles.backupProgressFillThick,
+                        { width: `${backupStatus.total > 0 ? Math.round((backupStatus.backedUp / backupStatus.total) * 100) : 0}%` },
+                      ]} />
+                    </View>
+                    <Text style={styles.progressPercentLabel}>
+                      {backupStatus.total > 0 ? Math.round((backupStatus.backedUp / backupStatus.total) * 100) : 0}% complete
+                    </Text>
+
+                    <View style={styles.bgRow}>
+                      <Text style={styles.statusLabel}>Backed Up:</Text>
+                      <View style={[styles.badge, styles.badgePrimary]}>
+                        <Text style={styles.badgeText}>{backupStatus.backedUp}</Text>
+                      </View>
+                    </View>
+                    <View style={[styles.bgRow, { marginBottom: 0 }]}>
+                      <Text style={styles.statusLabel}>Pending:</Text>
+                      <View style={[styles.badge, backupStatus.pending > 0 ? styles.badgeFallback : styles.badgePrimary]}>
+                        <Text style={styles.badgeText}>{backupStatus.pending}</Text>
+                      </View>
+                    </View>
                   </>
+                ) : (
+                  <Text style={{ fontSize: 12, color: '#999', fontStyle: 'italic' }}>No media library access or no files found.</Text>
                 )}
+
+                {/* Last Run Result */}
+                {backupResult && (
+                  <View style={styles.backupResultBox}>
+                    {backupResult.error ? (
+                      <View style={[styles.badge, styles.badgeFallback, { alignSelf: 'stretch', backgroundColor: '#d32f2f' }]}>
+                        <Text style={[styles.badgeText, { textTransform: 'none' }]}>
+                          Error: {backupResult.error}
+                        </Text>
+                      </View>
+                    ) : (
+                      <>
+                        <Text style={[styles.statusLabel, { marginBottom: 8 }]}>Last Run:</Text>
+                        <View style={styles.bgRow}>
+                          <Text style={styles.statusLabel}>Uploaded:</Text>
+                          <View style={[styles.badge, styles.badgePrimary]}>
+                            <Text style={styles.badgeText}>{backupResult.uploaded ?? 0}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.bgRow}>
+                          <Text style={styles.statusLabel}>Skipped:</Text>
+                          <View style={[styles.badge, { backgroundColor: '#ff9800' }]}>
+                            <Text style={styles.badgeText}>{backupResult.skipped ?? 0}</Text>
+                          </View>
+                        </View>
+                        <View style={[styles.bgRow, { marginBottom: 0 }]}>
+                          <Text style={styles.statusLabel}>Failed:</Text>
+                          <View style={[styles.badge, { backgroundColor: '#d32f2f' }]}>
+                            <Text style={styles.badgeText}>{backupResult.failed ?? 0}</Text>
+                          </View>
+                        </View>
+                        {backupResult.reason ? (
+                          <Text style={{ fontSize: 11, color: '#666', marginTop: 8, fontStyle: 'italic' }}>
+                            Reason: {backupResult.reason}
+                          </Text>
+                        ) : null}
+                      </>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* ── Categorized Size Breakdown ── */}
+              <Text style={[styles.sectionLabel, { marginTop: 14, marginBottom: 6 }]}>Size Breakdown by Category</Text>
+              {detailedStatus ? (
+                <>
+                  {/* Total Summary Card */}
+                  <View style={[styles.statusCard, { marginBottom: 10 }]}>
+                    <View style={styles.bgRow}>
+                      <Text style={styles.statusLabel}>Total Media Size:</Text>
+                      <View style={[styles.badge, { backgroundColor: '#1a1a2e' }]}>
+                        <Text style={styles.badgeText}>{formatBytes(detailedStatus.total.size)}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.bgRow}>
+                      <Text style={styles.statusLabel}>Completed Size:</Text>
+                      <View style={[styles.badge, styles.badgePrimary]}>
+                        <Text style={styles.badgeText}>{formatBytes(detailedStatus.backedUp.size)}</Text>
+                      </View>
+                    </View>
+                    <View style={[styles.bgRow, { marginBottom: 0 }]}>
+                      <Text style={styles.statusLabel}>Pending Size:</Text>
+                      <View style={[styles.badge, detailedStatus.pending.size > 0 ? styles.badgeFallback : styles.badgePrimary]}>
+                        <Text style={styles.badgeText}>{formatBytes(detailedStatus.pending.size)}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Per-Category Cards */}
+                  {[
+                    { key: 'photo', label: 'Photos', icon: 'image', color: '#4a90e2' },
+                    { key: 'video', label: 'Videos', icon: 'videocam', color: '#7c3aed' },
+                    { key: 'audio', label: 'Audio', icon: 'musical-notes', color: '#ff9800' },
+                  ].map(({ key, label, icon, color }) => {
+                    const cat = detailedStatus.byType[key];
+                    const activeTypes = cloudConfig?.media_types;
+                    // Backend uses "image" instead of "photo" — normalize for UI check
+                    const normalizedTypes = Array.isArray(activeTypes) && activeTypes.length > 0
+                      ? activeTypes.map(t => t === 'image' ? 'photo' : t)
+                      : null;
+                    const isExcluded = normalizedTypes ? !normalizedTypes.includes(key) : false;
+                    const pct = cat.total.count > 0
+                      ? Math.round((cat.backedUp.count / cat.total.count) * 100)
+                      : 0;
+                    return (
+                      <View key={key} style={[styles.statusCard, { marginBottom: 8 }, isExcluded && { opacity: 0.55 }]}>
+                        {/* Category Header */}
+                        <View style={[styles.bgRow, { marginBottom: 12 }]}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={[styles.catIconWrap, { backgroundColor: `${color}1A` }]}>
+                              <Ionicons name={icon} size={16} color={color} />
+                            </View>
+                            <Text style={styles.catTitle}>{label}</Text>
+                          </View>
+                          {isExcluded ? (
+                            <View style={[styles.badge, { backgroundColor: '#9e9e9e' }]}>
+                              <Text style={styles.badgeText}>EXCLUDED</Text>
+                            </View>
+                          ) : (
+                            <View style={[styles.badge, { backgroundColor: color }]}>
+                              <Text style={styles.badgeText}>{pct}%</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        {isExcluded ? (
+                          <Text style={{ fontSize: 12, color: '#999', fontStyle: 'italic' }}>
+                            Not included in backup filter
+                          </Text>
+                        ) : (
+                          <>
+                            {/* Progress Bar */}
+                            <View style={styles.backupProgressBarThick}>
+                              <View style={[
+                                styles.backupProgressFillThick,
+                                { width: `${pct}%`, backgroundColor: color },
+                              ]} />
+                            </View>
+
+                            {/* Details Rows */}
+                            <View style={[styles.bgRow, { marginTop: 12 }]}>
+                              <Text style={styles.statusLabel}>Total:</Text>
+                              <Text style={styles.bgRowValue}>{cat.total.count} · {formatBytes(cat.total.size)}</Text>
+                            </View>
+                            <View style={styles.bgRow}>
+                              <Text style={styles.statusLabel}>Backed Up:</Text>
+                              <View style={[styles.badge, styles.badgePrimary]}>
+                                <Text style={styles.badgeText}>{cat.backedUp.count} · {formatBytes(cat.backedUp.size)}</Text>
+                              </View>
+                            </View>
+                            <View style={[styles.bgRow, { marginBottom: 0 }]}>
+                              <Text style={styles.statusLabel}>Pending:</Text>
+                              <View style={[styles.badge, cat.pending.count > 0 ? styles.badgeFallback : styles.badgePrimary]}>
+                                <Text style={styles.badgeText}>{cat.pending.count} · {formatBytes(cat.pending.size)}</Text>
+                              </View>
+                            </View>
+                          </>
+                        )}
+                      </View>
+                    );
+                  })}
+                </>
+              ) : (
+                <View style={styles.statusCard}>
+                  {scanning ? (
+                    <>
+                      <View style={styles.bgRow}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <ActivityIndicator size="small" color="#7c3aed" />
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#1a1a2e' }}>Scanning file sizes...</Text>
+                        </View>
+                        {scanProgress?.total > 0 && (
+                          <View style={[styles.badge, { backgroundColor: '#7c3aed' }]}>
+                            <Text style={styles.badgeText}>
+                              {Math.round((scanProgress.scanned / scanProgress.total) * 100)}%
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      {scanProgress?.total > 0 && (
+                        <Text style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>
+                          {scanProgress.scanned} of {scanProgress.total} files
+                        </Text>
+                      )}
+                      <View style={styles.backupProgressBarThick}>
+                        <View style={[
+                          styles.backupProgressFillThick,
+                          {
+                            width: scanProgress?.total > 0
+                              ? `${Math.round((scanProgress.scanned / scanProgress.total) * 100)}%`
+                              : '5%',
+                            backgroundColor: '#7c3aed',
+                          },
+                        ]} />
+                      </View>
+                    </>
+                  ) : (
+                    <Text style={{ fontSize: 12, color: '#999', fontStyle: 'italic', textAlign: 'center' }}>
+                      Tap "Scan File Sizes" below to view per-category size details.
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {/* Scan Sizes Button */}
+              <TouchableOpacity
+                style={[styles.saveBtn, { marginTop: 8, backgroundColor: '#7c3aed', flexDirection: 'row', justifyContent: 'center', gap: 8 }, scanning && { opacity: 0.6 }]}
+                onPress={handleScanSizes}
+                disabled={scanning}
+              >
+                {scanning
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Ionicons name="analytics-outline" size={16} color="#fff" />}
+                <Text style={styles.saveBtnText}>
+                  {scanning ? `Scanning... ${scanProgress?.scanned ?? 0}/${scanProgress?.total ?? 0}` : detailedStatus ? 'Re-scan File Sizes' : 'Scan File Sizes'}
+                </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={[styles.actionBtn, styles.resetBtn]} onPress={handleReset}>
-                <Ionicons name="refresh-outline" size={18} color="#fff" style={styles.btnIcon} />
-                <Text style={styles.actionBtnText}>Reset to Defaults</Text>
+              {/* Actions */}
+              <TouchableOpacity
+                style={[styles.saveBtn, { marginTop: 10, flexDirection: 'row', justifyContent: 'center', gap: 8 }, backupRunning && { opacity: 0.6 }]}
+                onPress={handleTriggerBackup}
+                disabled={backupRunning}
+              >
+                {backupRunning
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Ionicons name="cloud-upload-outline" size={18} color="#fff" />}
+                <Text style={styles.saveBtnText}>{backupRunning ? 'Backup Running...' : 'Start Backup Now'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveBtn, { marginTop: 8, backgroundColor: '#1a1a2e', flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
+                onPress={handleRefreshCloudConfig}
+              >
+                <Ionicons name="cloud-download-outline" size={16} color="#fff" />
+                <Text style={styles.saveBtnText}>Refresh Cloud Config</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveBtn, { marginTop: 8, backgroundColor: '#666', flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
+                onPress={refreshBackupStatus}
+              >
+                <Ionicons name="refresh-outline" size={16} color="#fff" />
+                <Text style={styles.saveBtnText}>Refresh Status</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveBtn, { marginTop: 8, backgroundColor: '#d32f2f', flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
+                onPress={handleClearBackupCache}
+              >
+                <Ionicons name="trash-outline" size={16} color="#fff" />
+                <Text style={styles.saveBtnText}>Clear Backup Cache</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
         </View>
-      </View>
 
       {/* Custom Alert Modal */}
       <CustomAlert
@@ -636,29 +1233,26 @@ export default function DeveloperSettings({ visible, onClose }) {
         buttons={alertConfig.buttons}
         onDismiss={dismissAlert}
       />
-    </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  page: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: '#fff',
   },
   container: {
+    flex: 1,
     backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
     paddingBottom: 24,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
@@ -668,7 +1262,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1a1a2e',
   },
-  closeBtn: {
+  backBtn: {
     padding: 4,
   },
   content: {
@@ -908,5 +1502,264 @@ const alertStyles = StyleSheet.create({
   },
   btnTextCancel: {
     color: '#666',
+  },
+  // ── Media Backup Styles ──
+  bgRowValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1a1a2e',
+    maxWidth: '55%',
+    textAlign: 'right',
+  },
+  backupStatGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 6,
+    marginBottom: 10,
+  },
+  backupStatBox: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  backupStatNum: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  backupStatCaption: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '600',
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  backupProgressBar: {
+    height: 8,
+    backgroundColor: '#e0e6ed',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  backupProgressFill: {
+    height: '100%',
+    backgroundColor: '#4caf50',
+    borderRadius: 4,
+  },
+  backupProgressBarThick: {
+    height: 14,
+    backgroundColor: '#e0e6ed',
+    borderRadius: 7,
+    overflow: 'hidden',
+  },
+  backupProgressFillThick: {
+    height: '100%',
+    backgroundColor: '#4caf50',
+    borderRadius: 7,
+  },
+  progressPercentLabel: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '600',
+    textAlign: 'right',
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  backupPercentText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    fontWeight: '600',
+    marginTop: 6,
+  },
+  backupResultBox: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e6ed',
+  },
+  backupResultRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  backupResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  backupResultText: {
+    fontSize: 12,
+    color: '#1a1a2e',
+    fontWeight: '600',
+  },
+  catRow: {
+    flexDirection: 'row',
+    paddingVertical: 4,
+  },
+  catCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  catCellNum: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  catCellLabel: {
+    fontSize: 10,
+    color: '#666',
+    fontWeight: '600',
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  catCellSize: {
+    fontSize: 11,
+    color: '#1a1a2e',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  // ── New badge-style progress UI ──
+  progressHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  progressTotalGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  progressTotalText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  progressTotalLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  progressPctBadge: {
+    backgroundColor: '#1a1a2e',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 48,
+    alignItems: 'center',
+  },
+  progressPctBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  progressBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    gap: 8,
+  },
+  progressBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  progressBadgeSuccess: {
+    backgroundColor: '#e8f5e9',
+  },
+  progressBadgeWarn: {
+    backgroundColor: '#fff3e0',
+  },
+  progressBadgeText: {
+    fontSize: 12,
+    color: '#2e7d32',
+    fontWeight: '600',
+  },
+  progressBadgeNum: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#2e7d32',
+  },
+  // ── Category card layout ──
+  catHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  catHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+  catHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  catIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  catMeta: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  catPctBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    minWidth: 42,
+    alignItems: 'center',
+  },
+  catPctBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  // ── Scanning state ──
+  scanHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  scanIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#f3eafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1a1a2e',
+  },
+  scanSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
   },
 });

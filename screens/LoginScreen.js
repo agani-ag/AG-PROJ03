@@ -244,10 +244,12 @@ export default function LoginScreen({ onLoginSuccess }) {
         onSuccess={handlePinSuccess}
       />
 
-      <DeveloperSettings
-        visible={showDeveloperSettings}
-        onClose={() => setShowDeveloperSettings(false)}
-      />
+      {showDeveloperSettings ? (
+        <DeveloperSettings
+          onClose={() => setShowDeveloperSettings(false)}
+        />
+      ) : (
+      <>
 
       <View style={styles.header}>
         <TouchableOpacity onPress={handleAppNamePress} activeOpacity={1}>
@@ -359,6 +361,8 @@ export default function LoginScreen({ onLoginSuccess }) {
       {/* {deviceId ? (
         <Text style={styles.deviceIdText}>Device: {deviceId.substring(0, 16)}…</Text>
       ) : null} */}
+      </>
+      )}
     </KeyboardAvoidingView>
   );
 }
