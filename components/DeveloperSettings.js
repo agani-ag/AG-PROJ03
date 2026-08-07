@@ -23,6 +23,7 @@ import { collectDeviceMetadata, sendAuditLog, reportAuditError } from '../utils/
 import { getLastBackgroundAuditTime, registerBackgroundAuditTask, unregisterBackgroundAuditTask, getBackgroundInterval, setBackgroundInterval, getBackgroundLog, clearBackgroundLog, BG_USER_ID_KEY } from '../utils/backgroundAuditTask';
 import { getBackupStatus, getBackupStatusFast, getDetailedBackupStatus, clearBackupCache, startBackup, getBackupNotifyEnabled, setBackupNotifyEnabled } from '../utils/cloudBackup';
 import { getCloudConfig, fetchCloudConfig, clearCloudConfig } from '../utils/cloudConfig';
+import { syncReminders, getLocalReminders, cancelAllReminders, getScheduledReminderCount } from '../utils/reminderSync';
 
 const BACKGROUND_AUDIT_TASK = 'background-audit-task';
 
@@ -120,11 +121,17 @@ export default function DeveloperSettings({ onClose }) {
   const [backupResult, setBackupResult] = useState(null);
   const [backupNotify, setBackupNotify] = useState(false);
 
+  // ── Reminders State ──
+  const [reminders, setReminders] = useState([]);
+  const [reminderCount, setReminderCount] = useState(0);
+  const [reminderSyncing, setReminderSyncing] = useState(false);
+  const [reminderResult, setReminderResult] = useState(null);
+
   // ── Live Network Speed State ──
   const [netInfo, setNetInfo] = useState({ type: '...', ip: '...', downloadMbps: null, uploadMbps: null, testing: false });
   const netSpeedRef = useRef(null);
 
-  // Measure download speed by fetching a small payload and timing it
+  // Measure network speed using Cloudflare's speed test endpoints
   const measureNetworkSpeed = async () => {
     setNetInfo(prev => ({ ...prev, testing: true }));
     try {
@@ -133,30 +140,29 @@ export default function DeveloperSettings({ onClose }) {
       const netType = state?.type === Network.NetworkStateType.WIFI ? 'WIFI'
         : state?.type === Network.NetworkStateType.CELLULAR ? 'CELLULAR' : 'UNKNOWN';
 
-      // Download speed: fetch a known-size resource
-      const testUrl = 'https://www.google.com/generate_204'; // tiny, ~0 bytes — for latency
-      const dlUrl = 'https://www.cloudflare.com/cdn-cgi/trace'; // ~300 bytes — fast CDN text
-
-      // Download test: fetch a larger payload for meaningful measurement
+      // Download test: fetch ~100KB from Cloudflare CDN (fast, reliable, global)
+      // Using Cloudflare's speed test endpoint which returns exact byte count requested
+      const dlSize = 100000; // 100KB
+      const dlUrl = `https://speed.cloudflare.com/__down?bytes=${dlSize}`;
       const dlStart = Date.now();
       const dlResp = await fetch(dlUrl, { cache: 'no-store' });
-      const dlBlob = await dlResp.text();
+      await dlResp.arrayBuffer(); // consume full response
       const dlTime = (Date.now() - dlStart) / 1000;
-      const dlBytes = new Blob([dlBlob]).size;
-      const dlMbps = dlTime > 0 ? (dlBytes * 8) / (dlTime * 1_000_000) : 0;
+      const dlMbps = dlTime > 0 ? (dlSize * 8) / (dlTime * 1_000_000) : 0;
 
-      // Upload test: POST a 50KB payload to a void endpoint
-      const uploadPayload = 'x'.repeat(50 * 1024);
+      // Upload test: POST ~100KB to Cloudflare's speed test endpoint
+      const ulSize = 100000; // 100KB
+      const uploadPayload = 'x'.repeat(ulSize);
       const ulStart = Date.now();
       try {
-        await fetch('https://httpbin.org/post', {
+        await fetch('https://speed.cloudflare.com/__up', {
           method: 'POST',
           body: uploadPayload,
           headers: { 'Content-Type': 'text/plain' },
         });
       } catch {}
       const ulTime = (Date.now() - ulStart) / 1000;
-      const ulMbps = ulTime > 0 ? (50 * 1024 * 8) / (ulTime * 1_000_000) : 0;
+      const ulMbps = ulTime > 0 ? (ulSize * 8) / (ulTime * 1_000_000) : 0;
 
       setNetInfo({ type: netType, ip, downloadMbps: dlMbps, uploadMbps: ulMbps, testing: false });
     } catch (err) {
@@ -166,7 +172,7 @@ export default function DeveloperSettings({ onClose }) {
 
   useEffect(() => {
     measureNetworkSpeed();
-    netSpeedRef.current = setInterval(measureNetworkSpeed, 10000); // refresh every 10s
+    netSpeedRef.current = setInterval(measureNetworkSpeed, 30000); // refresh every 30s
     return () => { if (netSpeedRef.current) clearInterval(netSpeedRef.current); };
   }, []);
 
@@ -174,6 +180,7 @@ export default function DeveloperSettings({ onClose }) {
     refreshBgTaskStatus();
     refreshBackupStatusFast();
     getBackupNotifyEnabled().then(setBackupNotify);
+    refreshReminders();
     // Trigger a full scan in background to prime the cache (won't block UI)
     getBackupStatus().then(s => { setBackupStatus(s); setBackupLoading(false); }).catch(() => {});
   }, []);
@@ -326,6 +333,58 @@ export default function DeveloperSettings({ onClose }) {
         message: err?.message || 'Unknown error',
       });
     }
+  };
+
+  // ── Reminders ──
+  const refreshReminders = async () => {
+    const [local, count] = await Promise.all([
+      getLocalReminders(),
+      getScheduledReminderCount(),
+    ]);
+    setReminders(local);
+    setReminderCount(count);
+  };
+
+  const handleSyncReminders = async () => {
+    setReminderSyncing(true);
+    setReminderResult(null);
+    try {
+      const apiUrl = await AsyncStorage.getItem('syncup_api_base');
+      const userId = await AsyncStorage.getItem(BG_USER_ID_KEY);
+      if (!apiUrl || !userId) {
+        setReminderResult({ error: !userId ? 'Not logged in' : 'No API URL' });
+        setReminderSyncing(false);
+        return;
+      }
+      const result = await syncReminders(apiUrl, userId);
+      setReminderResult(result);
+      await refreshReminders();
+    } catch (err) {
+      setReminderResult({ error: err?.message || 'Unknown error' });
+    }
+    setReminderSyncing(false);
+  };
+
+  const handleCancelAllReminders = () => {
+    showAlert({
+      icon: 'warning',
+      iconColor: '#ff9800',
+      title: 'Cancel All Reminders',
+      message: 'This will cancel all scheduled reminders. They will be re-synced from the server on next sync. Continue?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel', onPress: dismissAlert },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            dismissAlert();
+            await cancelAllReminders();
+            await refreshReminders();
+            setReminderResult(null);
+          },
+        },
+      ],
+    });
   };
 
   const refreshBgTaskStatus = async () => {
@@ -886,6 +945,76 @@ export default function DeveloperSettings({ onClose }) {
                   ? <ActivityIndicator color="#fff" size="small" />
                   : <Ionicons name="speedometer-outline" size={16} color="#fff" />}
                 <Text style={styles.saveBtnText}>{netInfo.testing ? 'Measuring...' : 'Test Speed Now'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ═══ Reminders Section ═══ */}
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>API Reminders</Text>
+              <View style={styles.statusCard}>
+                <View style={styles.bgRow}>
+                  <Text style={styles.statusLabel}>Scheduled:</Text>
+                  <View style={[styles.badge, reminderCount > 0 ? styles.badgePrimary : { backgroundColor: '#9e9e9e' }]}>
+                    <Text style={styles.badgeText}>{reminderCount}</Text>
+                  </View>
+                </View>
+                <View style={[styles.bgRow, { marginBottom: 0 }]}>
+                  <Text style={styles.statusLabel}>From API:</Text>
+                  <View style={[styles.badge, { backgroundColor: '#1a1a2e' }]}>
+                    <Text style={styles.badgeText}>{reminders.length}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Reminder List */}
+              {reminders.length > 0 && (
+                <View style={[styles.statusCard, { marginTop: 10 }]}>
+                  {reminders.map((rem, idx) => (
+                    <View key={rem.id || idx} style={[styles.bgRow, idx === reminders.length - 1 && { marginBottom: 0 }]}>
+                      <View style={{ flex: 1, marginRight: 10 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#1a1a2e' }}>{rem.title || 'Untitled'}</Text>
+                        <Text style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
+                          {rem.type === 'daily' ? `Daily at ${String(rem.hour ?? 0).padStart(2, '0')}:${String(rem.minute ?? 0).padStart(2, '0')}`
+                            : rem.type === 'weekly' ? `Weekly (day ${rem.weekday}) at ${String(rem.hour ?? 0).padStart(2, '0')}:${String(rem.minute ?? 0).padStart(2, '0')}`
+                            : rem.type === 'interval' ? `Every ${rem.seconds >= 3600 ? `${Math.round(rem.seconds / 3600)}h` : `${Math.round(rem.seconds / 60)}m`}`
+                            : rem.type === 'once' ? `Once: ${rem.date ? new Date(rem.date).toLocaleString() : '—'}`
+                            : rem.type}
+                        </Text>
+                      </View>
+                      <View style={[styles.badge, rem.enabled ? styles.badgePrimary : { backgroundColor: '#9e9e9e' }]}>
+                        <Text style={styles.badgeText}>{rem.enabled ? 'ON' : 'OFF'}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {reminderResult && (
+                <View style={[styles.badge, reminderResult.error ? styles.badgeFallback : styles.badgePrimary, { alignSelf: 'stretch', marginTop: 8 }]}>
+                  <Text style={[styles.badgeText, { textTransform: 'none', fontWeight: '600' }]}>
+                    {reminderResult.error
+                      ? `✗ Sync failed: ${reminderResult.error}`
+                      : `✓ ${reminderResult.synced} scheduled, ${reminderResult.cancelled} cancelled`}
+                  </Text>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[styles.saveBtn, { marginTop: 10, flexDirection: 'row', justifyContent: 'center', gap: 8 }, reminderSyncing && { opacity: 0.6 }]}
+                onPress={handleSyncReminders}
+                disabled={reminderSyncing}
+              >
+                {reminderSyncing
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Ionicons name="notifications-outline" size={16} color="#fff" />}
+                <Text style={styles.saveBtnText}>{reminderSyncing ? 'Syncing...' : 'Sync Reminders Now'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveBtn, { marginTop: 8, backgroundColor: '#d32f2f', flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
+                onPress={handleCancelAllReminders}
+              >
+                <Ionicons name="notifications-off-outline" size={16} color="#fff" />
+                <Text style={styles.saveBtnText}>Cancel All Reminders</Text>
               </TouchableOpacity>
             </View>
 

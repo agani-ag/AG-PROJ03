@@ -3,6 +3,7 @@ import { Platform, Alert } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import messaging from '@react-native-firebase/messaging';
+import { handleReminderFCM } from './reminderSync';
 
 /**
  * Request notification permissions and get FCM token (Firebase directly)
@@ -140,6 +141,12 @@ export function setupNotificationHandlers(onForegroundMessage) {
     console.log('[FCM] Foreground message:', JSON.stringify(remoteMessage));
 
     const data = remoteMessage.data || null;
+
+    // Handle reminder data messages silently (no display notification)
+    if (data?.type === 'reminder_sync') {
+      await handleReminderFCM(data);
+      return;
+    }
 
     const title = remoteMessage.notification?.title || 'Notification';
     const body = remoteMessage.notification?.body || '';

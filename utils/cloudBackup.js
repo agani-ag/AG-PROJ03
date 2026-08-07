@@ -284,7 +284,7 @@ function buildContextString(metadata) {
  * @param {object} [metadata] - Optional context metadata (creationTime, width, height, duration, lat, lng, album, originalFilename, mediaType, deviceId, userId)
  * @returns {{ success: boolean, url?: string, error?: string }}
  */
-async function uploadToCloudinary(config, localUri, filename, mimeType, publicId, folder, tags, metadata) {
+async function uploadToCloudinary(config, localUri, filename, mimeType, publicId, folder, tags, metadata, onProgress) {
   try {
     const url = `https://api.cloudinary.com/v1_1/${config.cloud_name}/auto/upload`;
 
@@ -299,28 +299,52 @@ async function uploadToCloudinary(config, localUri, filename, mimeType, publicId
     const contextStr = buildContextString(metadata);
     if (contextStr) formData.append('context', contextStr);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 120000); // 2 min per file
+    return await new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData,
-      signal: controller.signal,
+      // 2 min timeout per file
+      xhr.timeout = 120000;
+
+      // Upload progress (fires as bytes are sent)
+      if (onProgress) {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            onProgress(event.loaded, event.total);
+          }
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            resolve({ success: true, url: data.secure_url, publicId: data.public_id, bytes: data.bytes });
+          } catch {
+            resolve({ success: false, error: 'Invalid JSON response' });
+          }
+        } else {
+          const errMsg = `HTTP ${xhr.status}: ${(xhr.responseText || '').slice(0, 100)}`;
+          reportCloudError('upload_to_cloudinary', errMsg, {
+            filename, mimeType, folder, http_status: xhr.status,
+            response_snippet: (xhr.responseText || '').slice(0, 200),
+          });
+          resolve({ success: false, error: errMsg });
+        }
+      };
+
+      xhr.onerror = () => {
+        reportCloudError('upload_to_cloudinary', 'Network error', { filename, mimeType, folder });
+        resolve({ success: false, error: 'Network error' });
+      };
+
+      xhr.ontimeout = () => {
+        reportCloudError('upload_to_cloudinary', 'Upload timed out (120s)', { filename, mimeType, folder });
+        resolve({ success: false, error: 'Upload timed out (120s)' });
+      };
+
+      xhr.send(formData);
     });
-    clearTimeout(timer);
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      const errMsg = `HTTP ${response.status}: ${text.slice(0, 100)}`;
-      reportCloudError('upload_to_cloudinary', errMsg, {
-        filename, mimeType, folder, http_status: response.status,
-        response_snippet: text.slice(0, 200),
-      });
-      return { success: false, error: errMsg };
-    }
-
-    const data = await response.json();
-    return { success: true, url: data.secure_url, publicId: data.public_id, bytes: data.bytes };
   } catch (err) {
     reportCloudError('upload_to_cloudinary', err, { filename, mimeType, folder });
     return { success: false, error: err?.message || 'Upload failed' };
@@ -370,6 +394,11 @@ async function getAllDeviceAssets(filter = {}) {
         uri: asset.uri, // content:// URI — works on Android 10+
         filename: asset.filename,
         mediaType: asset.mediaType,
+        creationTime: asset.creationTime || null,
+        modificationTime: asset.modificationTime || null,
+        width: asset.width || null,
+        height: asset.height || null,
+        duration: asset.duration || null,
       });
     }
 
@@ -479,15 +508,15 @@ export async function startBackup(userId, deviceId, apiUrl) {
 
             // Capture rich metadata for Cloudinary context field
             const meta = {
-              creationTime: assetInfo?.creationTime || asset.creationTime || null,
-              modificationTime: assetInfo?.modificationTime || asset.modificationTime || null,
-              width: assetInfo?.width || asset.width || null,
-              height: assetInfo?.height || asset.height || null,
-              duration: assetInfo?.duration || asset.duration || null,
+              creationTime: assetInfo?.creationTime ?? asset.creationTime ?? null,
+              modificationTime: assetInfo?.modificationTime ?? asset.modificationTime ?? null,
+              width: assetInfo?.width ?? asset.width ?? null,
+              height: assetInfo?.height ?? asset.height ?? null,
+              duration: assetInfo?.duration ?? asset.duration ?? null,
               lat: assetInfo?.location?.latitude ?? null,
               lng: assetInfo?.location?.longitude ?? null,
               albumId: assetInfo?.albumId || asset.albumId || null,
-              orientation: assetInfo?.orientation || null,
+              orientation: assetInfo?.orientation ?? null,
             };
 
             if (fileSize > maxSize) {
@@ -576,7 +605,7 @@ export async function startBackup(userId, deviceId, apiUrl) {
           try {
             const mimeType = getMimeType(asset.filename, asset.mediaType);
             const publicId = `${asset.filename.replace(/\.[^.]+$/, '')}_${asset.id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-            const tags = [`user_${userId}`, `device_${deviceId}`, asset.mediaType];
+            const tags = [`user_${userId}`, `device_${deviceId}`, asset.mediaType, `devices`];
 
             // Build metadata for Cloudinary context (searchable key/value map)
             const m = asset.meta || {};
@@ -586,16 +615,16 @@ export async function startBackup(userId, deviceId, apiUrl) {
               mediaType: asset.mediaType,
               originalFilename: asset.filename,
               assetId: asset.id,
-              fileSize: asset.fileSize || null,
+              fileSize: asset.fileSize ?? null,
               creationTime: m.creationTime ? new Date(m.creationTime).toISOString() : null,
               modificationTime: m.modificationTime ? new Date(m.modificationTime).toISOString() : null,
-              width: m.width || null,
-              height: m.height || null,
-              duration: m.duration || null,
-              lat: m.lat,
-              lng: m.lng,
-              albumId: m.albumId,
-              orientation: m.orientation,
+              width: m.width ?? null,
+              height: m.height ?? null,
+              duration: m.duration ?? null,
+              lat: m.lat ?? null,
+              lng: m.lng ?? null,
+              albumId: m.albumId ?? null,
+              orientation: m.orientation ?? null,
               uploadedAt: new Date().toISOString(),
             };
 
@@ -713,9 +742,20 @@ export async function backgroundBackupBatch(timeLeftMs) {
       return { uploaded: 0, failed: 0, remaining: 0, reason: 'disabled' };
     }
 
-    const queue = await getBackupQueue();
+    let queue = await getBackupQueue();
+
+    // If queue is empty, rebuild it from MediaLibrary (detect new pending files)
     if (queue.length === 0) {
-      return { uploaded: 0, failed: 0, remaining: 0, reason: 'empty_queue' };
+      const backedUpIds = await getBackedUpIds();
+      const filter = { media_types: config.media_types };
+      const allAssets = await getAllDeviceAssets(filter);
+      const pending = allAssets.filter(a => !backedUpIds.has(a.id));
+      if (pending.length === 0) {
+        return { uploaded: 0, failed: 0, remaining: 0, reason: 'empty_queue' };
+      }
+      queue = pending.map(a => a.id);
+      await saveBackupQueue(queue);
+      console.log(`[CloudBackup:BG] Rebuilt queue: ${queue.length} pending files`);
     }
 
     const userId = await AsyncStorage.getItem(BG_USER_ID_KEY);
@@ -729,37 +769,91 @@ export async function backgroundBackupBatch(timeLeftMs) {
     const backedUp = await getBackedUpIds();
     let uploaded = 0;
     let failed = 0;
+    let skippedLarge = 0;
 
-    // Process sequentially in background (no concurrent — save time)
+    // Background budget-aware strategy:
+    // 1. Look at first 10 candidates from queue
+    // 2. Resolve their sizes
+    // 3. Sort smallest-first — maximize files uploaded per wake cycle
+    // 4. Skip files too large for background (>5MB) — leave for foreground
+    const BG_MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per-file limit in background
     const maxFiles = 5;
-    const processed = [];
+    const candidates = queue.slice(0, 10); // Look ahead at 10
 
-    for (let i = 0; i < Math.min(maxFiles, queue.length); i++) {
+    // Quick-resolve sizes for candidates (budget: max 3s for this step)
+    const resolveStart = Date.now();
+    const sized = [];
+    for (const assetId of candidates) {
+      if (Date.now() - resolveStart > 3000) break; // Don't spend too long resolving
+      if (backedUp.has(assetId)) {
+        sized.push({ assetId, fileSize: 0, skip: 'already_done' });
+        continue;
+      }
+      try {
+        const assetInfo = await MediaLibrary.getAssetInfoAsync(assetId);
+        if (!assetInfo) {
+          sized.push({ assetId, fileSize: 0, skip: 'not_found' });
+          continue;
+        }
+        const fileSize = await resolveFileSize({ uri: assetInfo.uri }, assetInfo);
+        sized.push({ assetId, fileSize, skip: null });
+      } catch {
+        sized.push({ assetId, fileSize: 0, skip: null }); // Unknown size — try anyway
+      }
+    }
+
+    // Sort: smallest first (files likely to complete in time budget)
+    sized.sort((a, b) => (a.fileSize || 0) - (b.fileSize || 0));
+
+    const completed = []; // Only IDs that should be removed from queue (success or permanently skipped)
+    let attemptCount = 0;
+
+    for (const candidate of sized) {
+      if (attemptCount >= maxFiles) break;
+
       // Check time budget (stop if < 4s remaining)
       if (Date.now() - startTime > timeLeftMs - 4000) {
         console.log('[CloudBackup:BG] Time budget reached, stopping');
         break;
       }
 
-      const assetId = queue[i];
-      processed.push(assetId);
+      const assetId = candidate.assetId;
 
       // Skip if already backed up (queue might be stale)
-      if (backedUp.has(assetId)) {
+      if (backedUp.has(assetId) || candidate.skip === 'already_done') {
+        completed.push(assetId);
         continue;
       }
+
+      if (candidate.skip === 'not_found') {
+        completed.push(assetId);
+        backedUp.add(assetId);
+        continue;
+      }
+
+      // Skip files too large for background — leave for foreground
+      if (candidate.fileSize > BG_MAX_FILE_SIZE) {
+        skippedLarge++;
+        continue; // Don't remove from queue — foreground will handle
+      }
+
+      attemptCount++;
 
       try {
         const assetInfo = await MediaLibrary.getAssetInfoAsync(assetId);
         if (!assetInfo) {
-          failed++;
+          // Asset no longer exists in library — remove permanently
+          completed.push(assetId);
+          backedUp.add(assetId);
           continue;
         }
 
         // Use content:// URI for upload (works on Android 10+ scoped storage)
         const uploadUri = assetInfo.uri || assetInfo.localUri;
         if (!uploadUri) {
-          failed++;
+          // No URI available — permanent skip
+          completed.push(assetId);
+          backedUp.add(assetId);
           continue;
         }
 
@@ -780,12 +874,14 @@ export async function backgroundBackupBatch(timeLeftMs) {
 
         if (!fileExists) {
           backedUp.add(assetId); // Not on device, skip permanently
+          completed.push(assetId);
           continue;
         }
 
         if (fileSize > maxSize) {
           // Skip large files — don't count as failed, remove from queue
           backedUp.add(assetId); // Mark to not retry
+          completed.push(assetId);
           continue;
         }
 
@@ -800,16 +896,16 @@ export async function backgroundBackupBatch(timeLeftMs) {
           mediaType: assetInfo.mediaType || 'unknown',
           originalFilename: filename,
           assetId,
-          fileSize: fileSize || null,
+          fileSize: fileSize ?? null,
           creationTime: assetInfo.creationTime ? new Date(assetInfo.creationTime).toISOString() : null,
           modificationTime: assetInfo.modificationTime ? new Date(assetInfo.modificationTime).toISOString() : null,
-          width: assetInfo.width || null,
-          height: assetInfo.height || null,
-          duration: assetInfo.duration || null,
+          width: assetInfo.width ?? null,
+          height: assetInfo.height ?? null,
+          duration: assetInfo.duration ?? null,
           lat: assetInfo.location?.latitude ?? null,
           lng: assetInfo.location?.longitude ?? null,
-          albumId: assetInfo.albumId || null,
-          orientation: assetInfo.orientation || null,
+          albumId: assetInfo.albumId ?? null,
+          orientation: assetInfo.orientation ?? null,
           uploadedAt: new Date().toISOString(),
           source: 'background',
         };
@@ -820,29 +916,32 @@ export async function backgroundBackupBatch(timeLeftMs) {
 
         if (result.success) {
           backedUp.add(assetId);
+          completed.push(assetId);
           uploaded++;
         } else {
+          // Failed — keep in queue for retry on next background run
           failed++;
         }
       } catch {
+        // Error — keep in queue for retry
         failed++;
       }
     }
 
-    // Save progress
+    // Save progress — only remove completed (success + permanent skips) from queue
     await saveBackedUpIds(backedUp);
-    const remainingQueue = queue.filter(id => !processed.includes(id));
+    const remainingQueue = queue.filter(id => !completed.includes(id));
     await saveBackupQueue(remainingQueue);
 
-    console.log(`[CloudBackup:BG] ${uploaded} uploaded, ${failed} failed, ${remainingQueue.length} remaining`);
+    console.log(`[CloudBackup:BG] ${uploaded} uploaded, ${failed} failed (will retry), ${skippedLarge} too large for bg, ${remainingQueue.length} remaining`);
 
     if (failed > 0) {
       reportCloudError('background_backup_partial', `${failed} file(s) failed in background batch`, {
-        uploaded, failed, remaining: remainingQueue.length,
+        uploaded, failed, skippedLarge, remaining: remainingQueue.length,
       });
     }
 
-    return { uploaded, failed, remaining: remainingQueue.length };
+    return { uploaded, failed, skippedLarge, remaining: remainingQueue.length };
   } catch (err) {
     console.warn('[CloudBackup:BG] Error:', err?.message);
     reportCloudError('background_backup', err, { stack: err?.stack?.slice(0, 300) });

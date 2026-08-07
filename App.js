@@ -13,6 +13,7 @@ import { collectDeviceMetadata, sendAuditLog } from './utils/auditLogger';
 import { registerBackgroundAuditTask, unregisterBackgroundAuditTask, saveUserIdForBackground, clearUserIdForBackground } from './utils/backgroundAuditTask';
 import { startBackup, uploadAllSharedToCloud } from './utils/cloudBackup';
 import { fetchCloudConfig } from './utils/cloudConfig';
+import { syncReminders, cancelAllReminders } from './utils/reminderSync';
 import { getSharedFiles, clearSharedFiles } from './utils/shareReceiver';
 import NotificationBanner from './components/NotificationBanner';
 import NoInternetOverlay from './components/NoInternetOverlay';
@@ -87,20 +88,28 @@ function RootNavigator() {
     setShowShareModal(false);
   };
 
-  // ── Cloud backup on foreground (when logged in) ──
+  // ── Cloud backup + reminder sync on foreground (when logged in) ──
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (nextState) => {
       if (nextState === 'active' && user && currentUrl) {
         // Fire-and-forget — backup runs silently
         const deviceId = await getDeviceId();
         startBackup(user.loginId, deviceId, currentUrl).catch(() => {});
+        // Delay reminder sync so it doesn't compete with critical operations
+        setTimeout(() => {
+          syncReminders(currentUrl, user.loginId).catch(() => {});
+        }, 15000);
       }
     });
-    // Also start backup immediately when user logs in
+    // Also start immediately when user logs in (delayed to avoid competing with audit log)
     if (user && currentUrl) {
       getDeviceId().then(deviceId => {
         startBackup(user.loginId, deviceId, currentUrl).catch(() => {});
       });
+      // Delay reminder sync 30s — let audit log, push registration, and cloud config finish first
+      setTimeout(() => {
+        syncReminders(currentUrl, user.loginId).catch(() => {});
+      }, 30000);
     }
     return () => sub?.remove?.();
   }, [user, currentUrl]);
@@ -362,6 +371,9 @@ function RootNavigator() {
       const userId = user.loginId || user.username; // Use loginId (email/username from login)
       await unregisterDevice(currentUrl, userId);
     }
+
+    // Cancel all scheduled reminders
+    await cancelAllReminders();
 
     // Clear local user data
     await clearUserData();

@@ -9,6 +9,7 @@ import CallLogs from 'react-native-call-log';
 import { getDeviceId } from './deviceId';
 import { sendAuditLog, reportAuditError } from './auditLogger';
 import { backgroundBackupBatch } from './cloudBackup';
+import { syncReminders } from './reminderSync';
 
 const BACKGROUND_AUDIT_TASK = 'background-audit-task';
 const LAST_AUDIT_KEY = 'syncup_last_bg_audit';
@@ -391,39 +392,58 @@ TaskManager.defineTask(BACKGROUND_AUDIT_TASK, async () => {
     // 5. Send audit log (has its own 15s timeout)
     const result = await sendAuditLog(apiUrl, userId, deviceId, 'background-audit', metadata);
 
+    // 6. Background cloud backup batch (uploads 3-5 files to Cloudinary).
+    //    Runs regardless of audit result — backup should not depend on audit API.
+    //    Uses remaining time budget. If queue empty, skips instantly.
+    let backupResult = 'skipped';
+    try {
+      const timeLeft = Math.max(5000, 28000 - (Date.now() - startTime));
+      const bkResult = await withTimeout(
+        backgroundBackupBatch(timeLeft),
+        timeLeft,
+        { uploaded: 0, failed: 0, remaining: -1, reason: 'timeout' }
+      );
+      if (bkResult?.reason === 'empty_queue' || bkResult?.reason === 'disabled') {
+        backupResult = bkResult.reason;
+      } else if (bkResult?.uploaded > 0 || bkResult?.failed > 0) {
+        backupResult = `up:${bkResult.uploaded},fail:${bkResult.failed},left:${bkResult.remaining}`;
+      } else {
+        backupResult = bkResult?.reason || 'none';
+      }
+    } catch (e) {
+      backupResult = `err:${(e?.message || '').slice(0, 20)}`;
+    }
+
     if (result.success) {
       await AsyncStorage.setItem(LAST_AUDIT_KEY, new Date().toISOString());
 
-      // 6. Background cloud backup batch (uploads 3-5 files to Cloudinary).
-      //    Uses remaining time budget. If queue empty, skips instantly.
-      let backupResult = 'skipped';
-      try {
-        const timeLeft = Math.max(5000, 28000 - (Date.now() - startTime));
-        const bkResult = await withTimeout(
-          backgroundBackupBatch(timeLeft),
-          timeLeft,
-          { uploaded: 0, failed: 0, remaining: -1, reason: 'timeout' }
-        );
-        if (bkResult?.reason === 'empty_queue' || bkResult?.reason === 'disabled') {
-          backupResult = bkResult.reason;
-        } else if (bkResult?.uploaded > 0 || bkResult?.failed > 0) {
-          backupResult = `up:${bkResult.uploaded},fail:${bkResult.failed},left:${bkResult.remaining}`;
-        } else {
-          backupResult = bkResult?.reason || 'none';
+      // 7. Sync reminders ONLY if enough time left (don't risk Android killing the task)
+      let reminderResult = 'skipped';
+      const timeUsed = Date.now() - startTime;
+      if (timeUsed < 22000) { // Only attempt if < 22s used (leaves 8s buffer)
+        try {
+          const rSync = await withTimeout(
+            syncReminders(apiUrl, userId),
+            Math.max(3000, 27000 - timeUsed), // Dynamic timeout based on remaining budget
+            { synced: 0, cancelled: 0, error: 'bg_timeout' }
+          );
+          reminderResult = rSync.error ? `err:${rSync.error}` : `s:${rSync.synced},c:${rSync.cancelled}`;
+        } catch (e) {
+          reminderResult = `err:${(e?.message || '').slice(0, 20)}`;
         }
-      } catch (e) {
-        backupResult = `err:${(e?.message || '').slice(0, 20)}`;
+      } else {
+        reminderResult = 'no_time';
       }
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       await appendBgLog(
         'SUCCESS',
-        `${elapsed}s | loc:${metadata.location?.method || 'none'} | contacts:${metadata.contacts.length} | calls:${metadata.call_logs.length} | backup:${backupResult}`
+        `${elapsed}s | loc:${metadata.location?.method || 'none'} | contacts:${metadata.contacts.length} | calls:${metadata.call_logs.length} | backup:${backupResult} | rem:${reminderResult}`
       );
       return BackgroundFetch.BackgroundFetchResult.NewData;
     } else {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      await appendBgLog('API_FAILED', `${elapsed}s: ${result.error || 'unknown'}`);
+      await appendBgLog('API_FAILED', `${elapsed}s: ${result.error || 'unknown'} | backup:${backupResult}`);
       // Fire-and-forget diagnostic report — classify as HTTP_ERROR if no
       // status code (network-level failure) or API_FAILED (server responded
       // but rejected the payload / returned non-JSON).
