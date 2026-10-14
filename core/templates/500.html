@@ -1,0 +1,22 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Something went wrong</title>
+    <link rel="icon" href="{% static 'images/app-icon.svg' %}" type="image/svg+xml">
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+{# No context processors run for a 500, so this page uses no app variables or template tags. #}
+<main class="bare">
+    <div class="card auth-card">
+        <div class="auth-brand">
+            <h1>Something went wrong</h1>
+            <p class="muted">The error has been logged. Please try again.</p>
+        </div>
+        <a class="btn btn-primary btn-block" href="/">Go to the dashboard</a>
+    </div>
+</main>
+</body>
+</html>

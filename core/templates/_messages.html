@@ -1,0 +1,19 @@
+{% comment %}
+Django messages, server-rendered. app.js removes this block and shows the same messages as
+toasts (from the #django-messages JSON in base.html); this copy is what you see without JavaScript.
+{% endcomment %}
+{% if messages %}
+<div class="flash">
+    {% for message in messages %}
+    {% if message.level_tag == "error" %}
+    <div class="alert alert-danger" role="alert">{% icon "circle-alert" %}<div class="alert-body">{{ message }}</div></div>
+    {% elif message.level_tag == "warning" %}
+    <div class="alert alert-warning" role="alert">{% icon "triangle-alert" %}<div class="alert-body">{{ message }}</div></div>
+    {% elif message.level_tag == "success" %}
+    <div class="alert alert-success" role="status">{% icon "circle-check" %}<div class="alert-body">{{ message }}</div></div>
+    {% else %}
+    <div class="alert" role="status">{% icon "info" %}<div class="alert-body">{{ message }}</div></div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endif %}

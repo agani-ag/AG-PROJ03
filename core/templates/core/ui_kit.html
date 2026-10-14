@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}UI kit{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>UI kit</h1>
+        <p class="page-sub">Every part of app.css, copied from AG-PROJ01. Build modules from these pieces.</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn" type="button" onclick="App.toast('Saved.', 'success')">{% icon "bell" %}Toast</button>
+        <button class="btn btn-primary" type="button" data-open-dialog="#demoDialog">{% icon "square-pen" %}Dialog</button>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat"><span class="stat-label">{% icon "users" %}Stat tile</span><span class="stat-value">1,248</span><span class="stat-meta">with a meta line</span></div>
+    <div class="stat"><span class="stat-label">{% icon "activity" %}Another</span><span class="stat-value">96%</span><span class="stat-meta">tabular numbers</span></div>
+    <div class="stat"><span class="stat-label">{% icon "clock" %}Third</span><span class="stat-value">12</span><span class="stat-meta">4 columns, 2 on a phone</span></div>
+    <div class="stat"><span class="stat-label">{% icon "wallet" %}Fourth</span><span class="stat-value">₹4,82,300</span><span class="stat-meta">Indian grouping</span></div>
+</div>
+
+<div class="grid-2" style="margin-top:16px">
+    <div class="card">
+        <div class="card-head">{% icon "palette" %}<h2>Buttons and badges</h2></div>
+        <div class="card-body">
+            <div class="row">
+                <button class="btn btn-primary">{% icon "plus" %}Primary</button>
+                <button class="btn">Default</button>
+                <button class="btn btn-danger">{% icon "trash" %}Danger</button>
+                <button class="btn btn-ghost">Ghost</button>
+                <button class="btn btn-sm">Small</button>
+                <button class="btn btn-icon" aria-label="More">{% icon "ellipsis" %}</button>
+            </div>
+            <div class="row">
+                <span class="badge">Neutral</span>
+                <span class="badge badge-success"><span class="dot"></span>Active</span>
+                <span class="badge badge-danger"><span class="dot"></span>Inactive</span>
+                <span class="badge badge-warning"><span class="dot"></span>Pending</span>
+                <span class="badge badge-info">Info</span>
+                <span class="badge badge-accent">Accent</span>
+            </div>
+            <div class="seg" role="group" aria-label="Example" data-seg>
+                <button type="button" aria-pressed="true">All</button>
+                <button type="button" aria-pressed="false">Open</button>
+                <button type="button" aria-pressed="false">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "info" %}<h2>Alerts</h2></div>
+        <div class="card-body">
+            <div class="alert">{% icon "info" %}<div class="alert-body"><b>Information</b>Plain note with a title line.</div></div>
+            <div class="alert alert-success">{% icon "circle-check" %}<div class="alert-body">Saved successfully.</div></div>
+            <div class="alert alert-warning">{% icon "triangle-alert" %}<div class="alert-body">Something needs attention.</div></div>
+            <div class="alert alert-danger">{% icon "circle-alert" %}<div class="alert-body">Something failed.</div></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "square-pen" %}<h2>Form parts</h2></div>
+        <div class="card-body form">
+            <div class="form-grid">
+                <div class="field">
+                    <label class="label" for="k-text">Text <span class="opt">optional</span></label>
+                    <input class="input" id="k-text" placeholder="e.g. Murugan">
+                    <span class="help">Help text sits under the field.</span>
+                </div>
+                <div class="field invalid">
+                    <label class="label" for="k-bad">With an error</label>
+                    <input class="input" id="k-bad" value="wrong">
+                    <span class="error">{% icon "circle-alert" "icon-sm" %}Please check this value.</span>
+                </div>
+                <div class="field">
+                    <label class="label" for="k-select">Select</label>
+                    <select class="input" id="k-select"><option>One</option><option>Two</option></select>
+                </div>
+                <div class="field">
+                    <label class="label" for="k-pass">Password</label>
+                    <div class="input-group">
+                        <input class="input" id="k-pass" type="password" value="secret">
+                        <button class="btn btn-icon" type="button" data-reveal="#k-pass" aria-label="Show">{% icon "eye" %}</button>
+                    </div>
+                </div>
+            </div>
+            <div class="switch-row">
+                <div class="text"><b>A switch</b><span class="help">Turn something on or off.</span></div>
+                <label class="switch"><input type="checkbox" checked><span class="track"></span></label>
+            </div>
+            <label class="check"><input type="checkbox" checked><span>A checkbox</span></label>
+            <details class="disclosure"><summary>Advanced options</summary><p class="small muted">Hidden until opened.</p></details>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "list" %}<h2>List and progress</h2></div>
+        <div class="card-body">
+            <ul class="list">
+                <li class="list-item"><div class="main-col"><div class="title">First row</div><div class="sub">With a second line</div></div><span class="badge badge-success">Done</span></li>
+                <li class="list-item"><div class="main-col"><div class="title">Second row</div><div class="sub">Rows can be links</div></div>{% icon "chevron-right" %}</li>
+            </ul>
+            <div class="meter" style="margin-top:12px">
+                <span>Progress</span><b class="num">68%</b>
+                <div class="progress"><div class="progress-bar" style="width:68%"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card" data-table style="margin-top:16px">
+    <div class="card-head">{% icon "list" %}<h2>Table</h2>
+        <div class="table-tools ml-auto"><div class="input-icon">{% icon "search" "icon-sm" %}<input class="input input-sm" data-table-search placeholder="Search"></div></div>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th data-sort="text">Name</th><th data-sort="text">Module</th><th data-sort="num">Count</th><th>Status</th></tr></thead>
+            <tbody>
+                <tr><td class="t-primary" data-label="Name">Chat</td><td data-label="Module">chat</td><td data-label="Count" class="num">0</td><td data-label="Status"><span class="badge badge-warning"><span class="dot"></span>Soon</span></td></tr>
+                <tr><td class="t-primary" data-label="Name">Health tracker</td><td data-label="Module">health</td><td data-label="Count" class="num">0</td><td data-label="Status"><span class="badge badge-warning"><span class="dot"></span>Soon</span></td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="table-foot"><span class="small muted" data-table-count></span></div>
+</div>
+
+<dialog class="modal" id="demoDialog" aria-label="Example dialog">
+    <div class="modal-head">{% icon "square-pen" %}<h2>Example dialog</h2><button class="btn btn-ghost btn-icon" type="button" data-close-dialog aria-label="Close">{% icon "x" %}</button></div>
+    <div class="modal-content"><p class="small muted">A native &lt;dialog&gt;. Esc closes it.</p></div>
+    <div class="modal-foot bordered"><button class="btn" type="button" data-close-dialog>Cancel</button><button class="btn btn-primary" type="button" data-close-dialog>{% icon "check" %}Done</button></div>
+</dialog>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% load static %}<aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a class="side-brand" href="{% url 'dashboard' %}">
+        <span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>{{ app_name }}
+    </a>
+    <nav class="side-nav">
+        <div class="nav-group">
+            <div class="nav-label">Overview</div>
+            <a class="nav-link" href="{% url 'dashboard' %}" {% nav_active "dashboard" %}>{% icon "layout-dashboard" %}<span class="nav-text">Dashboard</span></a>
+        </div>
+
+        {# One group per module group in core/modules.py. A module links to itself once it exists. #}
+        {% for group_name, modules in nav_module_groups.items %}
+        <div class="nav-group">
+            <div class="nav-label">{{ group_name }}</div>
+            {% for m in modules %}
+            <a class="nav-link" href="{% if m.is_live %}{% url m.url_name %}{% else %}{% url 'module' m.key %}{% endif %}" {% nav_active m.url_name %}{% nav_active "module:"|add:m.key %}>
+                {% icon m.icon %}<span class="nav-text">{{ m.title }}</span>
+                {% if not m.is_live %}<span class="badge" style="margin-left:auto">Soon</span>{% endif %}
+            </a>
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+        <div class="nav-group">
+            <div class="nav-label">Design</div>
+            <a class="nav-link" href="{% url 'ui_kit' %}" {% nav_active "ui_kit" %}>{% icon "palette" %}<span class="nav-text">UI kit</span></a>
+        </div>
+    </nav>
+    <div class="side-foot">
+        <div class="user-chip">
+            <span class="avatar">{{ user.first_name|default:user.username|first|upper }}</span>
+            <div class="who truncate">{{ user.first_name|default:user.username|capfirst }}<small>Admin</small></div>
+            <a class="btn btn-ghost btn-icon btn-sm" href="{% url 'profile' %}" title="Profile" aria-label="Profile" {% nav_active "profile" %}>{% icon "user-round" %}</a>
+            <a class="btn btn-ghost btn-icon btn-sm" href="{% url 'download_sqlite' %}" title="Download SQLite backup" aria-label="Download SQLite backup">{% icon "database-backup" %}</a>
+            <a class="btn btn-ghost btn-icon btn-sm" href="{% url 'logout' %}" title="Sign out" aria-label="Sign out">{% icon "log-out" %}</a>
+        </div>
+    </div>
+</aside>

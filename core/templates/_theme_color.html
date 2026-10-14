@@ -1,0 +1,34 @@
+{% comment %}
+Light/dark status-bar colours for a phone WebView. Include inside <head>:
+
+    {% include "_theme_color.html" with light="#ffffff" dark="#131a26" %}
+
+The script puts one unscoped theme-color in front of the media-scoped pair and keeps it on
+whichever colour matches the current light/dark mode. The SyncUp app's WebView reads only the
+FIRST <meta name="theme-color">, so without it a dark page would always get the light colour.
+Browsers that honour the media queries are unaffected: the unscoped tag always agrees with them.
+Taken from AG-PROJ01 (mobileapi/_theme_color.html).
+{% endcomment %}
+<meta name="theme-color" content="{{ light }}" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="{{ dark }}" media="(prefers-color-scheme: dark)">
+<script>
+(function () {
+    var scoped = [].slice.call(document.querySelectorAll('meta[name="theme-color"][media]'));
+    if (!scoped.length || !window.matchMedia) return;
+    var active = document.createElement('meta');
+    active.name = 'theme-color';
+    scoped[0].parentNode.insertBefore(active, scoped[0]);
+    function sync() {
+        for (var i = 0; i < scoped.length; i++) {
+            if (window.matchMedia(scoped[i].media).matches) { active.content = scoped[i].content; return; }
+        }
+        active.content = scoped[0].content;
+    }
+    sync();
+    scoped.forEach(function (m) {   // follow the phone if it switches theme while the page is open
+        var mq = window.matchMedia(m.media);
+        if (mq.addEventListener) mq.addEventListener('change', sync);
+        else if (mq.addListener) mq.addListener(sync);
+    });
+})();
+</script>

@@ -1,0 +1,50 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en" data-icons="{% static_v 'icons.svg' %}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    {# Apply a saved light/dark choice before first paint (no flash). #}
+    <script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    {# Status-bar colour in a phone WebView: matches the top bar (--surface). #}
+    {% include "_theme_color.html" with light="#ffffff" dark="#131a26" %}
+    <title>{% block title %}Admin{% endblock %} · {{ app_name }}</title>
+    <link rel="icon" href="{% static 'images/app-icon.svg' %}" type="image/svg+xml">
+    <link rel="stylesheet" href="{% static_v 'css/app.css' %}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+{% block layout %}
+<div class="shell">
+    {% include "_sidebar.html" %}
+    <div class="scrim"></div>
+    <div class="main">
+        <header class="topbar">
+            <button class="btn btn-ghost btn-icon nav-toggle" type="button" data-nav-toggle aria-label="Open menu">{% icon "menu" %}</button>
+            <div class="crumb" id="crumb"></div>
+            <div class="spacer"></div>
+            <button class="jump-btn" type="button" data-palette aria-label="Jump to page">{% icon "search" "icon-sm" %}<span>Jump to…</span><kbd>Ctrl K</kbd></button>
+            <button class="btn btn-ghost btn-icon" type="button" data-theme-toggle aria-label="Switch theme">{% icon "monitor" %}</button>
+        </header>
+
+        <main class="page {% block page_class %}{% endblock %}">
+            {% include "_messages.html" %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</div>
+
+<dialog class="palette" id="palette" aria-label="Jump to page">
+    <div class="palette-input">{% icon "search" %}<input id="palette-q" placeholder="Jump to a page…" autocomplete="off"><kbd>Esc</kbd></div>
+    <ul class="palette-list"></ul>
+</dialog>
+{% endblock %}
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+{% if messages %}
+<script type="application/json" id="django-messages">[{% for m in messages %}{"text": "{{ m|escapejs }}", "level": "{{ m.level_tag|escapejs }}"}{% if not forloop.last %}, {% endif %}{% endfor %}]</script>
+{% endif %}
+{# Loaded at the end of <body> (not render-blocking) and before page scripts, so they can use window.App directly. #}
+<script src="{% static_v 'js/app.js' %}"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

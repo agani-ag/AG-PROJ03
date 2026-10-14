@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'dashboard' %}">{% icon "arrow-left" %}Dashboard</a>
+        <h1>Profile</h1>
+        <p class="page-sub">The one admin account for {{ app_name }}</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">{% icon "user-round" %}<h2>Admin</h2></div>
+    <div class="card-body">
+        <dl class="kv">
+            <dt>Username</dt><dd><code>{{ user.username }}</code></dd>
+            <dt>Email</dt><dd>{{ user.email|default:"—" }}</dd>
+            <dt>Last signed in</dt><dd>{{ user.last_login|date:"d M Y, H:i"|default:"—" }}</dd>
+            <dt>PIN</dt><dd>{% if admin_pin %}<span class="badge badge-success"><span class="dot"></span>Set</span> <span class="small muted">changed {{ admin_pin.updated_at|date:"d M Y" }}{% if admin_pin.last_used_at %} · last used {{ admin_pin.last_used_at|ago }}{% endif %}</span>{% else %}<span class="badge"><span class="dot"></span>Not set</span>{% endif %}</dd>
+        </dl>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "key-round" %}<h2>Name, password and PIN</h2></div>
+    <form method="POST" class="card-body form" novalidate>
+        {% csrf_token %}
+        <div class="field{% if form.name.errors %} invalid{% endif %}">
+            <label class="label" for="{{ form.name.id_for_label }}">Name</label>
+            {{ form.name }}
+            {% for e in form.name.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+        <div class="form-grid">
+            <div class="field{% if form.new_password.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.new_password.id_for_label }}">New password <span class="opt">optional</span></label>
+                {{ form.new_password }}
+                <span class="help">{{ form.new_password.help_text }}</span>
+                {% for e in form.new_password.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="field{% if form.confirm_password.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.confirm_password.id_for_label }}">Confirm new password</label>
+                {{ form.confirm_password }}
+                {% for e in form.confirm_password.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+        </div>
+        <div class="field{% if form.new_pin.errors %} invalid{% endif %}" style="max-width:220px">
+            <label class="label" for="{{ form.new_pin.id_for_label }}">{% if admin_pin %}Change PIN{% else %}Set PIN{% endif %} <span class="opt">optional</span></label>
+            {{ form.new_pin }}
+            <span class="help">{{ form.new_pin.help_text }}</span>
+            {% for e in form.new_pin.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+        <div class="row">
+            <button type="submit" class="btn btn-primary">{% icon "check" %}Save changes</button>
+            <a class="btn btn-ghost" href="{% url 'logout' %}">{% icon "log-out" %}Sign out</a>
+        </div>
+    </form>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "database-backup" %}<h2>Database backup</h2></div>
+    <div class="card-body">
+        <p class="muted">Download the whole SQLite database as one file. It is a consistent snapshot, so it is safe to take while the app is in use. Keep it somewhere private: it holds everything, including the admin's password hash.</p>
+        <dl class="kv">
+            <dt>File</dt><dd><code>{{ db_name }}</code></dd>
+            <dt>Size</dt><dd>{% if db_size %}{{ db_size|filesizeformat }}{% else %}—{% endif %}</dd>
+            <dt>Last change</dt><dd>{{ db_changed|date:"d M Y, H:i"|default:"—" }}</dd>
+        </dl>
+        <div class="row">
+            <a class="btn btn-primary" href="{% url 'download_sqlite' %}">{% icon "download" %}Download backup</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ module.title }}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'dashboard' %}">{% icon "arrow-left" %}Dashboard</a>
+        <h1>{{ module.title }}</h1>
+        <p class="page-sub">{{ module.description }}</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="empty">
+            {% icon module.icon %}
+            <b>This module isn't built yet</b>
+            <span>It is listed in <code>core/modules.py</code> as <code>{{ module.key }}</code>. Build it as its own Django app, add it to <code>INSTALLED_APPS</code> and <code>main/urls.py</code>, then set <code>url_name</code> on its entry so the sidebar links straight to it.</span>
+            <a class="btn btn-sm btn-primary" href="{% url 'ui_kit' %}">{% icon "palette" %}See the UI kit</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Sign in{% endblock %}
+
+{% block layout %}
+<main class="bare">
+    <div class="card auth-card">
+        <div class="auth-brand">
+            <span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>
+            <h1>Sign in to {{ app_name }}</h1>
+            <p class="muted">Admin console</p>
+        </div>
+
+        {% include "_messages.html" %}
+
+        <div class="seg" role="group" aria-label="Sign-in method" data-seg id="methodSeg">
+            <button type="button" aria-pressed="true" data-method="password">{% icon "key-round" "icon-sm" %}Password</button>
+            <button type="button" aria-pressed="false" data-method="pin">{% icon "lock" "icon-sm" %}PIN</button>
+        </div>
+
+        <form method="POST" class="form" data-method-panel="password" novalidate>
+            {% csrf_token %}
+            {% if request.GET.next %}<input type="hidden" name="next" value="{{ request.GET.next }}">{% endif %}
+            <div class="field{% if auth_form.username.errors %} invalid{% endif %}">
+                <label class="label" for="{{ auth_form.username.id_for_label }}">Username</label>
+                {{ auth_form.username }}
+                {% for e in auth_form.username.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="field{% if auth_form.password.errors %} invalid{% endif %}">
+                <label class="label" for="{{ auth_form.password.id_for_label }}">Password</label>
+                <div class="input-group">
+                    {{ auth_form.password }}
+                    <button class="btn btn-icon" type="button" data-reveal="#{{ auth_form.password.id_for_label }}" aria-label="Show">{% icon "eye" %}</button>
+                </div>
+                {% for e in auth_form.password.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <label class="check"><input type="checkbox" name="remember" value="1"><span>Keep me signed in on this device</span></label>
+            <button type="submit" class="btn btn-primary btn-lg btn-block">{% icon "log-in" %}Sign in</button>
+        </form>
+
+        <div class="form" data-method-panel="pin" hidden>
+            <p class="muted center">Enter your 5-character PIN</p>
+            <div class="pin" id="pinBoxes">
+                <input class="input" id="pin1" maxlength="1" autocomplete="off" autocapitalize="characters" aria-label="PIN character 1">
+                <input class="input" id="pin2" maxlength="1" autocomplete="off" autocapitalize="characters" aria-label="PIN character 2">
+                <input class="input" id="pin3" maxlength="1" autocomplete="off" autocapitalize="characters" aria-label="PIN character 3">
+                <input class="input" id="pin4" maxlength="1" autocomplete="off" autocapitalize="characters" aria-label="PIN character 4">
+                <input class="input" id="pin5" maxlength="1" autocomplete="off" autocapitalize="characters" aria-label="PIN character 5">
+            </div>
+            <p class="help center" id="pinStatus">Letters and digits. Pasting the whole PIN works too.</p>
+        </div>
+
+        <p class="help center">Admin only. One account, created with <code>manage.py createadminuser</code>. Set the PIN from Profile.</p>
+    </div>
+</main>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    var panels = document.querySelectorAll("[data-method-panel]");
+    var pins = Array.prototype.slice.call(document.querySelectorAll("#pinBoxes input"));
+    var status = document.getElementById("pinStatus");
+    var busy = false;
+
+    document.getElementById("methodSeg").addEventListener("click", function (e) {
+        var b = e.target.closest("button[data-method]"); if (!b) return;
+        panels.forEach(function (p) { p.hidden = p.dataset.methodPanel !== b.dataset.method; });
+        if (b.dataset.method === "pin") pins[0].focus();
+    });
+
+    function reset(msg) {
+        pins.forEach(function (p) { p.value = ""; p.disabled = false; });
+        status.textContent = msg; status.className = "error center";
+        pins[0].focus(); busy = false;
+    }
+
+    function submitPin() {
+        var pin = pins.map(function (p) { return p.value; }).join("").toUpperCase();
+        if (busy || !/^[A-Z0-9]{5}$/.test(pin)) return;
+        busy = true;
+        pins.forEach(function (p) { p.disabled = true; });
+        status.className = "help center";
+        status.innerHTML = '<span class="spinner"></span> Checking…';
+        App.fetchJSON("{% url 'pin_auth' %}", { method: "POST", body: { pin: pin } })
+            .then(function () { status.textContent = "Signed in. Opening…"; window.location.reload(); })
+            .catch(function (err) { reset(err.message || "Sign-in failed. Try again."); });
+    }
+
+    pins.forEach(function (input, i) {
+        input.addEventListener("input", function () {
+            input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(-1);
+            if (input.value && pins[i + 1]) pins[i + 1].focus();
+            submitPin();
+        });
+        input.addEventListener("keydown", function (e) {
+            if (e.key === "Backspace" && !input.value && pins[i - 1]) pins[i - 1].focus();
+        });
+        input.addEventListener("paste", function (e) {
+            var text = (e.clipboardData || window.clipboardData).getData("text").toUpperCase().replace(/[^A-Z0-9]/g, "");
+            if (text.length !== 5) return;
+            e.preventDefault();
+            pins.forEach(function (p, j) { p.value = text[j]; });
+            submitPin();
+        });
+    });
+})();
+</script>
+{% endblock %}
