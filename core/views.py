@@ -19,13 +19,15 @@ from django.core.cache import cache
 from django.db import connection
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
+from . import cron_views, cronhub
 from .forms import AuthForm, ProfileForm
-from .models import AdminPin
+from .models import AdminPin, CronRun
 from .modules import MODULES, MODULES_BY_KEY
 
 # PIN sign-ins don't go through authenticate(), so they have to name the backend.
@@ -175,6 +177,40 @@ def download_sqlite(request):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     response['Content-Length'] = str(len(data))
     return response
+
+
+@admin_required
+def cron_page(request):
+    """What the two hub jobs are, which modules plug into them, and how the last runs went."""
+    return render(request, 'core/cron.html', {
+        'tick_hooks': cronhub.hooks(cronhub.TICK),
+        'cleanup_hooks': cronhub.hooks(cronhub.CLEANUP),
+        'runs': CronRun.objects.all()[:20],
+        'last_tick': CronRun.objects.filter(job=cronhub.TICK).first(),
+        'last_cleanup': CronRun.objects.filter(job=cronhub.CLEANUP).first(),
+        'key_set': bool(settings.CRON_KEY),
+        'tick_url': request.build_absolute_uri(reverse('cron_tick')),
+        'cleanup_url': request.build_absolute_uri(reverse('cron_cleanup')),
+    })
+
+
+@admin_required
+@require_POST
+def cron_run_now(request, job):
+    """Run one of the two jobs from the page, for when you don't want to wait for the schedule."""
+    if job not in (cronhub.TICK, cronhub.CLEANUP):
+        raise Http404('No such job')
+    budget = (cron_views.TICK_BUDGET_SECONDS if job == cronhub.TICK
+              else cron_views.CLEANUP_BUDGET_SECONDS)
+    payload, _ = cron_views.run_job(job, budget, triggered_by='admin')
+    if payload.get('skipped'):
+        messages.warning(request, f'{job}: already running, so this run was skipped.')
+    elif payload.get('ok'):
+        messages.success(request, f'{job}: done in {payload.get("ms", 0)} ms, '
+                                  f'{payload.get("items", 0)} item(s).')
+    else:
+        messages.error(request, f'{job} failed: {payload.get("error") or "see the run below"}')
+    return redirect('cron_page')
 
 
 @admin_required

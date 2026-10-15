@@ -37,18 +37,18 @@ class Module:
 
 MODULES = [
     Module(
+        key='hibiscus',
+        title='Hibiscus',
+        icon='heart-pulse',
+        group='Modules',
+        description='Cycle diary — day-by-day log, calendar and stocks. Was Red Hibiscus.',
+    ),
+    Module(
         key='chat',
         title='Chat',
         icon='messages-square',
         group='Modules',
         description='Conversations between the admin and app users.',
-    ),
-    Module(
-        key='health',
-        title='Health tracker',
-        icon='heart-pulse',
-        group='Modules',
-        description='Daily health readings with history and reminders.',
     ),
 ]
 

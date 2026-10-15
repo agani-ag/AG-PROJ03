@@ -22,7 +22,8 @@
         {% endfor %}
 
         <div class="nav-group">
-            <div class="nav-label">Design</div>
+            <div class="nav-label">System</div>
+            <a class="nav-link" href="{% url 'cron_page' %}" {% nav_active "cron_page" %}>{% icon "clock" %}<span class="nav-text">Cron</span></a>
             <a class="nav-link" href="{% url 'ui_kit' %}" {% nav_active "ui_kit" %}>{% icon "palette" %}<span class="nav-text">UI kit</span></a>
         </div>
     </nav>

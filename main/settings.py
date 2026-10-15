@@ -48,9 +48,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.humanize',
     'core.apps.CoreConfig',
+    'hibiscus.apps.HibiscusConfig',
     # Feature modules go here as they are built, e.g.
     # 'chat.apps.ChatConfig',
-    # 'health.apps.HealthConfig',
 ]
 
 MIDDLEWARE = [
@@ -144,3 +144,11 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# Cron
+#
+# The whole hub has two scheduled URLs — /cron/tick every 15 minutes and /cron/cleanup nightly.
+# They are public URLs guarded by this shared secret, sent as an X-Cron-Key header or ?key=.
+# Unset closes them: they answer 404 rather than running.
+CRON_KEY = os.getenv('CRON_KEY', '')

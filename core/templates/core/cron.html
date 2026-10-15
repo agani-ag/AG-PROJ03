@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Cron{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Cron</h1>
+        <p class="page-sub">Two scheduled jobs for the whole hub. Modules plug into them; they never get their own.</p>
+    </div>
+    <div class="page-actions">
+        <form method="POST" action="{% url 'cron_run_now' 'cleanup' %}" data-confirm="Run cleanup now?" data-confirm-text="Retention runs for every module. Safe to run at any time.">{% csrf_token %}
+            <button type="submit" class="btn">{% icon "database-backup" %}Run cleanup</button>
+        </form>
+        <form method="POST" action="{% url 'cron_run_now' 'tick' %}">{% csrf_token %}
+            <button type="submit" class="btn btn-primary">{% icon "clock" %}Run tick now</button>
+        </form>
+    </div>
+</div>
+
+{% if not key_set %}
+<div class="alert alert-warning">
+    {% icon "triangle-alert" %}
+    <div class="alert-body"><b>The cron endpoints are closed</b>Set <code>CRON_KEY</code> in <code>.env</code> to open them. Until then both URLs answer 404 and only the buttons on this page can run a job.</div>
+</div>
+{% endif %}
+
+<div class="stats">
+    <div class="stat">
+        <span class="stat-label">{% icon "clock" %}Last tick</span>
+        <span class="stat-value" style="font-size:18px">{% if last_tick %}{{ last_tick.started_at|date:"d M, H:i" }}{% else %}Never{% endif %}</span>
+        <span class="stat-meta">{% if last_tick %}{{ last_tick.items }} item{{ last_tick.items|pluralize }} · {{ last_tick.duration_ms }} ms{% else %}every 15 minutes{% endif %}</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "database-backup" %}Last cleanup</span>
+        <span class="stat-value" style="font-size:18px">{% if last_cleanup %}{{ last_cleanup.started_at|date:"d M, H:i" }}{% else %}Never{% endif %}</span>
+        <span class="stat-meta">{% if last_cleanup %}{{ last_cleanup.items }} item{{ last_cleanup.items|pluralize }} · {{ last_cleanup.duration_ms }} ms{% else %}nightly{% endif %}</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "package" %}Tick hooks</span>
+        <span class="stat-value">{{ tick_hooks|length }}</span>
+        <span class="stat-meta">from the installed modules</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "package" %}Cleanup hooks</span>
+        <span class="stat-value">{{ cleanup_hooks|length }}</span>
+        <span class="stat-meta">retention and housekeeping</span>
+    </div>
+</div>
+
+<div class="grid-2" style="margin-top:16px">
+    <div class="card">
+        <div class="card-head">{% icon "clock" %}<h2>Tick · every 15 minutes</h2></div>
+        <div class="card-body">
+            <p class="small muted">Anything outbound or time-based: due notifications, scheduled messages, activity tracking.</p>
+            <pre class="code">{{ tick_url }}?key=…</pre>
+            <ul class="list">
+                {% for h in tick_hooks %}
+                <li class="list-item"><div class="main-col"><div class="title">{{ h.name }}</div><div class="sub">{{ h.budget }}s budget</div></div></li>
+                {% empty %}
+                <li class="list-item"><div class="main-col"><div class="sub">No module has registered a tick hook yet.</div></div></li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head">{% icon "database-backup" %}<h2>Cleanup · nightly</h2></div>
+        <div class="card-body">
+            <p class="small muted">Retention and housekeeping for every module. Add <code>&amp;vacuum=1</code> weekly to compact the database.</p>
+            <pre class="code">{{ cleanup_url }}?key=…</pre>
+            <ul class="list">
+                {% for h in cleanup_hooks %}
+                <li class="list-item"><div class="main-col"><div class="title">{{ h.name }}</div><div class="sub">{{ h.budget }}s budget</div></div></li>
+                {% empty %}
+                <li class="list-item"><div class="main-col"><div class="sub">No module has registered a cleanup hook yet.</div></div></li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card" data-table style="margin-top:16px">
+    <div class="card-head">{% icon "scroll-text" %}<h2>Recent runs</h2><span class="small muted ml-auto">Last {{ runs|length }}</span></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Job</th><th>Started</th><th>Took</th><th>Items</th><th>By</th><th>Result</th></tr></thead>
+            <tbody>
+                {% for r in runs %}
+                <tr>
+                    <td class="t-primary" data-label="Job">{{ r.job }}</td>
+                    <td data-label="Started">{{ r.started_at|date:"d M Y, H:i:s" }}</td>
+                    <td data-label="Took" class="num">{{ r.duration_ms }} ms</td>
+                    <td data-label="Items" class="num">{{ r.items }}</td>
+                    <td data-label="By">{{ r.triggered_by }}</td>
+                    <td data-label="Result">
+                        {% if r.ok %}<span class="badge badge-success"><span class="dot"></span>OK</span>
+                        {% else %}<span class="badge badge-danger"><span class="dot"></span>Failed</span>{% endif %}
+                        {% if r.error %}<div class="small text-danger">{{ r.error }}</div>{% endif %}
+                        {% if r.detail %}<details class="disclosure"><summary>Detail</summary><pre class="code">{{ r.detail }}</pre></details>{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6"><div class="empty">{% icon "clock" %}<b>No runs yet</b><span>Point your cron service at the two URLs above, or use the buttons.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
