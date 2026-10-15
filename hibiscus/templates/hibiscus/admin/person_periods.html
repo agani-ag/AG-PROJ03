@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block head %}<link rel="stylesheet" href="{% static_v 'hibiscus/admin.css' %}">{% endblock %}
 {% block title %}{{ person.name }} · periods{% endblock %}
 
 {% block content %}
@@ -13,11 +14,7 @@
     </div>
 </div>
 
-<div class="seg" role="group" aria-label="Tabs" style="margin-bottom:14px">
-    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person' person.pk %}">Account</a>
-    <button type="button" aria-pressed="true">Periods <span class="n">{{ day_count }}</span></button>
-    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_activity' person.pk %}">Activity</a>
-</div>
+{% include "hibiscus/admin/_tabs.html" with tab="periods" %}
 
 <div class="card">
     <div class="card-head">
@@ -105,13 +102,12 @@
                         <div class="chips">
                             {% for day in row.days %}
                                 {% if day.logged %}
-                                <a class="chip" href="{% url 'hibiscus_day_edit' person.pk day.date|date:'Y-m-d' %}"
+                                <a class="flow f{{ day.flow }}" href="{% url 'hibiscus_day_edit' person.pk day.date|date:'Y-m-d' %}"
                                    title="{{ day.date|date:'D d M Y' }} · {{ day.flow_label }}{% if day.note %} · {{ day.note }}{% endif %}">
-                                    <b>{{ day.date|date:"j" }}</b>
-                                    {% if day.flow == 4 %}H{% elif day.flow == 3 %}M{% elif day.flow == 2 %}L{% elif day.flow == 1 %}S{% else %}·{% endif %}
+                                    <b>{{ day.date|date:"j" }}</b><span class="lvl">{% if day.flow == 4 %}H{% elif day.flow == 3 %}M{% elif day.flow == 2 %}L{% elif day.flow == 1 %}S{% else %}·{% endif %}</span>
                                 </a>
                                 {% else %}
-                                <span class="chip faint" title="{{ day.date|date:'D d M Y' }} · not logged, bridged">{{ day.date|date:"j" }} —</span>
+                                <span class="flow gap" title="{{ day.date|date:'D d M Y' }} · not logged, bridged"><b>{{ day.date|date:"j" }}</b><span class="lvl">—</span></span>
                                 {% endif %}
                             {% endfor %}
                         </div>
@@ -144,6 +140,15 @@
     </div>
     {% if rows %}
     <div class="card-foot bordered">
+        <div class="flow-key" style="margin-bottom:8px">
+            <span class="small muted">Flow</span>
+            <span class="flow f1"><span class="lvl">S</span>spotting</span>
+            <span class="flow f2"><span class="lvl">L</span>light</span>
+            <span class="flow f3"><span class="lvl">M</span>medium</span>
+            <span class="flow f4"><span class="lvl">H</span>heavy</span>
+            <span class="flow f0"><span class="lvl">·</span>not recorded</span>
+            <span class="flow gap"><span class="lvl">—</span>not logged</span>
+        </div>
         <span class="small muted">
             Tap any day to change its flow, symptoms or note. Spotting shows but never counts as day 1,
             one missing day inside a run is bridged, and {{ config.bridge_days|add:1 }} empty days start a new period.

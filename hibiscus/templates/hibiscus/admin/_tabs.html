@@ -1,0 +1,18 @@
+{% comment %}
+One row of tabs for every page about a person, so a new page cannot quietly lose one — which is
+exactly what happened to Stocks on the Periods page. Callers pass `tab` (account / periods /
+stocks / activity); the counts come from the view through `tab_counts`.
+{% endcomment %}
+<div class="seg" role="group" aria-label="Tabs" style="margin-bottom:14px">
+    {% if tab == 'account' %}<button type="button" aria-pressed="true">Account</button>
+    {% else %}<a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person' person.pk %}">Account</a>{% endif %}
+
+    {% if tab == 'periods' %}<button type="button" aria-pressed="true">Periods <span class="n">{{ tab_counts.days }}</span></button>
+    {% else %}<a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_periods' person.pk %}">Periods <span class="n">{{ tab_counts.days }}</span></a>{% endif %}
+
+    {% if tab == 'stocks' %}<button type="button" aria-pressed="true">Stocks <span class="n">{{ tab_counts.items }}</span></button>
+    {% else %}<a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_stocks' person.pk %}">Stocks <span class="n">{{ tab_counts.items }}</span></a>{% endif %}
+
+    {% if tab == 'activity' %}<button type="button" aria-pressed="true">Activity</button>
+    {% else %}<a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_activity' person.pk %}">Activity</a>{% endif %}
+</div>

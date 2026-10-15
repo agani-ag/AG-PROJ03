@@ -4,6 +4,7 @@ The five worked examples in the mockup (section 3) are the first five tests here
 agreed definition of the rules, so they belong in code where they can fail.
 """
 from datetime import date, timedelta
+from pathlib import Path
 
 from django.contrib.auth.models import User
 from django.db import IntegrityError
@@ -549,3 +550,211 @@ class AdminSideTests(TestCase):
             PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1) + timedelta(days=i))
         r = self.client.get(reverse('hibiscus_people'))
         self.assertContains(r, '31 Oct 2026')                      # 1 Oct + 30 days
+
+
+class MagicLinkAdminTests(TestCase):
+    """Making, replacing and switching off a link from someone's page."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.person = Person.objects.create(name='Divya', email='d@example.com')
+
+    def _make(self):
+        return self.client.post(reverse('hibiscus_person_link', args=[self.person.pk, 'make']))
+
+    def test_the_panel_offers_a_link_when_there_is_none(self):
+        r = self.client.get(reverse('hibiscus_person', args=[self.person.pk]))
+        self.assertContains(r, 'Magic link')
+        self.assertContains(r, 'Create a link')
+
+    def test_making_one_shows_the_whole_link_with_the_host(self):
+        self._make()
+        self.person.refresh_from_db()
+        r = self.client.get(reverse('hibiscus_person', args=[self.person.pk]))
+        self.assertContains(r, f'http://testserver/hibiscus/me/k/{self.person.login_key}')
+        self.assertContains(r, 'New link')
+        self.assertContains(r, 'Switch it off')
+
+    def test_making_one_records_it(self):
+        self._make()
+        self.person.refresh_from_db()
+        self.assertTrue(self.person.has_login_link)
+        self.assertIsNotNone(self.person.login_key_made_at)
+        row = Audit.objects.filter(person=self.person, action='made_login_link').first()
+        self.assertEqual(row.actor, self.admin)
+        self.assertEqual(row.detail, 'first link')
+
+    def test_making_a_second_one_says_it_replaced_the_first(self):
+        self._make()
+        self.person.refresh_from_db()
+        first = self.person.login_key
+        self._make()
+        self.person.refresh_from_db()
+        self.assertNotEqual(self.person.login_key, first)
+        self.assertEqual(Audit.objects.filter(person=self.person, action='made_login_link',
+                                              detail='replaced the old link').count(), 1)
+
+    def test_switching_it_off_clears_the_key(self):
+        self._make()
+        self.client.post(reverse('hibiscus_person_link', args=[self.person.pk, 'off']))
+        self.person.refresh_from_db()
+        self.assertIsNone(self.person.login_key)
+        self.assertTrue(Audit.objects.filter(person=self.person,
+                                             action='removed_login_link').exists())
+
+    def test_the_people_list_marks_who_has_one(self):
+        r = self.client.get(reverse('hibiscus_people'))
+        self.assertNotContains(r, 'Has a magic link')
+        self._make()
+        self.assertContains(self.client.get(reverse('hibiscus_people')), 'Has a magic link')
+
+    def test_only_post_and_only_the_admin(self):
+        url = reverse('hibiscus_person_link', args=[self.person.pk, 'make'])
+        self.assertEqual(self.client.get(url).status_code, 405)
+        self.assertEqual(
+            self.client.post(reverse('hibiscus_person_link',
+                                     args=[self.person.pk, 'nonsense'])).status_code, 404)
+        self.client.logout()
+        self.assertEqual(self.client.post(url).status_code, 302)
+        self.person.refresh_from_db()
+        self.assertIsNone(self.person.login_key)
+
+class PersonTabsTests(TestCase):
+    """Every page about a person shows the same four tabs.
+
+    The Stocks tab had gone missing from the Periods page because the row was copied into each
+    template by hand; it is one include now, and this is what keeps it that way.
+    """
+
+    TABS = ['Account', 'Periods', 'Stocks', 'Activity']
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.person = Person.objects.create(name='Divya', email='d@example.com')
+        PeriodDay.objects.create(person=self.person, date=D(2026, 9, 15), flow=Flow.MEDIUM)
+        StockItem.objects.create(person=self.person, name='Pads', low_at=2)
+
+    def test_all_four_tabs_on_every_person_page(self):
+        stocks_url = reverse('hibiscus_person_stocks', args=[self.person.pk])
+        for name in ['hibiscus_person', 'hibiscus_person_periods', 'hibiscus_person_stocks',
+                     'hibiscus_person_activity']:
+            body = self.client.get(reverse(name, args=[self.person.pk])).content.decode()
+            for tab in self.TABS:
+                self.assertIn(f'>{tab}', body, f'{tab} missing from {name}')
+            if name != 'hibiscus_person_stocks':
+                self.assertIn(stocks_url, body, f'Stocks not linked from {name}')
+
+    def test_the_counts_are_real(self):
+        body = self.client.get(reverse('hibiscus_person_periods',
+                                       args=[self.person.pk])).content.decode()
+        self.assertIn('Periods <span class="n">1</span>', body)
+        self.assertIn('Stocks <span class="n">1</span>', body)
+
+    def test_the_page_you_are_on_is_not_a_link(self):
+        body = self.client.get(reverse('hibiscus_person_stocks',
+                                       args=[self.person.pk])).content.decode()
+        self.assertIn('<button type="button" aria-pressed="true">Stocks', body)
+
+
+class FlowColourTests(TestCase):
+    """The day chips carry the flow palette instead of the plain grey chip."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.person = Person.objects.create(name='Divya', email='d@example.com')
+        for offset, flow in enumerate([Flow.SPOTTING, Flow.MEDIUM, Flow.HEAVY, Flow.LIGHT]):
+            PeriodDay.objects.create(person=self.person,
+                                     date=D(2026, 9, 15) + timedelta(days=offset), flow=flow)
+
+    def _periods(self):
+        return self.client.get(reverse('hibiscus_person_periods',
+                                       args=[self.person.pk])).content.decode()
+
+    def test_each_day_gets_its_level_class(self):
+        body = self._periods()
+        for level in [1, 2, 3, 4]:
+            self.assertIn(f'class="flow f{level}"', body)
+
+    def test_the_stylesheet_is_linked_and_covers_every_level(self):
+        self.assertIn('hibiscus/admin.css', self._periods())
+        css = (Path(__file__).resolve().parent / 'static' / 'hibiscus' / 'admin.css').read_text(
+            encoding='utf-8')
+        for level in [1, 2, 3, 4]:
+            self.assertIn(f'.flow.f{level}', css)
+        self.assertIn('.flow {', css)
+        self.assertIn('data-theme="dark"', css)          # readable on the dark console too
+
+    def test_a_bridged_day_is_marked_apart(self):
+        PeriodDay.objects.create(person=self.person, date=D(2026, 9, 20), flow=Flow.MEDIUM)
+        self.assertIn('class="flow gap"', self._periods())
+
+    def test_there_is_a_key_under_the_table(self):
+        body = self._periods()
+        self.assertIn('flow-key', body)
+        for word in ['spotting', 'light', 'medium', 'heavy', 'not recorded']:
+            self.assertIn(word, body)
+
+
+class StockItemEditTests(TestCase):
+    """The admin can rename an item and change the level that makes it count as low."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.person = Person.objects.create(name='Divya', email='d@example.com')
+        self.item = StockItem.objects.create(person=self.person, name='Pads', low_at=2)
+        self.url = reverse('hibiscus_item_edit', args=[self.person.pk, self.item.pk])
+
+    def test_the_form_opens_with_the_current_values(self):
+        r = self.client.get(self.url)
+        self.assertContains(r, 'value="Pads"')
+        self.assertContains(r, 'Low at')
+
+    def test_changing_the_low_level(self):
+        r = self.client.post(self.url, {'name': 'Pads', 'low_at': 5}, follow=True)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.low_at, 5)
+        self.assertContains(r, 'Pads saved.')
+        self.assertTrue(Audit.objects.filter(person=self.person, action='edited_item',
+                                             detail='low at 2 → 5').exists())
+
+    def test_renaming_keeps_the_ledger(self):
+        StockMove.objects.create(item=self.item, date=D(2026, 9, 1), change=10,
+                                 reason=StockMove.Reason.OPENING)
+        self.client.post(self.url, {'name': 'Sofy', 'low_at': 2})
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.name, 'Sofy')
+        self.assertEqual(self.item.in_stock, 10)
+        self.assertTrue(Audit.objects.filter(person=self.person,
+                                             detail='Pads → Sofy').exists())
+
+    def test_a_new_low_level_changes_what_counts_as_low(self):
+        StockMove.objects.create(item=self.item, date=D(2026, 9, 1), change=3,
+                                 reason=StockMove.Reason.OPENING)
+        self.assertFalse(StockItem.objects.get(pk=self.item.pk).is_low)
+        self.client.post(self.url, {'name': 'Pads', 'low_at': 3})
+        self.assertTrue(StockItem.objects.get(pk=self.item.pk).is_low)
+
+    def test_the_count_is_not_editable_here(self):
+        r = self.client.get(self.url)
+        self.assertNotContains(r, 'name="opening"')
+        self.assertContains(r, 'The count is not edited here')
+
+    def test_the_stocks_table_links_to_it(self):
+        self.assertContains(self.client.get(
+            reverse('hibiscus_person_stocks', args=[self.person.pk])), self.url)
+
+    def test_someone_elses_item_is_a_404(self):
+        other = Person.objects.create(name='Meena', email='m@example.com')
+        self.assertEqual(self.client.get(
+            reverse('hibiscus_item_edit', args=[other.pk, self.item.pk])).status_code, 404)
+
+    def test_it_needs_the_admin(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(self.url).status_code, 302)
+        self.assertEqual(self.client.post(self.url, {'name': 'X', 'low_at': 1}).status_code, 302)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.name, 'Pads')

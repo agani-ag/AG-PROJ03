@@ -530,3 +530,98 @@ class NotificationAdminTests(TestCase):
     def test_the_page_needs_the_admin(self):
         self.client.logout()
         self.assertEqual(self.client.get(reverse('hibiscus_notifications')).status_code, 302)
+
+
+class MagicLinkTests(TestCase):
+    """The admin's hand-out link: no password, no expiry.
+
+    Because the link never expires it is the credential, so what matters here is that the ways of
+    taking it out of circulation really work — replacing it, switching it off, suspending the
+    account — and that the key does not stay in the address bar after it is used.
+    """
+
+    def setUp(self):
+        self.person = make_person()
+        self.key = auth.new_login_key(self.person)
+
+    def _open(self, key=None):
+        return self.client.get(reverse('hibiscus_me_key', args=[key or self.key]))
+
+    def test_the_link_signs_them_in_with_no_password(self):
+        r = self._open()
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r['Location'], reverse('hibiscus_me_home'))
+        self.assertEqual(self.client.session.get(auth.SESSION_KEY), self.person.pk)
+        self.assertEqual(self.client.get(reverse('hibiscus_me_home')).status_code, 200)
+
+    def test_it_keeps_working_and_is_not_one_shot(self):
+        for _ in range(3):
+            self.client.cookies.clear()
+            self.assertEqual(self._open().status_code, 302)
+        self.person.refresh_from_db()
+        self.assertEqual(self.person.login_key_uses, 3)
+        self.assertIsNotNone(self.person.login_key_used_at)
+
+    def test_the_key_does_not_stay_in_the_address_bar(self):
+        r = self._open()
+        self.assertNotIn(self.key, r['Location'])
+        self.assertIn('no-store', r['Cache-Control'])
+        self.assertEqual(r['Referrer-Policy'], 'same-origin')
+
+    def test_using_the_link_counts_as_opening_the_diary(self):
+        self._open()
+        self.person.refresh_from_db()
+        self.assertEqual(self.person.open_count, 1)
+        self.assertIsNotNone(self.person.last_opened_at)
+        self.assertTrue(Audit.objects.filter(person=self.person,
+                                             action='signed_in_with_link').exists())
+
+    def test_a_new_link_kills_the_old_one(self):
+        old = self.key
+        self.person.refresh_from_db()
+        new = auth.new_login_key(self.person)
+        self.assertNotEqual(old, new)
+        r = self._open(old)
+        self.assertEqual(r['Location'], reverse('hibiscus_me_login'))
+        self.assertIsNone(self.client.session.get(auth.SESSION_KEY))
+        self.assertEqual(self._open(new)['Location'], reverse('hibiscus_me_home'))
+
+    def test_switching_the_link_off_kills_it(self):
+        auth.clear_login_key(self.person)
+        self.assertEqual(self._open()['Location'], reverse('hibiscus_me_login'))
+        self.person.refresh_from_db()
+        self.assertIsNone(self.person.login_key)
+        self.assertEqual(self.person.login_key_uses, 0)
+
+    def test_a_suspended_account_cannot_use_its_link(self):
+        self.person.is_active = False
+        self.person.save()
+        self.assertEqual(self._open()['Location'], reverse('hibiscus_me_login'))
+
+    def test_an_archived_account_cannot_use_its_link(self):
+        self.person.is_archived = True
+        self.person.save()
+        self.assertEqual(self._open()['Location'], reverse('hibiscus_me_login'))
+
+    def test_a_made_up_key_lands_on_the_sign_in_page(self):
+        r = self.client.get(reverse('hibiscus_me_key', args=['x' * 43]), follow=True)
+        self.assertContains(r, 'does not work any more')
+        self.assertIsNone(self.client.session.get(auth.SESSION_KEY))
+
+    def test_the_key_is_long_and_unguessable(self):
+        self.assertGreaterEqual(len(self.key), 43)
+        other = make_person(name='Meena', email='m@example.com')
+        self.assertNotEqual(auth.new_login_key(other), self.key)
+
+    def test_the_link_wins_when_someone_else_is_signed_in(self):
+        other = make_person(name='Meena', email='m@example.com', password='rain4moss')
+        self.client.post(reverse('hibiscus_me_login'),
+                         {'contact': 'm@example.com', 'password': 'rain4moss'})
+        self.assertEqual(self.client.session.get(auth.SESSION_KEY), other.pk)
+        self._open()
+        self.assertEqual(self.client.session.get(auth.SESSION_KEY), self.person.pk)
+
+    def test_password_sign_in_still_works_alongside_a_link(self):
+        r = self.client.post(reverse('hibiscus_me_login'),
+                             {'contact': 'd@example.com', 'password': 'swan7tide'})
+        self.assertEqual(r.status_code, 302)

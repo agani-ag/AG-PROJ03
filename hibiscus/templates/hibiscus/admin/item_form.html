@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ item.name }}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'hibiscus_person_stocks' person.pk %}">{% icon "arrow-left" %}{{ person.name }} · stocks</a>
+        <h1>Edit {{ item.name }}</h1>
+        <p class="page-sub">{{ in_stock }} in stock · {% if item.is_active %}shown on her stocks page{% else %}hidden from her{% endif %}</p>
+    </div>
+</div>
+
+<div class="card">
+    <form method="POST" class="card-body form" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <div class="alert alert-danger">{% icon "circle-alert" %}<div class="alert-body">{{ form.non_field_errors.0 }}</div></div>
+        {% endif %}
+
+        <div class="field{% if form.name.errors %} invalid{% endif %}">
+            <label class="label" for="{{ form.name.id_for_label }}">Name</label>
+            {{ form.name }}
+            {% for e in form.name.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+
+        <div class="field{% if form.low_at.errors %} invalid{% endif %}" style="max-width:220px">
+            <label class="label" for="{{ form.low_at.id_for_label }}">Low at</label>
+            {{ form.low_at }}
+            <span class="help">{{ form.fields.low_at.help_text }} At or below this, the item shows as low here and in her reminders.</span>
+            {% for e in form.low_at.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+
+        <div class="alert">
+            {% icon "info" %}
+            <div class="alert-body"><b>The count is not edited here</b>What is in stock is the sum of the movements, so a wrong number is fixed by recording a correction on the stocks page — that way the ledger and the total never disagree.</div>
+        </div>
+
+        <div class="row">
+            <button class="btn btn-primary" type="submit">{% icon "check" %}Save changes</button>
+            <a class="btn btn-ghost" href="{% url 'hibiscus_person_stocks' person.pk %}">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

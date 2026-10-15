@@ -4,7 +4,9 @@ The cron tests matter more than they look: the two endpoints are public URLs, an
 scheduled work runs through them.
 """
 from datetime import timedelta
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -265,3 +267,66 @@ class CronPageTests(TestCase):
     def test_page_needs_the_admin(self):
         self.client.logout()
         self.assertEqual(self.client.get(reverse('cron_page')).status_code, 302)
+
+
+class MigrationPackageTests(TestCase):
+    """A bare `makemigrations` must cover every app in this project.
+
+    Django treats an app with no `migrations/` package as unmigrated and skips it, so a missing
+    `__init__.py` makes `makemigrations` answer "No changes detected" instead of writing the
+    app's migration. The file is committed on purpose; the generated migrations are not.
+    """
+
+    def test_every_local_app_ships_a_migrations_package(self):
+        from pathlib import Path
+
+        from django.apps import apps
+
+        root = Path(__file__).resolve().parent.parent
+        missing = []
+        for config in apps.get_app_configs():
+            path = Path(config.path)
+            if root not in path.parents:
+                continue  # Django's own apps bring their migrations with them
+            if not (path / 'migrations' / '__init__.py').exists():
+                missing.append(f'{config.label} ({path.name}/migrations/__init__.py)')
+        self.assertEqual(missing, [], 'bare makemigrations would skip these apps')
+
+class BrandMarkTests(TestCase):
+    """The two marks: SyncHub's repeat arrow, and a module's own icon.
+
+    Both are easy to lose in a template edit and nothing else would fail if they were, so they
+    are pinned here.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+
+    def test_the_sign_in_page_wears_the_repeat_mark(self):
+        r = self.client.get(reverse('login'))
+        self.assertContains(r, '#i-rotate-cw')
+        self.assertNotContains(r, 'brand-mark is-app')
+
+    def test_the_sidebar_wears_it_too(self):
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse('dashboard'))
+        self.assertContains(r, '#i-rotate-cw')
+
+    def test_hibiscus_shows_its_flower(self):
+        self.client.force_login(self.admin)
+        body = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('#i-flower', body)              # sidebar link and dashboard card
+        self.assertNotIn('#i-heart-pulse', body)
+
+    def test_every_module_icon_is_in_the_sprite(self):
+        from core.modules import MODULES
+        sprite = (Path(settings.BASE_DIR) / 'static' / 'icons.svg').read_text(encoding='utf-8')
+        for module in MODULES:
+            self.assertIn(f'id="i-{module.icon}"', sprite, module.key)
+
+    def test_the_favicon_artwork_is_the_same_mark(self):
+        art = (Path(settings.BASE_DIR) / 'static' / 'images' / 'app-icon.svg').read_text(
+            encoding='utf-8')
+        self.assertIn('SyncHub', art)
+        self.assertIn('#2563eb', art)                 # --accent, so the two marks match
+        self.assertNotIn('SyncUp', art)

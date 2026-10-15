@@ -36,6 +36,48 @@ def check_person_password(person, raw_password):
     return bool(person.password_hash) and check_password(raw_password or '', person.password_hash)
 
 
+# 32 random bytes, url-safe: 43 characters, nothing to guess. The whole link is the credential,
+# so it is made long rather than readable — nobody types this one, they tap it.
+LOGIN_KEY_BYTES = 32
+
+
+def new_login_key(person):
+    """Give this person a fresh magic link and return the key.
+
+    Any previous key is overwritten, so handing out a new link kills the old one at once — the
+    only way to take a leaked link out of circulation, since the links never expire.
+    """
+    person.login_key = secrets.token_urlsafe(LOGIN_KEY_BYTES)
+    person.login_key_made_at = timezone.now()
+    person.login_key_used_at = None
+    person.login_key_uses = 0
+    person.save(update_fields=['login_key', 'login_key_made_at', 'login_key_used_at',
+                               'login_key_uses'])
+    return person.login_key
+
+
+def clear_login_key(person):
+    """Switch the magic link off. The link stops working the moment this runs."""
+    person.login_key = None
+    person.login_key_made_at = None
+    person.login_key_used_at = None
+    person.login_key_uses = 0
+    person.save(update_fields=['login_key', 'login_key_made_at', 'login_key_used_at',
+                               'login_key_uses'])
+
+
+def person_by_login_key(key):
+    """Whoever this key belongs to, if the key is real and the account is open.
+
+    A suspended or archived person is not returned, so switching someone off closes the magic
+    link too — the same rule `current_person()` applies on every request.
+    """
+    key = (key or '').strip()
+    if not key:
+        return None
+    return Person.objects.filter(login_key=key, is_active=True, is_archived=False).first()
+
+
 def find_person(sign_in_id):
     """Look someone up by whatever they typed — an email address or a phone number."""
     value = (sign_in_id or '').strip()

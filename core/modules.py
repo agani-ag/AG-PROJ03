@@ -39,7 +39,7 @@ MODULES = [
     Module(
         key='hibiscus',
         title='Hibiscus',
-        icon='heart-pulse',
+        icon='flower',                    # the module's own mark, the same one its pages use
         group='Modules',
         description='Cycle diary — day-by-day log, calendar and stocks. Was Red Hibiscus.',
         url_name='hibiscus_people',

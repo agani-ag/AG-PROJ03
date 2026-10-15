@@ -13,12 +13,7 @@
     </div>
 </div>
 
-<div class="seg" role="group" aria-label="Tabs" style="margin-bottom:14px">
-    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person' person.pk %}">Account</a>
-    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_periods' person.pk %}">Periods <span class="n">{{ day_count }}</span></a>
-    <button type="button" aria-pressed="true">Stocks <span class="n">{{ items|length }}</span></button>
-    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_activity' person.pk %}">Activity</a>
-</div>
+{% include "hibiscus/admin/_tabs.html" with tab="stocks" %}
 
 {% if low %}
 <div class="alert alert-warning">
@@ -48,9 +43,12 @@
                     <td data-label="Used last 30 d" class="num">{% if row.used_30 %}−{{ row.used_30 }}{% else %}—{% endif %}</td>
                     <td data-label="Last movement">{% if row.last %}{{ row.last.date|date:"d M Y" }}{% else %}—{% endif %}</td>
                     <td data-label="">
-                        <form method="POST" action="{% url 'hibiscus_item_toggle' person.pk row.item.pk %}">{% csrf_token %}
-                            <button class="btn btn-ghost btn-sm" type="submit">{% if row.item.is_active %}Hide{% else %}Show{% endif %}</button>
-                        </form>
+                        <div class="row" style="gap:4px;justify-content:flex-end">
+                            <a class="btn btn-ghost btn-sm" href="{% url 'hibiscus_item_edit' person.pk row.item.pk %}">{% icon "pencil" "icon-sm" %}Edit</a>
+                            <form method="POST" action="{% url 'hibiscus_item_toggle' person.pk row.item.pk %}">{% csrf_token %}
+                                <button class="btn btn-ghost btn-sm" type="submit">{% if row.item.is_active %}Hide{% else %}Show{% endif %}</button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 {% empty %}

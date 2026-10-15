@@ -21,12 +21,7 @@
     </div>
 </div>
 
-<div class="seg" role="group" aria-label="Tabs" style="margin-bottom:14px">
-    <button type="button" aria-pressed="true">Account</button>
-    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_periods' person.pk %}">Periods <span class="n">{{ day_count }}</span></a>
-    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_stocks' person.pk %}">Stocks <span class="n">{{ items|length }}</span></a>
-    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_activity' person.pk %}">Activity</a>
-</div>
+{% include "hibiscus/admin/_tabs.html" with tab="account" %}
 
 <div class="stack">
     <div class="stats">
@@ -67,6 +62,7 @@
                     <dt>Cycle hint</dt><dd>{% if person.cycle_hint %}{{ person.cycle_hint }} days{% else %}not given{% endif %}</dd>
                     <dt>Opened</dt><dd>{{ person.open_count }} time{{ person.open_count|pluralize }}</dd>
                     <dt>SyncUp push</dt><dd>{% if person.syncup_token %}<span class="badge badge-success"><span class="dot"></span>Ready</span>{% else %}<span class="badge"><span class="dot"></span>No token yet</span>{% endif %}</dd>
+                    <dt>Magic link</dt><dd>{% if person.login_key %}<span class="badge badge-success"><span class="dot"></span>On</span> <span class="small muted">used {{ person.login_key_uses }} time{{ person.login_key_uses|pluralize }}</span>{% else %}<span class="badge"><span class="dot"></span>Off</span>{% endif %}</dd>
                 </dl>
             </div>
             <div class="card-foot bordered">
@@ -116,6 +112,51 @@
                 {% else %}
                 <div class="empty">{% icon "droplet" %}<b>Nothing logged yet</b><span>Add days on the Periods page.</span>
                     <a class="btn btn-sm btn-primary" href="{% url 'hibiscus_person_periods' person.pk %}">{% icon "plus" %}Add days</a></div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top:16px">
+    <div class="card">
+        <div class="card-head">{% icon "link" %}<h2>Magic link</h2>
+            {% if person.login_key %}<span class="badge badge-success ml-auto"><span class="dot"></span>On</span>
+            {% else %}<span class="badge ml-auto"><span class="dot"></span>Off</span>{% endif %}
+        </div>
+        <div class="card-body">
+            {% if person.login_key %}
+            <p class="small muted" style="margin-top:0">Opening this signs {{ person.name }} in straight away — no password screen, and it never expires. Send it to them once; they can bookmark it or keep it in their chat.</p>
+            <div class="input-group" style="max-width:720px">
+                <input class="input" id="magic" value="{{ magic_url }}" readonly style="font-family:var(--mono);font-size:13px">
+                <button class="btn btn-icon" type="button" data-copy-target="#magic" aria-label="Copy the link">{% icon "copy" %}</button>
+            </div>
+            <dl class="kv" style="margin-top:12px">
+                <dt>Made</dt><dd>{{ person.login_key_made_at|date:"d M Y, H:i" }} · {{ person.login_key_made_at|ago }}</dd>
+                <dt>Used</dt>
+                <dd>{% if person.login_key_uses %}{{ person.login_key_uses }} time{{ person.login_key_uses|pluralize }} · last {{ person.login_key_used_at|ago }}{% else %}not yet{% endif %}</dd>
+            </dl>
+            <div class="alert alert-warning">
+                {% icon "triangle-alert" %}
+                <div class="alert-body"><b>The link is the password</b>Anyone holding it gets in as {{ person.name }}, for as long as it exists. If it goes somewhere it should not, make a new one — that kills the old link on the spot — or switch it off and let them use their password.</div>
+            </div>
+            {% else %}
+            <p class="small muted" style="margin-top:0">There is no link for {{ person.name }} yet. A link signs them in with one tap, with no password and no time limit — useful on a phone, and the usual way in for someone who would rather not keep a password.</p>
+            {% endif %}
+        </div>
+        <div class="card-foot bordered">
+            <div class="row">
+                {% if person.login_key %}
+                <form method="POST" action="{% url 'hibiscus_person_link' person.pk 'make' %}" data-confirm="Make a new link?" data-confirm-text="The link they have now stops working at once, so you will need to send them the new one.">{% csrf_token %}
+                    <button class="btn btn-sm" type="submit">{% icon "refresh-cw" %}New link</button>
+                </form>
+                <form method="POST" action="{% url 'hibiscus_person_link' person.pk 'off' %}" data-confirm="Switch the link off?" data-confirm-text="Their link stops working. They can still sign in with their password.">{% csrf_token %}
+                    <button class="btn btn-sm text-danger" type="submit">{% icon "unlink" %}Switch it off</button>
+                </form>
+                {% else %}
+                <form method="POST" action="{% url 'hibiscus_person_link' person.pk 'make' %}">{% csrf_token %}
+                    <button class="btn btn-sm btn-primary" type="submit">{% icon "link" %}Create a link</button>
+                </form>
                 {% endif %}
             </div>
         </div>

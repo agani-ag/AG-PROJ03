@@ -19,10 +19,28 @@ from django.views.decorators.http import require_POST
 from core.views import admin_required
 
 from . import auth, cycle, defaults, push
-from .forms import (DayForm, DayRangeForm, PersonForm, SettingsForm, StockItemForm,
-                    StockMoveForm)
+from .forms import (DayForm, DayRangeForm, PersonForm, SettingsForm, StockItemEditForm,
+                    StockItemForm, StockMoveForm)
 from .models import (Audit, DaySymptom, Flow, NotifyLine, NotifySent, NotifySlot, Person,
                      PeriodDay, Settings, StockItem, StockMove, Symptom)
+
+
+def _magic_url(request, person):
+    """The person's magic link, spelled with the host this page was reached by.
+
+    Built per request rather than stored: the same database answers to localhost in development
+    and to the real domain on the server, and a stored link would be wrong on one of them.
+    """
+    return request.build_absolute_uri(person.login_path) if person.login_key else ''
+
+
+def _tab_counts(person):
+    """The two numbers on the tab row, for every page about a person.
+
+    The row itself is one include (`admin/_tabs.html`) because keeping four copies of it in sync
+    failed in the obvious way: the Periods page quietly lost its Stocks tab.
+    """
+    return {'days': person.days.count(), 'items': person.items.count()}
 
 
 def _person_stats(person, config):
@@ -79,6 +97,8 @@ def person_detail(request, pk):
     return render(request, 'hibiscus/admin/person.html', {
         'person': person,
         'config': config,
+        'magic_url': _magic_url(request, person),
+        'tab_counts': _tab_counts(person),
         'stats': _person_stats(person, config),
         'periods': list(reversed(periods))[:6],
         'day_count': person.days.count(),
@@ -133,6 +153,32 @@ def person_password(request, pk):
     return render(request, 'hibiscus/admin/password_once.html',
                   {'person': person, 'password': raw, 'config': Settings.load(),
                    'heading': 'New password'})
+
+
+@admin_required
+@require_POST
+def person_link(request, pk, what):
+    """Make, replace or switch off someone's magic link.
+
+    `make` also covers "replace": one key per person, so writing a new one retires the old link
+    immediately. That is the whole revocation story for links that never expire, which is why the
+    button says so on the page.
+    """
+    person = get_object_or_404(Person, pk=pk)
+    if what == 'make':
+        had_one = person.has_login_link
+        auth.new_login_key(person)
+        auth.log('made_login_link', person=person, actor=request.user,
+                 detail='replaced the old link' if had_one else 'first link')
+        messages.success(request, 'Link ready — copy it below.' if not had_one else
+                         'New link ready. The old one has stopped working.')
+    elif what == 'off':
+        auth.clear_login_key(person)
+        auth.log('removed_login_link', person=person, actor=request.user)
+        messages.success(request, 'Link switched off. Only the password works now.')
+    else:
+        raise Http404
+    return redirect('hibiscus_person', pk=person.pk)
 
 
 @admin_required
@@ -254,6 +300,7 @@ def person_periods(request, pk):
         'rows': _period_rows(person, config),
         'stats': _person_stats(person, config),
         'day_count': person.days.count(),
+        'tab_counts': _tab_counts(person),
         'flow_levels': Flow.choices,
     })
 
@@ -337,7 +384,7 @@ def person_activity(request, pk):
     person = get_object_or_404(Person, pk=pk)
     return render(request, 'hibiscus/admin/person_activity.html',
                   {'person': person, 'audit': person.audit.all()[:200],
-                   'config': Settings.load()})
+                   'config': Settings.load(), 'tab_counts': _tab_counts(person)})
 
 
 @admin_required
@@ -389,6 +436,35 @@ def person_stocks(request, pk):
         'item_form': item_form if request.POST.get('what') == 'item' else StockItemForm(),
         'move_form': move_form if request.POST.get('what') == 'move' else StockMoveForm(today=config.today),
         'day_count': person.days.count(),
+        'tab_counts': _tab_counts(person),
+    })
+
+
+@admin_required
+def stock_item_edit(request, pk, item_pk):
+    """Rename an item, or change the level that makes it count as low.
+
+    The low level is the one thing on this page that changes what gets *sent*: an item at or
+    below it puts a line in her reminders, so it belongs with the admin as well as with her.
+    """
+    person = get_object_or_404(Person, pk=pk)
+    item = get_object_or_404(StockItem, pk=item_pk, person=person)
+    was = (item.name, item.low_at)                 # the form mutates `item` while validating
+    form = StockItemEditForm(request.POST or None, instance=item)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        changes = []
+        if was[0] != item.name:
+            changes.append(f'{was[0]} → {item.name}')
+        if was[1] != item.low_at:
+            changes.append(f'low at {was[1]} → {item.low_at}')
+        auth.log('edited_item', person=person, actor=request.user,
+                 detail=' · '.join(changes) or f'{item.name} unchanged')
+        messages.success(request, f'{item.name} saved.')
+        return redirect('hibiscus_person_stocks', pk=person.pk)
+    return render(request, 'hibiscus/admin/item_form.html', {
+        'person': person, 'item': item, 'form': form, 'config': Settings.load(),
+        'in_stock': item.in_stock,
     })
 
 

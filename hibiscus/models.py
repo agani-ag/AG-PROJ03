@@ -12,6 +12,7 @@ import zoneinfo
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.urls import reverse
 from django.utils import timezone
 
 
@@ -141,6 +142,17 @@ class Person(models.Model):
     # there is nothing to push to (see the notification plan).
     syncup_token = models.TextField(blank=True)
 
+    # A magic link the admin hands out: whoever opens it is signed in as this person, with no
+    # expiry and no password. That is the point of it — one tap from a saved bookmark or a chat
+    # message. The trade is that the link *is* the credential, so the admin can replace it (the
+    # old one dies at once) or switch it off, every use is audited, and a suspended account is
+    # refused like any other sign-in.
+    login_key = models.CharField(max_length=64, unique=True, null=True, blank=True,
+                                 help_text='Null means this person has no magic link.')
+    login_key_made_at = models.DateTimeField(null=True, blank=True)
+    login_key_used_at = models.DateTimeField(null=True, blank=True)
+    login_key_uses = models.PositiveIntegerField(default=0)
+
     THEMES = (('system', 'Follow the phone'), ('light', 'Light'), ('dark', 'Dark'))
     theme = models.CharField(max_length=10, choices=THEMES, default='system')
 
@@ -153,6 +165,18 @@ class Person(models.Model):
     @property
     def sign_in_id(self):
         return self.email or self.phone or f'person-{self.pk}'
+
+    @property
+    def has_login_link(self):
+        return bool(self.login_key)
+
+    @property
+    def login_path(self):
+        """The magic link's path, or '' when there is none. The host is added by the view, which
+        is the only place that knows what name the site is being reached by."""
+        if not self.login_key:
+            return ''
+        return reverse('hibiscus_me_key', args=[self.login_key])
 
 
 class PeriodDay(models.Model):

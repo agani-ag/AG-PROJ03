@@ -1,12 +1,11 @@
 {% extends "base.html" %}
-{% load static %}
 {% block title %}Sign in{% endblock %}
 
 {% block layout %}
 <main class="bare">
     <div class="card auth-card">
         <div class="auth-brand">
-            <span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>
+            <span class="brand-mark">{% icon "rotate-cw" %}</span>
             <h1>Sign in to {{ app_name }}</h1>
             <p class="muted">Admin console</p>
         </div>

@@ -70,13 +70,27 @@ it private.
 
 ## Migrations
 
-`migrations/` is gitignored, the same as in AG-PROJ01 and AG-PROJ02. Each environment creates its
-own, so after cloning or pulling a model change, run:
+Generated migrations are gitignored, the same as in AG-PROJ01 and AG-PROJ02. Each environment
+creates its own, so after cloning or pulling a model change, run:
 
 ```
 python manage.py makemigrations
 python manage.py migrate
 ```
+
+No app labels needed — that bare command covers every installed app. It only works because each
+app's empty `migrations/__init__.py` **is** committed; Django treats an app with no `migrations/`
+folder as unmigrated and silently skips it, which is why a bare run would otherwise answer
+"No changes detected" and force `makemigrations core hibiscus`. The two `.gitignore` lines that
+keep this true:
+
+```
+**/migrations/*
+!**/migrations/__init__.py
+```
+
+**Adding a module app?** Create `<app>/migrations/__init__.py` along with it, or bare
+`makemigrations` will leave that app out.
 
 ## Putting it on a server
 
@@ -106,11 +120,15 @@ about the rest:
 **Two things Django will not do for you:**
 
 1. **Serve static files.** With `DEBUG=0` Django serves nothing, so point the web server's
-   `/static/` at `staticfiles/` (on PythonAnywhere that is the Static files table in the Web tab)
-   and re-run `collectstatic` after every deploy. If you skip it, pages load with no CSS — the
-   `synchub.W003` warning catches this.
-2. **Generate migrations.** `migrations/` is gitignored, as in AG-PROJ01 and AG-PROJ02, so a
-   fresh clone has none: run `makemigrations` *before* `migrate`, or nothing gets created.
+   `/static/` at **`staticfiles/`** (on PythonAnywhere that is the Static files table in the Web
+   tab) and re-run `collectstatic` after every deploy. It must be `staticfiles/`, not the
+   project's own `static/`: that folder holds the shared console files only, so mapping it serves
+   `css/app.css` and 404s everything an app ships with — the console then looks perfect while
+   `/hibiscus/me/` renders as plain text. `manage.py check` looks for both kinds of file and
+   warns with `synchub.W003`.
+2. **Generate migrations.** Migration files are gitignored, as in AG-PROJ01 and AG-PROJ02, so a
+   fresh clone has none: run `makemigrations` *before* `migrate`, or nothing gets created. Plain
+   `makemigrations` is enough — it picks up every installed app.
 
 **Then, in order:** set the cron service (below) → open `/cron/health?key=…` to confirm → fill in
 the SyncUp address and notify key on the Hibiscus settings page → add the people and their
@@ -159,6 +177,13 @@ counted as a period day; one missing day inside a run is bridged, two start a ne
 sign themselves up with an email **or** a phone number. Notifications go out through SyncUp at
 times the admin sets, each time of day with its own words, delivered by the hub's 15-minute cron.
 
+The admin can also hand someone a **magic link** (`/hibiscus/me/k/<key>`): opening it signs that
+person in with no password and **no expiry**, which is the point — one tap from a bookmark or a
+chat message. The link is therefore the credential, so there is one key per person (making a new
+one retires the old link immediately), an off switch, a refusal for suspended or archived
+accounts, and an audit row for every use. The key never stays in the address bar: the view signs
+them in and redirects.
+
 ## Pages
 
 | URL | Page |
@@ -172,6 +197,7 @@ times the admin sets, each time of day with its own words, delivered by the hub'
 | `/cron/` | The two hub jobs, their hooks and recent runs (admin only) |
 | `/hibiscus/` | Hibiscus admin: people, periods, stocks, notifications, settings |
 | `/hibiscus/me/` | The diary, for the people who keep it (their own sign-in) |
+| `/hibiscus/me/k/<key>` | Magic link: signs that person in and redirects, no password, no expiry |
 | `/m/<key>/` | Placeholder for a module that isn't built yet |
 | `/django-admin/` | Django's own admin |
 
@@ -191,7 +217,14 @@ core/            the shell
 static/          app.css, app.js, icons.svg, images/app-icon.svg  (copied from AG-PROJ01)
 ```
 
-`static/images/app-icon.svg` is still SyncUp's mark — replace it when this product gets its own.
+SyncHub's mark is the **repeat arrow** — one loop that comes back round, which is what the hub
+does: the same two cron jobs, every 15 minutes, for every module. It is drawn twice on purpose.
+`static/images/app-icon.svg` is the standalone artwork (blue tile, white arrow) used as the
+favicon; the sidebar and the sign-in page use `{% icon "rotate-cw" %}` from the sprite instead, so
+the badge follows the theme and costs no extra request. A module's own mark goes in
+`core/modules.py` — Hibiscus uses `flower`, the same flower its own pages and favicon carry.
+`static/icons.svg` is Lucide and is meant to be regenerated rather than hand-edited; the one
+exception is that flower, which is ours and is marked as such at the end of the file.
 
 ## Adding a module
 

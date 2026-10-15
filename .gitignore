@@ -81,8 +81,11 @@ $RECYCLE.BIN/
 staticfiles/
 media/
 
-# Migrations are generated per environment (same as AG-PROJ01 and AG-PROJ02)
-migrations/
+# Migrations are generated per environment (same as AG-PROJ01 and AG-PROJ02), but the
+# package marker must be committed: an app with no migrations/ folder is treated as
+# unmigrated, so a bare `makemigrations` skips it and asks you to name the app.
+**/migrations/*
+!**/migrations/__init__.py
 
 # Local database backups
 backups/

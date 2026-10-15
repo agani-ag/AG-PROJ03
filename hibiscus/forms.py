@@ -216,6 +216,26 @@ class StockItemForm(forms.ModelForm):
         _style(self)
 
 
+class StockItemEditForm(forms.ModelForm):
+    """An item that already exists: its name and its low level.
+
+    The count is deliberately not a field. What is in stock is the sum of the ledger, so changing
+    it means recording a correction with a date and a reason — typing a new number would leave
+    the movements saying something different from the total.
+    """
+
+    class Meta:
+        model = StockItem
+        fields = ['name', 'low_at']
+        widgets = {'name': forms.TextInput(attrs={'placeholder': 'e.g. Pads, Sofy'})}
+        labels = {'low_at': 'Tell me when it reaches'}
+        help_texts = {'low_at': '0 turns the reminder off for this item.'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _style(self)
+
+
 class StockMoveForm(forms.ModelForm):
     """A movement with its own date, so usage can be back-dated — the old ledger always said
     "today", which made it useless for reading alongside cycle days."""

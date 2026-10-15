@@ -13,6 +13,7 @@ from datetime import date, timedelta
 
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import F
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -110,6 +111,31 @@ def sign_in_view(request):
             messages.error(request, 'That did not match. Check the email or number, and the password.')
     return _no_store(render(request, 'hibiscus/user/login.html',
                             {'form': form, 'config': config}))
+
+
+@never_cache
+def magic_login(request, key):
+    """Sign in by link alone — no password, no expiry.
+
+    The admin hands this out from someone's page. Opening it signs that person in and then
+    *redirects*, so the key does not sit in the address bar of the page they end up on and does
+    not get shared along with a screenshot of it.
+
+    A key that has been replaced, switched off, or belongs to a suspended account lands on the
+    normal sign-in page with a plain explanation. Nothing says whether the key was ever real,
+    which is all the lookup resistance a 43-character random key needs.
+    """
+    person = auth.person_by_login_key(key)
+    if not person:
+        messages.error(request, 'That link does not work any more. Ask for a new one, '
+                                'or sign in with your password.')
+        return _no_store(redirect('hibiscus_me_login'))
+
+    auth.sign_in(request, person)
+    Person.objects.filter(pk=person.pk).update(
+        login_key_used_at=timezone.now(), login_key_uses=F('login_key_uses') + 1)
+    auth.log('signed_in_with_link', person=person)
+    return _no_store(redirect('hibiscus_me_home'))
 
 
 def sign_out_view(request):
