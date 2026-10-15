@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ day.date|date:"d M Y" }} · {{ person.name }}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'hibiscus_person_periods' person.pk %}">{% icon "arrow-left" %}{{ person.name }} · periods</a>
+        <h1>{{ day.date|date:"D d M Y" }}</h1>
+        <p class="page-sub">
+            One day on its own.
+            {% if day.created_by %}Added by {{ day.created_by.first_name|default:day.created_by.username }} on her behalf{% else %}Logged by {{ person.name }}{% endif %}
+            · {{ day.created_at|date:"d M Y, H:i" }}
+        </p>
+    </div>
+</div>
+
+<div class="card">
+    <form method="POST" class="card-body form" novalidate>
+        {% csrf_token %}
+        <div class="field">
+            <label class="label">Flow</label>
+            <div class="chips">
+                {% for value, label in form.fields.flow.choices %}
+                <label class="chip"><input type="radio" name="flow" value="{{ value }}"
+                        {% if form.flow.value|stringformat:"s" == value|stringformat:"s" %}checked{% endif %}
+                        style="width:14px;height:14px;accent-color:var(--accent);margin:0">{{ label }}</label>
+                {% endfor %}
+            </div>
+            <span class="help">Spotting is shown on the calendar but never counts as a period day.</span>
+            {% for e in form.flow.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+
+        <div class="field">
+            <label class="label">Symptoms <span class="opt">optional</span></label>
+            <div class="chips">
+                {% for box in form.symptoms %}
+                <label class="chip">{{ box.tag }}{{ box.choice_label }}</label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="field">
+            <label class="label" for="{{ form.note.id_for_label }}">Note <span class="opt">optional</span></label>
+            {{ form.note }}
+        </div>
+
+        <div class="row">
+            <button class="btn btn-primary" type="submit">{% icon "check" %}Save this day</button>
+            <a class="btn btn-ghost" href="{% url 'hibiscus_person_periods' person.pk %}">Cancel</a>
+        </div>
+    </form>
+    <div class="card-foot bordered">
+        <form method="POST" action="{% url 'hibiscus_day_delete' person.pk day.date|date:'Y-m-d' %}"
+              data-confirm="Remove {{ day.date|date:'d M Y' }}?"
+              data-confirm-text="Only this day goes. If it sits in the middle of a period, the days on either side stay — and a single gap is bridged, so the period holds together."
+              data-confirm-button="Remove day" data-danger>{% csrf_token %}
+            <button class="btn btn-sm text-danger" type="submit">{% icon "trash" %}Remove this day</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

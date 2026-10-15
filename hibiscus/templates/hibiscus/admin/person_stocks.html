@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}{{ person.name }} · stocks{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'hibiscus_person' person.pk %}">{% icon "arrow-left" %}{{ person.name }}</a>
+        <h1>Stocks</h1>
+        <p class="page-sub">{{ items|length }} item{{ items|length|pluralize }} · {{ low|length }} low · the count is the sum of the movements</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" href="{% url 'hibiscus_person_export' person.pk %}">{% icon "download" %}Export CSV</a>
+    </div>
+</div>
+
+<div class="seg" role="group" aria-label="Tabs" style="margin-bottom:14px">
+    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person' person.pk %}">Account</a>
+    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_periods' person.pk %}">Periods <span class="n">{{ day_count }}</span></a>
+    <button type="button" aria-pressed="true">Stocks <span class="n">{{ items|length }}</span></button>
+    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_activity' person.pk %}">Activity</a>
+</div>
+
+{% if low %}
+<div class="alert alert-warning">
+    {% icon "triangle-alert" %}
+    <div class="alert-body"><b>{{ low|length }} item{{ low|length|pluralize }} at or below the low level</b>
+        {% for row in low %}{{ row.item.name }} ({{ row.in_stock }} left, low at {{ row.item.low_at }}){% if not forloop.last %} · {% endif %}{% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-head">{% icon "package" %}<h2>Items</h2></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Item</th><th>In stock</th><th>Low at</th><th>State</th><th>Used last 30 d</th><th>Last movement</th><th></th></tr></thead>
+            <tbody>
+                {% for row in items %}
+                <tr{% if not row.item.is_active %} style="opacity:.55"{% endif %}>
+                    <td class="t-primary" data-label="Item"><b>{{ row.item.name }}</b></td>
+                    <td data-label="In stock" class="num">{{ row.in_stock }}</td>
+                    <td data-label="Low at" class="num">{% if row.item.low_at %}{{ row.item.low_at }}{% else %}off{% endif %}</td>
+                    <td data-label="State">
+                        {% if not row.item.is_active %}<span class="badge"><span class="dot"></span>Hidden</span>
+                        {% elif row.is_low %}<span class="badge badge-danger"><span class="dot"></span>Low</span>
+                        {% else %}<span class="badge badge-success"><span class="dot"></span>OK</span>{% endif %}
+                    </td>
+                    <td data-label="Used last 30 d" class="num">{% if row.used_30 %}−{{ row.used_30 }}{% else %}—{% endif %}</td>
+                    <td data-label="Last movement">{% if row.last %}{{ row.last.date|date:"d M Y" }}{% else %}—{% endif %}</td>
+                    <td data-label="">
+                        <form method="POST" action="{% url 'hibiscus_item_toggle' person.pk row.item.pk %}">{% csrf_token %}
+                            <button class="btn btn-ghost btn-sm" type="submit">{% if row.item.is_active %}Hide{% else %}Show{% endif %}</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7"><div class="empty">{% icon "package" %}<b>Nothing yet</b><span>Add an item below, or let her add her own.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="grid-2" style="margin-top:16px">
+    <div class="card">
+        <div class="card-head">{% icon "plus" %}<h2>Add an item</h2></div>
+        <form method="POST" class="card-body form" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="what" value="item">
+            <div class="field{% if item_form.name.errors %} invalid{% endif %}">
+                <label class="label" for="{{ item_form.name.id_for_label }}">Name</label>
+                {{ item_form.name }}
+                {% for e in item_form.name.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label class="label" for="{{ item_form.opening.id_for_label }}">How many now</label>
+                    {{ item_form.opening }}
+                </div>
+                <div class="field">
+                    <label class="label" for="{{ item_form.low_at.id_for_label }}">Low at</label>
+                    {{ item_form.low_at }}
+                    <span class="help">{{ item_form.fields.low_at.help_text }}</span>
+                </div>
+            </div>
+            <button class="btn btn-primary" type="submit">{% icon "check" %}Add item</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "pencil" %}<h2>Record a movement</h2></div>
+        <form method="POST" class="card-body form" novalidate>
+            {% csrf_token %}
+            <input type="hidden" name="what" value="move">
+            <div class="field">
+                <label class="label" for="item">Item</label>
+                <select class="input" id="item" name="item">
+                    {% for row in items %}{% if row.item.is_active %}
+                    <option value="{{ row.item.pk }}">{{ row.item.name }} · {{ row.in_stock }} in stock</option>
+                    {% endif %}{% endfor %}
+                </select>
+            </div>
+            <div class="form-grid">
+                <div class="field{% if move_form.date.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ move_form.date.id_for_label }}">When</label>
+                    {{ move_form.date }}
+                    {% for e in move_form.date.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                </div>
+                <div class="field{% if move_form.change.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ move_form.change.id_for_label }}">How many</label>
+                    {{ move_form.change }}
+                    <span class="help">Minus for used, plus for restocked.</span>
+                    {% for e in move_form.change.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                </div>
+                <div class="field">
+                    <label class="label" for="{{ move_form.reason.id_for_label }}">Reason</label>
+                    {{ move_form.reason }}
+                </div>
+                <div class="field">
+                    <label class="label" for="{{ move_form.note.id_for_label }}">Note</label>
+                    {{ move_form.note }}
+                </div>
+            </div>
+            <button class="btn btn-primary" type="submit">{% icon "check" %}Record it</button>
+        </form>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "scroll-text" %}<h2>Movements</h2><span class="small muted ml-auto">Newest first · the count above is their sum</span></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Date</th><th>Item</th><th>Change</th><th>Reason</th><th>Note</th><th>By</th></tr></thead>
+            <tbody>
+                {% for m in moves %}
+                <tr>
+                    <td class="t-primary" data-label="Date">{{ m.date|date:"d M Y" }}</td>
+                    <td data-label="Item">{{ m.item.name }}</td>
+                    <td data-label="Change" class="num {% if m.change < 0 %}text-danger{% else %}text-success{% endif %}">{% if m.change > 0 %}+{% endif %}{{ m.change }}</td>
+                    <td data-label="Reason"><span class="badge">{{ m.get_reason_display }}</span></td>
+                    <td data-label="Note"><span class="small muted">{{ m.note|default:"—" }}</span></td>
+                    <td data-label="By">{% if m.created_by %}{{ m.created_by.first_name|default:m.created_by.username }}{% else %}{{ person.name }}{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6"><div class="empty">{% icon "scroll-text" %}<b>No movements yet</b></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "hibiscus/user/base.html" %}
+{% block title %}Sign-up is closed{% endblock %}
+{% block chrome %}
+<main><div class="wrap auth">
+  <span class="mark-big"><svg class="ic"><use href="#h-lock"/></svg></span>
+  <h1>Not open just now</h1>
+  <p class="tag">New accounts are closed at the moment. Ask the admin to make you one.</p>
+  <a class="btn ghost" href="{% url 'hibiscus_me_login' %}">Back to sign in</a>
+</div></main>
+{% endblock %}

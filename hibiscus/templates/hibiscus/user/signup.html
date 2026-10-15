@@ -1,0 +1,58 @@
+{% extends "hibiscus/user/base.html" %}
+{% block title %}Create an account{% endblock %}
+
+{% block chrome %}
+<header class="top"><div class="wrap top-in">
+  <a class="rb" href="{% url 'hibiscus_me_login' %}" aria-label="Back"><svg class="ic"><use href="#h-back"/></svg></a>
+  <span class="title">Create an account</span>
+</div></header>
+
+<main>
+  <div class="wrap stack">
+    {% if form.non_field_errors %}
+    <div class="note soft"><svg class="ic sm"><use href="#h-x"/></svg><div>{{ form.non_field_errors.0 }}</div></div>
+    {% endif %}
+
+    <form method="POST" class="stack" novalidate>
+      {% csrf_token %}
+      <div class="field{% if form.name.errors %} bad{% endif %}">
+        <label for="{{ form.name.id_for_label }}">What should we call you?</label>
+        {{ form.name }}
+        {% for e in form.name.errors %}<span class="err">{{ e }}</span>{% endfor %}
+      </div>
+      <div class="field{% if form.contact.errors %} bad{% endif %}">
+        <label for="{{ form.contact.id_for_label }}">Email or phone</label>
+        {{ form.contact }}
+        <span class="help">Either one — it is what you will sign in with.</span>
+        {% for e in form.contact.errors %}<span class="err">{{ e }}</span>{% endfor %}
+      </div>
+      <div class="field{% if form.password.errors %} bad{% endif %}">
+        <label for="{{ form.password.id_for_label }}">Password</label>
+        {{ form.password }}
+        <span class="help">{{ form.password.help_text }}</span>
+        {% for e in form.password.errors %}<span class="err">{{ e }}</span>{% endfor %}
+      </div>
+      <div class="field{% if form.cycle_hint.errors %} bad{% endif %}">
+        <label for="{{ form.cycle_hint.id_for_label }}">Usual cycle length</label>
+        {{ form.cycle_hint }}
+        <span class="help">{{ form.cycle_hint.help_text }}</span>
+        {% for e in form.cycle_hint.errors %}<span class="err">{{ e }}</span>{% endfor %}
+      </div>
+      {% if form.invite_code %}
+      <div class="field{% if form.invite_code.errors %} bad{% endif %}">
+        <label for="{{ form.invite_code.id_for_label }}">Invite code</label>
+        {{ form.invite_code }}
+        {% for e in form.invite_code.errors %}<span class="err">{{ e }}</span>{% endfor %}
+      </div>
+      {% endif %}
+      <button class="btn" type="submit"><svg class="ic"><use href="#h-check"/></svg>Create my account</button>
+    </form>
+
+    <div class="note mint">
+      <svg class="ic sm"><use href="#h-shield"/></svg>
+      <div>Your entries are yours. The admin can see them to help you, and every look is recorded. Nothing is shared with any other company.</div>
+    </div>
+    <a class="btn link center" href="{% url 'hibiscus_me_login' %}">Already have an account? Sign in</a>
+  </div>
+</main>
+{% endblock %}

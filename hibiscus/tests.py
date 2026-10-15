@@ -409,12 +409,136 @@ class AdminSideTests(TestCase):
             'display_name': 'Hibiscus', 'time_zone': 'Asia/Kolkata', 'week_starts_sunday': 'on',
             'default_cycle': 30, 'default_period': 4, 'luteal_days': 14, 'bridge_days': 1,
             'signup_open': 'on', 'invite_code': '', 'keep_audit_days': 180,
+            'syncup_base': '', 'syncup_notify_key': '', 'notify_late_hours': 2,
         })
         self.assertEqual(r.status_code, 302)
         config = Settings.load()
         self.assertEqual(config.default_cycle, 30)
         self.assertEqual(config.updated_by, self.admin)
         self.assertTrue(Audit.objects.filter(action='changed_settings').exists())
+
+    # ---- periods tab
+    def periods_url(self):
+        return reverse('hibiscus_person_periods', args=[self.person.pk])
+
+    def test_a_range_saves_one_row_per_day(self):
+        r = self.client.post(self.periods_url(), {
+            'first_day': '2026-10-01', 'last_day': '2026-10-05',
+            'flow': int(Flow.MEDIUM), 'symptoms': ['cramps', 'backache'], 'note': 'first cycle',
+        })
+        self.assertEqual(r.status_code, 302)
+        days = list(self.person.days.order_by('date'))
+        self.assertEqual(len(days), 5)
+        self.assertEqual(days[0].date, D(2026, 10, 1))
+        self.assertEqual(days[0].flow, Flow.MEDIUM)
+        self.assertEqual(days[0].note, 'first cycle')
+        self.assertEqual(days[0].created_by, self.admin)          # typed on her behalf
+        self.assertEqual(
+            sorted(days[2].symptoms.values_list('symptom', flat=True)), ['backache', 'cramps'])
+
+    def test_a_blank_last_day_saves_a_single_day(self):
+        self.client.post(self.periods_url(),
+                         {'first_day': '2026-10-01', 'flow': int(Flow.HEAVY)})
+        self.assertEqual(self.person.days.count(), 1)
+
+    def test_saving_a_day_twice_updates_it_instead_of_duplicating(self):
+        self.client.post(self.periods_url(),
+                         {'first_day': '2026-10-01', 'flow': int(Flow.MEDIUM), 'symptoms': ['cramps']})
+        self.client.post(self.periods_url(),
+                         {'first_day': '2026-10-01', 'flow': int(Flow.HEAVY), 'symptoms': ['nausea']})
+        self.assertEqual(self.person.days.count(), 1)
+        day = self.person.days.get()
+        self.assertEqual(day.flow, Flow.HEAVY)
+        self.assertEqual(list(day.symptoms.values_list('symptom', flat=True)), ['nausea'])
+
+    def test_future_days_are_refused(self):
+        tomorrow = Settings.load().today + timedelta(days=1)
+        r = self.client.post(self.periods_url(),
+                             {'first_day': tomorrow.isoformat(), 'flow': int(Flow.MEDIUM)})
+        self.assertContains(r, 'in the future')
+        self.assertEqual(self.person.days.count(), 0)
+
+    def test_a_backwards_range_is_refused(self):
+        r = self.client.post(self.periods_url(), {'first_day': '2026-10-05',
+                                                  'last_day': '2026-10-01',
+                                                  'flow': int(Flow.MEDIUM)})
+        self.assertContains(r, 'cannot be before')
+        self.assertEqual(self.person.days.count(), 0)
+
+    def test_an_absurd_range_is_refused(self):
+        r = self.client.post(self.periods_url(), {'first_day': '2026-01-01',
+                                                  'last_day': '2026-06-01',
+                                                  'flow': int(Flow.MEDIUM)})
+        self.assertContains(r, 'more than 31 days')
+        self.assertEqual(self.person.days.count(), 0)
+
+    def test_the_table_groups_days_and_explains_the_rules(self):
+        # spotting, then three real days, with one day in the middle never logged
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1), flow=Flow.SPOTTING)
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 2), flow=Flow.MEDIUM)
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 4), flow=Flow.LIGHT)
+        r = self.client.get(self.periods_url())
+        self.assertEqual(r.status_code, 200)
+        row, = r.context['rows']
+        self.assertEqual((row['period'].start, row['period'].end), (D(2026, 10, 2), D(2026, 10, 4)))
+        self.assertEqual(row['period'].days, 3)
+        self.assertTrue(row['has_lead_spotting'])
+        self.assertEqual(row['bridged'], [D(2026, 10, 3)])
+        self.assertContains(r, 'not counted')
+        self.assertContains(r, 'bridged')
+
+    # ---- one day at a time
+    def test_editing_one_day(self):
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 2), flow=Flow.MEDIUM)
+        url = reverse('hibiscus_day_edit', args=[self.person.pk, '2026-10-02'])
+        self.assertEqual(self.client.get(url).status_code, 200)
+        r = self.client.post(url, {'flow': int(Flow.SPOTTING), 'symptoms': ['acne'], 'note': 'ok'})
+        self.assertEqual(r.status_code, 302)
+        day = self.person.days.get()
+        self.assertEqual(day.flow, Flow.SPOTTING)
+        self.assertEqual(day.note, 'ok')
+        self.assertEqual(list(day.symptoms.values_list('symptom', flat=True)), ['acne'])
+        self.assertTrue(Audit.objects.filter(action='edited_day').exists())
+
+    def test_editing_a_day_that_was_never_logged_is_404(self):
+        url = reverse('hibiscus_day_edit', args=[self.person.pk, '2026-10-02'])
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_a_nonsense_date_in_the_url_is_404(self):
+        url = reverse('hibiscus_day_edit', args=[self.person.pk, 'last-tuesday'])
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_removing_a_middle_day_keeps_the_period_together(self):
+        for i in range(4):
+            PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1) + timedelta(days=i))
+        self.client.post(reverse('hibiscus_day_delete', args=[self.person.pk, '2026-10-03']))
+        self.assertEqual(self.person.days.count(), 3)
+        row, = self.client.get(self.periods_url()).context['rows']
+        self.assertEqual(row['period'].days, 4)                   # bridged, so still one period
+        self.assertTrue(Audit.objects.filter(action='deleted_day').exists())
+
+    def test_removing_a_whole_period_takes_its_spotting_days_too(self):
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1), flow=Flow.SPOTTING)
+        for i in range(1, 4):
+            PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1) + timedelta(days=i))
+        PeriodDay.objects.create(person=self.person, date=D(2026, 11, 5))   # a later period
+        self.client.post(reverse('hibiscus_period_delete', args=[self.person.pk, '2026-10-02']))
+        self.assertEqual([d.date for d in self.person.days.all()], [D(2026, 11, 5)])
+        self.assertTrue(Audit.objects.filter(action='deleted_period').exists())
+
+    def test_deleting_a_period_that_does_not_start_there_is_404(self):
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 2))
+        r = self.client.post(reverse('hibiscus_period_delete', args=[self.person.pk, '2026-10-09']))
+        self.assertEqual(r.status_code, 404)
+
+    def test_averages_appear_once_there_are_two_periods(self):
+        for start in (D(2026, 8, 1), D(2026, 9, 2)):
+            for i in range(4):
+                PeriodDay.objects.create(person=self.person, date=start + timedelta(days=i))
+        r = self.client.get(self.periods_url())
+        self.assertEqual(r.context['stats'].avg_cycle, 32)
+        self.assertEqual(r.context['stats'].avg_period, 4)
+        self.assertContains(r, 'average cycle 32 days')
 
     def test_the_list_uses_the_module_defaults_for_a_prediction(self):
         """A person with one period and no history is predicted from the settings, not a constant."""

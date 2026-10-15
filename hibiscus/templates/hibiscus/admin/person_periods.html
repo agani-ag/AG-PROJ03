@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}{{ person.name }} · periods{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'hibiscus_person' person.pk %}">{% icon "arrow-left" %}{{ person.name }}</a>
+        <h1>Periods</h1>
+        <p class="page-sub">
+            {{ day_count }} day{{ day_count|pluralize }} logged · {{ rows|length }} period{{ rows|length|pluralize }}
+            {% if stats.avg_cycle %}· average cycle {{ stats.avg_cycle }} days, period {{ stats.avg_period }} days{% endif %}
+        </p>
+    </div>
+</div>
+
+<div class="seg" role="group" aria-label="Tabs" style="margin-bottom:14px">
+    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person' person.pk %}">Account</a>
+    <button type="button" aria-pressed="true">Periods <span class="n">{{ day_count }}</span></button>
+    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_activity' person.pk %}">Activity</a>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        {% icon "plus" %}<h2>Add days for {{ person.name }}</h2>
+        <span class="small muted ml-auto">Entered on her behalf — recorded as such</span>
+    </div>
+    <form method="POST" class="card-body form" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <div class="alert alert-danger">{% icon "circle-alert" %}<div class="alert-body">{{ form.non_field_errors.0 }}</div></div>
+        {% endif %}
+
+        <div class="form-grid">
+            <div class="field{% if form.first_day.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.first_day.id_for_label }}">First day</label>
+                {{ form.first_day }}
+                {% for e in form.first_day.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="field{% if form.last_day.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.last_day.id_for_label }}">Last day <span class="opt">optional</span></label>
+                {{ form.last_day }}
+                <span class="help">{{ form.last_day.help_text }}</span>
+                {% for e in form.last_day.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+        </div>
+
+        <div class="field{% if form.flow.errors %} invalid{% endif %}">
+            <label class="label">Flow for those days</label>
+            <div class="chips">
+                {% for value, label in form.fields.flow.choices %}
+                <label class="chip"><input type="radio" name="flow" value="{{ value }}"
+                        {% if form.flow.value|stringformat:"s" == value|stringformat:"s" %}checked{% elif not form.flow.value and value == 3 %}checked{% endif %}
+                        style="width:14px;height:14px;accent-color:var(--accent);margin:0">{{ label }}</label>
+                {% endfor %}
+            </div>
+            <span class="help">Applied to every day in the range; any single day can be changed afterwards.</span>
+        </div>
+
+        <div class="field">
+            <label class="label">Symptoms <span class="opt">optional</span></label>
+            <div class="chips">
+                {% for box in form.symptoms %}
+                <label class="chip">{{ box.tag }}{{ box.choice_label }}</label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="field">
+            <label class="label" for="{{ form.note.id_for_label }}">Note <span class="opt">optional</span></label>
+            {{ form.note }}
+        </div>
+
+        <div class="row">
+            <button class="btn btn-primary" type="submit">{% icon "check" %}Save days</button>
+            <span class="small muted">Today here is {{ config.today|date:"d M Y" }} ({{ config.time_zone }}). Future days are refused.</span>
+        </div>
+    </form>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">
+        {% icon "droplet" %}<h2>Periods</h2>
+        <span class="small muted ml-auto">Days grouped into runs · newest first</span>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead>
+                <tr><th>Period</th><th>Days</th><th>Flow, day by day</th><th>Symptoms</th><th>Gap</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="t-primary" data-label="Period">
+                        <b>{{ row.period.start|date:"d M" }} – {{ row.period.end|date:"d M Y" }}</b>
+                        {% if row.has_lead_spotting or row.has_trail_spotting or row.bridged %}
+                        <div class="small faint">
+                            {% if row.has_lead_spotting %}spotting from {{ row.period.shown_from|date:"d M" }} · not counted{% endif %}
+                            {% if row.has_trail_spotting %}{% if row.has_lead_spotting %}<br>{% endif %}spotting to {{ row.period.shown_to|date:"d M" }} · not counted{% endif %}
+                            {% for day in row.bridged %}<br>{{ day|date:"d M" }} not logged · bridged{% endfor %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td data-label="Days" class="num">{{ row.period.days }}</td>
+                    <td data-label="Flow, day by day">
+                        <div class="chips">
+                            {% for day in row.days %}
+                                {% if day.logged %}
+                                <a class="chip" href="{% url 'hibiscus_day_edit' person.pk day.date|date:'Y-m-d' %}"
+                                   title="{{ day.date|date:'D d M Y' }} · {{ day.flow_label }}{% if day.note %} · {{ day.note }}{% endif %}">
+                                    <b>{{ day.date|date:"j" }}</b>
+                                    {% if day.flow == 4 %}H{% elif day.flow == 3 %}M{% elif day.flow == 2 %}L{% elif day.flow == 1 %}S{% else %}·{% endif %}
+                                </a>
+                                {% else %}
+                                <span class="chip faint" title="{{ day.date|date:'D d M Y' }} · not logged, bridged">{{ day.date|date:"j" }} —</span>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td data-label="Symptoms"><span class="small">{{ row.symptoms|join:", "|default:"—" }}</span></td>
+                    <td data-label="Gap" class="num">
+                        {% if row.gap %}{{ row.gap }} d{% if not row.gap_counted %}<div class="small faint">not averaged</div>{% endif %}
+                        {% else %}—{% endif %}
+                    </td>
+                    <td data-label="">
+                        <form method="POST" action="{% url 'hibiscus_period_delete' person.pk row.period.start|date:'Y-m-d' %}"
+                              data-confirm="Remove this whole period?"
+                              data-confirm-text="All {{ row.days|length }} day row{{ row.days|length|pluralize }} from {{ row.period.shown_from|date:'d M' }} to {{ row.period.shown_to|date:'d M Y' }} are deleted."
+                              data-confirm-button="Remove period" data-danger>{% csrf_token %}
+                            <button class="btn btn-ghost btn-icon btn-sm text-danger" type="submit" aria-label="Remove period">{% icon "trash" %}</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6">
+                    <div class="empty">
+                        {% icon "droplet" %}
+                        <b>Nothing logged yet</b>
+                        <span>Use the form above. A period is simply a run of days — there are no start and end dates to keep straight.</span>
+                    </div>
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if rows %}
+    <div class="card-foot bordered">
+        <span class="small muted">
+            Tap any day to change its flow, symptoms or note. Spotting shows but never counts as day 1,
+            one missing day inside a run is bridged, and {{ config.bridge_days|add:1 }} empty days start a new period.
+        </span>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

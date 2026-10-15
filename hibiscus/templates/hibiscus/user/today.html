@@ -1,0 +1,78 @@
+{% extends "hibiscus/user/base.html" %}
+{% block title %}Today{% endblock %}
+
+{% block content %}
+{% if stats.predicted_next %}
+<div class="hero">
+    <div class="label">Next period expected</div>
+    <div class="big">{{ stats.predicted_next|date:"D, j M" }}</div>
+    <div class="sub">
+        {% if stats.is_overdue %}{{ stats.days_until|cut:"-" }} day{{ stats.days_until|cut:"-"|pluralize }} late
+        {% elif stats.days_until == 0 %}it may start today
+        {% else %}in {{ stats.days_until }} day{{ stats.days_until|pluralize }}{% endif %}
+        {% if stats.cycle_day %} · cycle day {{ stats.cycle_day }} of ~{{ stats.cycle_len }}{% endif %}
+    </div>
+    <div class="bar"><i style="width:{{ progress }}%"></i></div>
+    {% if stats.estimated %}<div class="sub" style="margin-top:8px">Using {{ stats.cycle_len }} days until you have logged two periods.</div>{% endif %}
+</div>
+{% else %}
+<div class="hero">
+    <div class="label">Welcome</div>
+    <div class="big" style="font-size:24px">Let's start with one period</div>
+    <div class="sub">Log the days you bled and the calendar fills in from there.</div>
+</div>
+{% endif %}
+
+{% if phase %}
+<div class="card">
+    <div class="row">
+        <span class="ico {% if phase_key == 'ovulation' or phase_key == 'fertile' %}mint{% elif phase_key == 'luteal' or phase_key == 'late' %}gold{% endif %}">
+            <svg class="ic lg"><use href="{% if phase_key == 'menstrual' %}#h-drop{% elif phase_key == 'luteal' %}#h-moon{% elif phase_key == 'follicular' %}#h-sun{% else %}#h-flower{% endif %}"/></svg>
+        </span>
+        <div class="grow">
+            <b>{{ phase.0 }}</b>
+            <div class="small muted">{{ phase.1 }}</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="two">
+    <a class="act pri" href="{% url 'hibiscus_me_day' config.today|date:'Y-m-d' %}?next={{ request.path }}" data-day="{% url 'hibiscus_me_day' config.today|date:'Y-m-d' %}?next={{ request.path }}">
+        <svg class="ic"><use href="#h-drop"/></svg>{% if logged_today %}Today is logged{% else %}Log today{% endif %}
+    </a>
+    <a class="act" href="{% url 'hibiscus_me_calendar' %}">
+        <svg class="ic"><use href="#h-cal"/></svg>Open calendar
+    </a>
+</div>
+
+{% if low_items %}
+<a class="note" href="{% url 'hibiscus_me_stocks' %}" style="text-decoration:none">
+    <svg class="ic sm"><use href="#h-box"/></svg>
+    <div>
+        <b>Running low</b>
+        {% for i in low_items %}{{ i.name }} ({{ i.in_stock }} left){% if not forloop.last %} · {% endif %}{% endfor %}
+    </div>
+</a>
+{% endif %}
+
+{% if daily_line %}
+<div class="card flat">
+    <div class="row">
+        <span class="ico"><svg class="ic lg"><use href="#h-bell"/></svg></span>
+        <div class="grow"><div class="small">{{ daily_line }}</div></div>
+    </div>
+</div>
+{% endif %}
+
+<div class="tiles">
+    <div class="tile"><b>{% if stats.avg_cycle %}{{ stats.avg_cycle }}{% else %}—{% endif %}</b><span>avg cycle (d)</span></div>
+    <div class="tile"><b>{% if stats.avg_period %}{{ stats.avg_period }}{% else %}—{% endif %}</b><span>avg period (d)</span></div>
+    <div class="tile"><b>{{ stats.count }}</b><span>period{{ stats.count|pluralize }}</span></div>
+</div>
+
+<p class="tiny center">
+    {% if stats.last_start %}Last period started {{ stats.last_start|date:"j M" }} · {% endif %}
+    tap any day on the calendar to add or fix one.
+</p>
+{% endblock %}

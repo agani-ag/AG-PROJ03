@@ -1,0 +1,41 @@
+{% extends "hibiscus/user/base.html" %}
+{% block title %}Sign in{% endblock %}
+
+{% block chrome %}
+<main>
+  <div class="wrap auth">
+    <span class="mark-big"><svg class="ic"><use href="#h-flower"/></svg></span>
+    <h1>{{ config.display_name }}</h1>
+    <p class="tag">Your cycle, quietly.</p>
+
+    {% if messages %}{% for m in messages %}
+    <div class="note soft"><svg class="ic sm"><use href="#h-lock"/></svg><div>{{ m }}</div></div>
+    {% endfor %}{% endif %}
+
+    <form method="POST" class="stack" novalidate>
+      {% csrf_token %}
+      <div class="field{% if form.contact.errors %} bad{% endif %}">
+        <label for="{{ form.contact.id_for_label }}">Email or phone</label>
+        {{ form.contact }}
+        {% for e in form.contact.errors %}<span class="err">{{ e }}</span>{% endfor %}
+      </div>
+      <div class="field{% if form.password.errors %} bad{% endif %}">
+        <label for="{{ form.password.id_for_label }}">Password</label>
+        {{ form.password }}
+        {% for e in form.password.errors %}<span class="err">{{ e }}</span>{% endfor %}
+      </div>
+      <button class="btn" type="submit">Open my diary</button>
+    </form>
+
+    <div class="note mint">
+      <svg class="ic sm"><use href="#h-shield"/></svg>
+      <div>Only you and the admin can see this. Nothing leaves this server — no trackers, no other companies.</div>
+    </div>
+
+    {% if config.signup_open %}
+    <a class="btn ghost" href="{% url 'hibiscus_me_signup' %}">Create an account</a>
+    {% endif %}
+    <p class="tiny center">Forgotten your password? Ask the admin to set a new one.</p>
+  </div>
+</main>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "hibiscus/user/base.html" %}
+{% block title %}Log a period{% endblock %}
+
+{% block content %}
+<div class="card">
+    <form method="POST" class="stack" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <div class="note soft"><svg class="ic sm"><use href="#h-x"/></svg><div>{{ form.non_field_errors.0 }}</div></div>
+        {% endif %}
+
+        <div class="field{% if form.first_day.errors %} bad{% endif %}">
+            <label for="{{ form.first_day.id_for_label }}">It started on</label>
+            {{ form.first_day }}
+            {% for e in form.first_day.errors %}<span class="err">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="field{% if form.last_day.errors %} bad{% endif %}">
+            <label for="{{ form.last_day.id_for_label }}">It ended on</label>
+            {{ form.last_day }}
+            <span class="help">Leave this empty if it is still going — add tomorrow, tomorrow.</span>
+            {% for e in form.last_day.errors %}<span class="err">{{ e }}</span>{% endfor %}
+        </div>
+
+        <div class="field">
+            <span class="flabel">Flow for those days</span>
+            <div class="chips flow">
+                {% for value, label in form.fields.flow.choices %}
+                <label>
+                    <input type="radio" name="flow" value="{{ value }}"
+                           {% if form.flow.value|stringformat:"s" == value|stringformat:"s" %}checked{% elif not form.flow.value and value == 3 %}checked{% endif %}>
+                    <span class="f{{ value }}">{{ label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <span class="help">Set it once here, then change any single day from the calendar.</span>
+        </div>
+
+        <div class="field">
+            <span class="flabel">How did you feel?</span>
+            <div class="chips">
+                {% for box in form.symptoms %}
+                <label>{{ box.tag }}<span>{{ box.choice_label }}</span></label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="field">
+            <label for="{{ form.note.id_for_label }}">Anything to remember</label>
+            {{ form.note }}
+        </div>
+
+        <button class="btn" type="submit"><svg class="ic"><use href="#h-check"/></svg>Save these days</button>
+        <p class="tiny center">Spotting days show on the calendar but are not counted in the length.</p>
+    </form>
+</div>
+
+{% if periods %}
+<div class="card pad0">
+    {% for p in periods %}
+    <div class="item">
+        <span class="ico"><svg class="ic lg"><use href="#h-drop"/></svg></span>
+        <div class="grow">
+            <b>{{ p.start|date:"j M" }} – {{ p.end|date:"j M Y" }}</b>
+            <div class="sub">{{ p.days }} day{{ p.days|pluralize }}{% if p.shown_from != p.start %} · spotting from {{ p.shown_from|date:"j M" }}{% endif %}</div>
+        </div>
+        <span class="pill">{{ p.days }} d</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

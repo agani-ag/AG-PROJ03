@@ -1,0 +1,118 @@
+{% extends "hibiscus/user/base.html" %}
+{% block title %}Stocks{% endblock %}
+
+{% block content %}
+{% if low %}
+<div class="note">
+    <svg class="ic sm"><use href="#h-box"/></svg>
+    <div>
+        <b>{{ low|length }} item{{ low|length|pluralize }} running low</b>
+        {% for i in low %}{{ i.item.name }} ({{ i.in_stock }} left){% if not forloop.last %} · {% endif %}{% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if items %}
+<div class="card pad0">
+    {% for row in items %}
+    <div class="item" data-item="{{ row.item.pk }}">
+        <span class="ico {% if not row.is_low %}mint{% endif %}"><svg class="ic lg"><use href="#h-box"/></svg></span>
+        <div class="grow">
+            <b>{{ row.item.name }} <span class="pill" data-low-pill {% if not row.is_low %}hidden{% endif %}>Low</span></b>
+            <div class="sub">{% if row.item.low_at %}tell me at {{ row.item.low_at }}{% else %}no reminder{% endif %}</div>
+        </div>
+        <button class="pm" type="button" data-move="{% url 'hibiscus_me_stock_move' row.item.pk %}" data-change="-1" aria-label="Used one">
+            <svg class="ic sm"><use href="#h-minus"/></svg>
+        </button>
+        <span class="qty" data-qty>{{ row.in_stock }}</span>
+        <button class="pm" type="button" data-move="{% url 'hibiscus_me_stock_move' row.item.pk %}" data-change="1" aria-label="Added one">
+            <svg class="ic sm"><use href="#h-plus"/></svg>
+        </button>
+    </div>
+    {% endfor %}
+</div>
+<p class="tiny center">One tap is one pad. For a different number or an older date, use the form below.</p>
+{% else %}
+<div class="card">
+    <p class="muted">Nothing here yet. Add what you keep at home — pads, tampons, whatever you buy — and you will get a nudge when it runs low.</p>
+</div>
+{% endif %}
+
+<details class="card">
+    <summary><b>Add an item</b></summary>
+    <form method="POST" class="stack" style="margin-top:12px" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="what" value="item">
+        <div class="field{% if item_form.name.errors %} bad{% endif %}">
+            <label for="{{ item_form.name.id_for_label }}">What is it?</label>
+            {{ item_form.name }}
+            {% for e in item_form.name.errors %}<span class="err">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="field">
+            <label for="{{ item_form.opening.id_for_label }}">How many now</label>
+            {{ item_form.opening }}
+        </div>
+        <div class="field">
+            <label for="{{ item_form.low_at.id_for_label }}">Tell me when it reaches</label>
+            {{ item_form.low_at }}
+            <span class="help">{{ item_form.fields.low_at.help_text }}</span>
+        </div>
+        <button class="btn" type="submit"><svg class="ic"><use href="#h-plus"/></svg>Add it</button>
+    </form>
+</details>
+
+{% if items %}
+<details class="card">
+    <summary><b>Record something older</b></summary>
+    <form method="POST" action="{% url 'hibiscus_me_stock_move' items.0.item.pk %}" class="stack" style="margin-top:12px" novalidate>
+        {% csrf_token %}
+        <div class="field">
+            <label for="{{ move_form.date.id_for_label }}">When</label>
+            {{ move_form.date }}
+        </div>
+        <div class="field">
+            <label for="{{ move_form.change.id_for_label }}">How many — minus for used, plus for added</label>
+            {{ move_form.change }}
+        </div>
+        <div class="field">
+            <label for="{{ move_form.reason.id_for_label }}">What happened</label>
+            {{ move_form.reason }}
+        </div>
+        <div class="field">
+            <label for="{{ move_form.note.id_for_label }}">Note</label>
+            {{ move_form.note }}
+        </div>
+        <button class="btn ghost" type="submit">Save it to {{ items.0.item.name }}</button>
+        <p class="tiny">Back-dating works, so usage lines up with the days it happened on.</p>
+    </form>
+</details>
+{% endif %}
+
+{% if low %}
+{# The mockup keeps this space open on purpose: the low-stock moment is where a "buy more" link
+   would go. Nothing is wired to it until that is decided. #}
+<div class="card flat" style="border-style:dashed">
+    <div class="row">
+        <span class="ico gold"><svg class="ic lg"><use href="#h-box"/></svg></span>
+        <div class="grow">
+            <b class="muted">Need to restock?</b>
+            <div class="tiny">Nothing here yet — this is where a shop link would sit.</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if recent %}
+<div class="card pad0">
+    {% for m in recent %}
+    <div class="item">
+        <div class="grow">
+            <b>{{ m.item.name }}</b>
+            <div class="sub">{{ m.date|date:"j M Y" }} · {{ m.get_reason_display|lower }}{% if m.note %} · {{ m.note }}{% endif %}</div>
+        </div>
+        <span class="amt {% if m.change < 0 %}danger{% else %}ok{% endif %}">{% if m.change > 0 %}+{% endif %}{{ m.change }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,25 @@
+{# Returned to user.js when a calendar day is tapped. #}
+<div class="scrim" data-close></div>
+<div class="sheet" role="dialog" aria-label="{{ day|date:'l j F' }}">
+    <div class="hdl"></div>
+    <div class="sheet-in">
+        <div class="row">
+            <div class="grow">
+                <b>{{ day|date:"l, j F" }}</b>
+                <div class="small muted">
+                    {% if cycle_day %}Cycle day {{ cycle_day }} · {% endif %}
+                    {% if row %}logged as {{ row.get_flow_display|lower }}{% else %}nothing logged yet{% endif %}
+                </div>
+            </div>
+            <button class="rb" type="button" data-close aria-label="Close"><svg class="ic"><use href="#h-x"/></svg></button>
+        </div>
+        <form method="POST" action="{% url 'hibiscus_me_day' day|date:'Y-m-d' %}" class="stack">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next }}">
+            {% include "hibiscus/user/_day_fields.html" %}
+            <button class="btn" type="submit"><svg class="ic"><use href="#h-check"/></svg>Save this day</button>
+            <a class="btn ghost" href="{% url 'hibiscus_me_stocks' %}"><svg class="ic"><use href="#h-box"/></svg>Record pads used</a>
+        </form>
+        <p class="tiny center">Days next to each other make one period. Miss a day and it is still joined; miss two and a new period starts.</p>
+    </div>
+</div>

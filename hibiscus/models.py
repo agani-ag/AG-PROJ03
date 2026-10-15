@@ -71,6 +71,16 @@ class Settings(models.Model):
                                    help_text='Blank = anyone may sign up.')
     keep_audit_days = models.PositiveSmallIntegerField(default=180)
 
+    # Pushing goes through SyncUp's partner endpoint with the token a page is handed inside the
+    # SyncUp app. Blank base = nothing is sent, and the cron hook says so instead of failing.
+    syncup_base = models.CharField(max_length=120, blank=True,
+                                   help_text='e.g. https://syncup.example.com')
+    syncup_notify_key = models.CharField(max_length=80, blank=True)
+    notify_quiet_from = models.TimeField(default='22:00')
+    notify_quiet_to = models.TimeField(default='06:00')
+    notify_late_hours = models.PositiveSmallIntegerField(
+        default=2, help_text='Drop a slot that is later than this — a stale nudge is worse than none.')
+
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name='+')
@@ -130,6 +140,9 @@ class Person(models.Model):
     # Captured from `window.SyncUp.token` when a page is opened inside the SyncUp app; without it
     # there is nothing to push to (see the notification plan).
     syncup_token = models.TextField(blank=True)
+
+    THEMES = (('system', 'Follow the phone'), ('light', 'Light'), ('dark', 'Dark'))
+    theme = models.CharField(max_length=10, choices=THEMES, default='system')
 
     class Meta:
         ordering = ['name']
@@ -238,6 +251,101 @@ class StockMove(models.Model):
 
     def __str__(self):
         return f"{self.item.name} {self.change:+d} on {self.date}"
+
+
+class NotifySlot(models.Model):
+    """A time of day at which one message may go out.
+
+    More than one message a day only works if each time of day has a different job and its own
+    words — so a slot owns both. "Only if there is news" lets a slot stay silent rather than
+    inventing filler, which is what stops three a day from becoming noise.
+    """
+    class Key(models.TextChoices):
+        MORNING = 'morning', 'Morning'
+        AFTERNOON = 'afternoon', 'Afternoon'
+        EVENING = 'evening', 'Evening'
+        NIGHT = 'night', 'Night'
+
+    class Mode(models.TextChoices):
+        ALWAYS = 'always', 'Always'
+        NEWS = 'news', 'Only if there is news'
+
+    key = models.CharField(max_length=10, choices=Key.choices, unique=True)
+    at = models.TimeField(help_text='Local time. Matched to the 15-minute cron.')
+    mode = models.CharField(max_length=6, choices=Mode.choices, default=Mode.NEWS)
+    topic = models.CharField(max_length=120, blank=True)
+    is_enabled = models.BooleanField(default=True)
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'at']
+
+    def __str__(self):
+        return f"{self.get_key_display()} · {self.at:%H:%M}"
+
+
+class NotifyLine(models.Model):
+    """One wording, for one slot, for one situation. Several per pair, rotated by the day."""
+
+    class Situation(models.TextChoices):
+        RUNNING_LOGGED = 'running_logged', 'Period running, today logged'
+        RUNNING_UNLOGGED = 'running_unlogged', 'Period running, today not logged'
+        DUE_TODAY = 'due_today', 'Expected today'
+        DUE_SOON = 'due_soon', 'Expected in 1–2 days'
+        QUIET = 'quiet', 'Quiet stretch'
+        LATE_EARLY = 'late_early', 'Late 1–3 days'
+        LATE_LONG = 'late_long', 'Late 4+ days'
+        OVULATION = 'ovulation', 'Around ovulation'
+        LOW_STOCK = 'low_stock', 'Stock low'
+
+    slot = models.ForeignKey(NotifySlot, on_delete=models.CASCADE, related_name='lines')
+    situation = models.CharField(max_length=20, choices=Situation.choices)
+    text = models.CharField(max_length=200, help_text='Body of the message, 200 characters max.')
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['situation', 'id']
+        indexes = [models.Index(fields=['slot', 'situation'])]
+
+    def __str__(self):
+        return f"{self.slot.key}/{self.situation}: {self.text[:40]}"
+
+
+class NotifyMute(models.Model):
+    """A person switching one time of day off. The admin owns the times; they own the reach."""
+    person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name='mutes')
+    slot = models.ForeignKey(NotifySlot, on_delete=models.CASCADE, related_name='mutes')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['person', 'slot'], name='one_mute_per_slot')]
+
+
+class NotifySent(models.Model):
+    """What went out, and the guarantee that it goes out once.
+
+    The unique row on (person, slot, date) is what stops two cron ticks sending the same slot
+    twice — there is no "have I already?" question to get wrong.
+    """
+    person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name='sent')
+    slot = models.ForeignKey(NotifySlot, on_delete=models.CASCADE, related_name='sent')
+    date = models.DateField()
+    line = models.ForeignKey(NotifyLine, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name='+')
+    situation = models.CharField(max_length=20, blank=True)
+    title = models.CharField(max_length=100, blank=True)
+    body = models.CharField(max_length=200, blank=True)
+    delivered = models.PositiveSmallIntegerField(default=0, help_text='Devices SyncUp accepted.')
+    error = models.CharField(max_length=200, blank=True)
+    sent_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['person', 'slot', 'date'],
+                                               name='one_send_per_slot_per_day')]
+        indexes = [models.Index(fields=['person', '-sent_at'])]
+        ordering = ['-sent_at']
+
+    def __str__(self):
+        return f"{self.person.name} · {self.slot.key} · {self.date}"
 
 
 class Audit(models.Model):

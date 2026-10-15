@@ -1,0 +1,36 @@
+{# The day's controls, shared by the sheet and the no-JavaScript page. #}
+<div class="field">
+    <span class="flabel">How heavy was it?</span>
+    <div class="chips flow">
+        {% for value, label in flows %}
+        <label>
+            <input type="radio" name="flow" value="{{ value }}" {% if row and row.flow == value %}checked{% elif not row and value == 3 %}checked{% endif %}
+                   {% if forloop.first %}data-autofocus{% endif %}>
+            <span class="f{{ value }}">{{ label }}</span>
+        </label>
+        {% endfor %}
+        <label>
+            <input type="radio" name="flow" value="none" {% if not row %}data-none{% endif %}>
+            <span>Nothing</span>
+        </label>
+    </div>
+    <span class="help">"Nothing" clears the day. Spotting shows on the calendar but is not counted as a period day.</span>
+</div>
+
+<div class="field">
+    <span class="flabel">Symptoms</span>
+    <div class="chips">
+        {% for value, label in symptoms %}
+        <label>
+            <input type="checkbox" name="symptoms" value="{{ value }}" {% if value in chosen %}checked{% endif %}>
+            <span>{{ label }}</span>
+        </label>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="field">
+    <label for="note">Note</label>
+    <input class="input" id="note" name="note" maxlength="300" value="{{ row.note|default:'' }}"
+           placeholder="Just for you…">
+</div>

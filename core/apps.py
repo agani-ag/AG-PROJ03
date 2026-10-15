@@ -11,3 +11,4 @@ class CoreConfig(AppConfig):
         # Import `<app>/cron.py` for every installed app, so a module registers its cron hooks
         # just by having the file — the same way Django finds signals.
         autodiscover_modules('cron')
+        from . import checks           # noqa: F401 — registers the deploy checks

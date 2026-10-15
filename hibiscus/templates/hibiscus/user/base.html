@@ -1,0 +1,85 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en"{% if person.theme and person.theme != 'system' %} data-theme="{{ person.theme }}"{% endif %}>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    {# A saved choice, applied before first paint so there is no flash. Inside the SyncUp app the
+       phone's own dark setting never reaches the page, which is why the switch matters there. #}
+    <script>try{var t=localStorage.getItem("hibiscus-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    {% include "_theme_color.html" with light="#fff6f2" dark="#17101a" %}
+    <title>{% block title %}{{ config.display_name }}{% endblock %} · {{ config.display_name }}</title>
+    <link rel="icon" href="{% static 'hibiscus/flower.svg' %}" type="image/svg+xml">
+    <link rel="stylesheet" href="{% static_v 'hibiscus/user.css' %}">
+</head>
+<body{% if person %} data-token-url="{% url 'hibiscus_me_token' %}"{% endif %}>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="h-flower" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6"/><path d="M12 9.4c0-2.5-1-4.4-2.6-4.4S6.8 6.9 6.8 9.4c0 1 .4 1.9 1 2.6"/><path d="M12 9.4c0-2.5 1-4.4 2.6-4.4s2.6 1.9 2.6 4.4c0 1-.4 1.9-1 2.6"/><path d="M12 14.6c0 2.5-1 4.4-2.6 4.4S6.8 17.1 6.8 14.6c0-1 .4-1.9 1-2.6"/><path d="M12 14.6c0 2.5 1 4.4 2.6 4.4s2.6-1.9 2.6-4.4c0-1-.4-1.9-1-2.6"/></symbol>
+  <symbol id="h-heart" viewBox="0 0 24 24"><path d="M19 14c1.5-1.5 3-3.3 3-5.5A5.5 5.5 0 0 0 12 5.4 5.5 5.5 0 0 0 2 8.5C2 10.7 3.5 12.5 5 14l7 7z"/></symbol>
+  <symbol id="h-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/></symbol>
+  <symbol id="h-drop" viewBox="0 0 24 24"><path d="M12 2.7s6 6.4 6 10.5a6 6 0 0 1-12 0C6 9.1 12 2.7 12 2.7z"/></symbol>
+  <symbol id="h-box" viewBox="0 0 24 24"><path d="M21 8v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M10 12h4"/></symbol>
+  <symbol id="h-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/><circle cx="5" cy="12" r="1.6"/></symbol>
+  <symbol id="h-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="h-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="h-back" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="h-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="h-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="h-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="h-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="h-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
+  <symbol id="h-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m4.9 19.1 1.4-1.4"/><path d="m17.7 6.3 1.4-1.4"/></symbol>
+  <symbol id="h-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.5 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="h-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="h-bell" viewBox="0 0 24 24"><path d="M10.3 21a2 2 0 0 0 3.4 0"/><path d="M3.3 15.3A1 1 0 0 0 4 17h16a1 1 0 0 0 .7-1.7C19.4 14 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.4 6-2.7 7.3"/></symbol>
+  <symbol id="h-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.8-1.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.4 14H3a2 2 0 1 1 0-4h.3a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.4V3a2 2 0 1 1 4 0v.4a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.4a1.7 1.7 0 0 0-1.2 1z"/></symbol>
+  <symbol id="h-out" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+</svg>
+
+{% block chrome %}
+<header class="top">
+    <div class="wrap top-in">
+        {% block topbar %}
+        <a class="brand" href="{% url 'hibiscus_me_home' %}">
+            <span class="mark"><svg class="ic"><use href="#h-flower"/></svg></span>{{ config.display_name }}
+        </a>
+        <span class="sp"></span>
+        <button class="rb" type="button" data-theme-next="{% url 'hibiscus_me_theme' %}" aria-label="Change theme">
+            <svg class="ic"><use href="#h-moon"/></svg>
+        </button>
+        <a class="rb" href="{% url 'hibiscus_me_settings' %}" aria-label="Settings"><svg class="ic"><use href="#h-gear"/></svg></a>
+        {% endblock %}
+    </div>
+</header>
+
+<main>
+    <div class="wrap stack">
+        {% if messages %}{% for m in messages %}
+        <div class="note {% if m.level_tag == 'error' %}soft{% elif m.level_tag == 'success' %}mint{% endif %}">
+            <svg class="ic sm"><use href="#h-check"/></svg><div>{{ m }}</div>
+        </div>
+        {% endfor %}{% endif %}
+        {% block content %}{% endblock %}
+    </div>
+</main>
+
+{% if person %}
+<nav class="nav">
+    <div class="nav-in">
+        <a href="{% url 'hibiscus_me_home' %}" {% if tab == 'home' %}aria-current="page"{% endif %}>
+            <svg class="ic"><use href="#h-heart"/></svg>Today</a>
+        <a href="{% url 'hibiscus_me_calendar' %}" {% if tab == 'calendar' %}aria-current="page"{% endif %}>
+            <svg class="ic"><use href="#h-cal"/></svg>Calendar</a>
+        <a href="{% url 'hibiscus_me_log' %}" {% if tab == 'log' %}aria-current="page"{% endif %}>
+            <svg class="ic"><use href="#h-drop"/></svg>Log</a>
+        <a href="{% url 'hibiscus_me_stocks' %}" {% if tab == 'stocks' %}aria-current="page"{% endif %}>
+            <svg class="ic"><use href="#h-box"/></svg>Stocks</a>
+    </div>
+</nav>
+{% endif %}
+{% endblock %}
+
+<script src="{% static_v 'hibiscus/user.js' %}"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

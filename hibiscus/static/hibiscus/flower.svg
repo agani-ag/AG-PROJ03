@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Hibiscus">
+  <!-- The flower, drawn rather than the 🌺 emoji the Flask app used as a data-URI favicon. -->
+  <rect width="48" height="48" rx="12" fill="#d2274a"/>
+  <g fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
+    <circle cx="24" cy="24" r="4.2"/>
+    <path d="M24 19.8c0-4.6-1.9-8-4.8-8s-4.8 3.4-4.8 8c0 1.9.7 3.5 1.9 4.7"/>
+    <path d="M24 19.8c0-4.6 1.9-8 4.8-8s4.8 3.4 4.8 8c0 1.9-.7 3.5-1.9 4.7"/>
+    <path d="M24 28.2c0 4.6-1.9 8-4.8 8s-4.8-3.4-4.8-8c0-1.9.7-3.5 1.9-4.7"/>
+    <path d="M24 28.2c0 4.6 1.9 8 4.8 8s4.8-3.4 4.8-8c0-1.9-.7-3.5-1.9-4.7"/>
+  </g>
+  <circle cx="24" cy="24" r="1.8" fill="#e8a33d"/>
+</svg>

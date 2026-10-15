@@ -1,0 +1,74 @@
+{% extends "hibiscus/user/base.html" %}
+{% block title %}Settings{% endblock %}
+
+{% block topbar %}
+<a class="rb" href="{% url 'hibiscus_me_home' %}" aria-label="Back"><svg class="ic"><use href="#h-back"/></svg></a>
+<span class="title">Settings</span>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <form method="POST" class="stack" novalidate>
+        {% csrf_token %}
+        <div class="field{% if form.name.errors %} bad{% endif %}">
+            <label for="{{ form.name.id_for_label }}">Your name</label>
+            {{ form.name }}
+            {% for e in form.name.errors %}<span class="err">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="field{% if form.cycle_hint.errors %} bad{% endif %}">
+            <label for="{{ form.cycle_hint.id_for_label }}">Usual cycle length</label>
+            {{ form.cycle_hint }}
+            <span class="help">Only used until you have logged two periods.</span>
+            {% for e in form.cycle_hint.errors %}<span class="err">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="field{% if form.new_password.errors %} bad{% endif %}">
+            <label for="{{ form.new_password.id_for_label }}">New password</label>
+            {{ form.new_password }}
+            <span class="help">{{ form.new_password.help_text }}</span>
+            {% for e in form.new_password.errors %}<span class="err">{{ e }}</span>{% endfor %}
+        </div>
+        <button class="btn" type="submit"><svg class="ic"><use href="#h-check"/></svg>Save</button>
+    </form>
+</div>
+
+<div class="card pad0">
+    <div class="item"><div class="grow"><b>Reminders</b><div class="sub">The admin sets the times. You choose which ones reach you.</div></div></div>
+    {% for row in slots %}
+    <form method="POST" action="{% url 'hibiscus_me_slot_toggle' row.slot.pk %}" class="item" style="width:100%">
+        {% csrf_token %}
+        <span class="ico {% if not row.muted %}mint{% endif %}">
+            <svg class="ic lg"><use href="{% if row.slot.key == 'morning' %}#h-sun{% elif row.slot.key == 'afternoon' %}#h-box{% else %}#h-moon{% endif %}"/></svg>
+        </span>
+        <div class="grow">
+            <b>{{ row.slot.get_key_display }} · {{ row.slot.at|time:"H:i" }}</b>
+            <div class="sub">{{ row.slot.topic }}</div>
+        </div>
+        <button class="btn sm {% if row.muted %}ghost{% else %}mint{% endif %}" type="submit">
+            {% if row.muted %}Off{% else %}On{% endif %}
+        </button>
+    </form>
+    {% empty %}
+    <div class="item"><div class="grow"><div class="sub">No reminders are set up yet.</div></div></div>
+    {% endfor %}
+    {% if not has_token %}
+    <div class="item"><div class="grow"><div class="sub">To get these on your phone, open {{ config.display_name }} once inside the SyncUp app. In a browser the same line shows at the top of Today instead.</div></div></div>
+    {% endif %}
+</div>
+
+{% if recent_sent %}
+<div class="card pad0">
+    <div class="item"><div class="grow"><b>Recently sent</b></div></div>
+    {% for s in recent_sent %}
+    <div class="item"><div class="grow"><b>{{ s.slot.get_key_display }} · {{ s.date|date:"j M" }}</b><div class="sub">{{ s.body }}</div></div></div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="card pad0">
+    <a class="item" href="{% url 'hibiscus_me_logout' %}">
+        <span class="ico"><svg class="ic lg"><use href="#h-out"/></svg></span>
+        <div class="grow"><b>Sign out</b></div>
+    </a>
+</div>
+<p class="tiny center">Signed in as {{ person.sign_in_id }}. Forgotten your password? Ask the admin.</p>
+{% endblock %}

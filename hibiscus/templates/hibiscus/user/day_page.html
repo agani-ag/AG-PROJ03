@@ -1,0 +1,23 @@
+{% extends "hibiscus/user/base.html" %}
+{% block title %}{{ day|date:"j M Y" }}{% endblock %}
+
+{% block topbar %}
+<a class="rb" href="{% url 'hibiscus_me_calendar' %}" aria-label="Back"><svg class="ic"><use href="#h-back"/></svg></a>
+<span class="title">{{ day|date:"l, j F" }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <p class="small muted">
+        {% if cycle_day %}Cycle day {{ cycle_day }} · {% endif %}
+        {% if row %}logged as {{ row.get_flow_display|lower }}{% else %}nothing logged yet{% endif %}
+    </p>
+    <form method="POST" class="stack" style="margin-top:12px">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        {% include "hibiscus/user/_day_fields.html" %}
+        <button class="btn" type="submit"><svg class="ic"><use href="#h-check"/></svg>Save this day</button>
+    </form>
+</div>
+<p class="tiny center">Days next to each other make one period. Miss a day and it is still joined; miss two and a new period starts.</p>
+{% endblock %}

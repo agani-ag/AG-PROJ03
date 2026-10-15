@@ -70,10 +70,22 @@
         </div>
 
         <div class="card">
-            <div class="card-head">{% icon "bell" %}<h2>Notifications</h2><span class="badge badge-warning ml-auto"><span class="dot"></span>Step 7</span></div>
+            <div class="card-head">{% icon "bell" %}<h2>Notifications</h2></div>
             <div class="card-body">
                 <p class="muted">How many messages a day, at what times, and the words for each time of day. Sent through SyncUp and delivered by SyncHub's 15-minute cron — this module gets no cron URL of its own.</p>
-                <a class="btn btn-sm" href="{% url 'cron_page' %}">{% icon "clock" %}See the hub's cron jobs</a>
+                <div class="form-grid">
+                    {% for f in form %}{% if f.name == 'syncup_base' or f.name == 'syncup_notify_key' or f.name == 'notify_late_hours' %}
+                    <div class="field{% if f.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
+                        {{ f }}
+                        {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+                    </div>
+                    {% endif %}{% endfor %}
+                </div>
+                <div class="row">
+                    <a class="btn btn-sm btn-primary" href="{% url 'hibiscus_notifications' %}">{% icon "bell" %}Times and words</a>
+                    <a class="btn btn-sm" href="{% url 'cron_page' %}">{% icon "clock" %}Cron jobs</a>
+                </div>
             </div>
         </div>
     </div>

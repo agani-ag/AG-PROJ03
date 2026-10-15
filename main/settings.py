@@ -27,7 +27,9 @@ APP_NAME = os.getenv('APP_NAME', 'SyncHub')
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev-only-insecure-key-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production.
-DEBUG = _flag('DEBUG', '1')
+# The fallback is OFF on purpose: a server whose .env is missing this should be safe, not chatty.
+# Local development sets DEBUG=1 in .env (see .env.example).
+DEBUG = _flag('DEBUG', '0')
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '*').split(',') if h.strip()]
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()]

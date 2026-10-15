@@ -13,6 +13,7 @@
         </p>
     </div>
     <div class="page-actions">
+        <a class="btn" href="{% url 'hibiscus_person_export' person.pk %}">{% icon "download" %}Export CSV</a>
         <a class="btn" href="{% url 'hibiscus_person_edit' person.pk %}">{% icon "pencil" %}Edit details</a>
         <form method="POST" action="{% url 'hibiscus_person_password' person.pk %}" data-confirm="Set a new password?" data-confirm-text="Their current password stops working at once. The new one is shown on the next screen.">{% csrf_token %}
             <button class="btn" type="submit">{% icon "key-round" %}New password</button>
@@ -20,13 +21,14 @@
     </div>
 </div>
 
-<div class="tabs" data-tabs>
-    <button data-tab="account" aria-selected="true">Account</button>
-    <button data-tab="periods">Periods · {{ day_count }} day{{ day_count|pluralize }}</button>
-    <button data-tab="activity">Activity</button>
+<div class="seg" role="group" aria-label="Tabs" style="margin-bottom:14px">
+    <button type="button" aria-pressed="true">Account</button>
+    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_periods' person.pk %}">Periods <span class="n">{{ day_count }}</span></a>
+    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_stocks' person.pk %}">Stocks <span class="n">{{ items|length }}</span></a>
+    <a class="btn btn-sm btn-ghost" href="{% url 'hibiscus_person_activity' person.pk %}">Activity</a>
 </div>
 
-<div data-tab-panel="account" class="stack" style="margin-top:14px">
+<div class="stack">
     <div class="stats">
         <div class="stat">
             <span class="stat-label">{% icon "clock" %}Average cycle</span>
@@ -93,7 +95,7 @@
         </div>
 
         <div class="card">
-            <div class="card-head">{% icon "droplet" %}<h2>Recent periods</h2><a class="small ml-auto" href="#" data-tab-link="periods">All days</a></div>
+            <div class="card-head">{% icon "droplet" %}<h2>Recent periods</h2><a class="small ml-auto" href="{% url 'hibiscus_person_periods' person.pk %}">All days</a></div>
             <div class="card-body">
                 {% if periods %}
                 <ul class="list">
@@ -112,24 +114,15 @@
                     {% endfor %}
                 </ul>
                 {% else %}
-                <div class="empty">{% icon "droplet" %}<b>Nothing logged yet</b><span>Period days are added on the Periods tab — that is built next.</span></div>
+                <div class="empty">{% icon "droplet" %}<b>Nothing logged yet</b><span>Add days on the Periods page.</span>
+                    <a class="btn btn-sm btn-primary" href="{% url 'hibiscus_person_periods' person.pk %}">{% icon "plus" %}Add days</a></div>
                 {% endif %}
             </div>
         </div>
     </div>
 </div>
 
-<div data-tab-panel="periods" hidden style="margin-top:14px">
-    <div class="card"><div class="card-body">
-        <div class="empty">
-            {% icon "calendar" %}
-            <b>Day-by-day entry is the next step</b>
-            <span>This tab gets the range form and the per-day table. The rules behind it — runs of days, bridged gaps, spotting not counted — are already built and tested.</span>
-        </div>
-    </div></div>
-</div>
-
-<div data-tab-panel="activity" hidden style="margin-top:14px">
+<div style="margin-top:16px">
     <div class="card">
         <div class="card-head">{% icon "scroll-text" %}<h2>Recent activity</h2><a class="small ml-auto" href="{% url 'hibiscus_person_activity' person.pk %}">Full trail</a></div>
         <div class="table-wrap">
@@ -153,27 +146,3 @@
 </div>
 {% endblock %}
 
-{% block script %}
-<script>
-// Tab panels: app.js styles the buttons, this shows the matching panel.
-(function () {
-    var tabs = document.querySelector("[data-tabs]");
-    if (!tabs) return;
-    function show(name) {
-        document.querySelectorAll("[data-tab-panel]").forEach(function (p) {
-            p.hidden = p.dataset.tabPanel !== name;
-        });
-        tabs.querySelectorAll("button[data-tab]").forEach(function (b) {
-            b.setAttribute("aria-selected", b.dataset.tab === name ? "true" : "false");
-        });
-    }
-    tabs.addEventListener("click", function (e) {
-        var b = e.target.closest("button[data-tab]");
-        if (b) show(b.dataset.tab);
-    });
-    document.querySelectorAll("[data-tab-link]").forEach(function (a) {
-        a.addEventListener("click", function (e) { e.preventDefault(); show(a.dataset.tabLink); });
-    });
-})();
-</script>
-{% endblock %}
