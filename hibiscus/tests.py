@@ -678,14 +678,19 @@ class FlowColourTests(TestCase):
         for level in [1, 2, 3, 4]:
             self.assertIn(f'class="flow f{level}"', body)
 
-    def test_the_stylesheet_is_linked_and_covers_every_level(self):
-        self.assertIn('hibiscus/admin.css', self._periods())
-        css = (Path(__file__).resolve().parent / 'static' / 'hibiscus' / 'admin.css').read_text(
-            encoding='utf-8')
+    def test_the_palette_travels_with_the_page(self):
+        """Inline, so a wrong /static/ mapping on a server cannot strip the colour off.
+
+        That is not hypothetical: the first version of this was a collected stylesheet, and on
+        the live server it 404'd and the pills rendered as plain blue links.
+        """
+        body = self._periods()
+        self.assertNotIn('admin.css', body)              # nothing to collect, nothing to lose
+        self.assertIn('<style>', body)
         for level in [1, 2, 3, 4]:
-            self.assertIn(f'.flow.f{level}', css)
-        self.assertIn('.flow {', css)
-        self.assertIn('data-theme="dark"', css)          # readable on the dark console too
+            self.assertIn(f'.pdx .flow.f{level}', body)
+        self.assertIn('data-theme="dark"', body)         # readable on the dark console too
+        self.assertIn('class="card pdx"', body)          # the styles are scoped to that card
 
     def test_a_bridged_day_is_marked_apart(self):
         PeriodDay.objects.create(person=self.person, date=D(2026, 9, 20), flow=Flow.MEDIUM)

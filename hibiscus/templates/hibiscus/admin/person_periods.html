@@ -1,5 +1,52 @@
 {% extends "base.html" %}
-{% block head %}<link rel="stylesheet" href="{% static_v 'hibiscus/admin.css' %}">{% endblock %}
+{% block head %}
+{% comment %}
+Inline on purpose, not a file in static/. It is ~1 KB used by this one page, so inlining saves a
+request — and it cannot go missing the way a collected file can when a server's /static/ mapping
+points at the wrong folder, which is exactly how these pills first turned up as plain text.
+
+The scale is the rose palette from the mockup, ordered by weight: heavier day, deeper chip.
+{% endcomment %}
+<style>
+.pdx {
+    --f0-bg:#eae3e6; --f0-ink:#675a5f;   /* logged, flow not recorded */
+    --f1-bg:#fdeaee; --f1-ink:#96162f;   /* spotting */
+    --f2-bg:#f7cfd8; --f2-ink:#8c1429;   /* light    */
+    --f3-bg:#ef9fb0; --f3-ink:#510b1a;   /* medium   */
+    --f4-bg:#96162f; --f4-ink:#fff5f7;   /* heavy    */
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .pdx {
+        --f0-bg:#322b2e; --f0-ink:#b6a7ad; --f1-bg:#3b1f26; --f1-ink:#f3c2cd;
+        --f2-bg:#56212f; --f2-ink:#fbd5dd; --f3-bg:#7d2439; --f3-ink:#ffe4ea;
+        --f4-bg:#c22a4b; --f4-ink:#fff;
+    }
+}
+:root[data-theme="dark"] .pdx {
+    --f0-bg:#322b2e; --f0-ink:#b6a7ad; --f1-bg:#3b1f26; --f1-ink:#f3c2cd;
+    --f2-bg:#56212f; --f2-ink:#fbd5dd; --f3-bg:#7d2439; --f3-ink:#ffe4ea;
+    --f4-bg:#c22a4b; --f4-ink:#fff;
+}
+.pdx .flow {
+    display:inline-flex; align-items:baseline; gap:5px; height:24px; padding:0 10px;
+    border-radius:999px; border:1px solid transparent; font-size:12.5px; line-height:24px;
+    font-variant-numeric:tabular-nums; text-decoration:none;
+    background:var(--f0-bg); color:var(--f0-ink);
+}
+.pdx a.flow:hover { filter:brightness(.95); text-decoration:none; }
+:root[data-theme="dark"] .pdx a.flow:hover { filter:brightness(1.18); }
+.pdx .flow b { font-weight:650; }
+.pdx .flow .lvl { font-weight:600; font-size:11.5px; letter-spacing:.02em; opacity:.85; }
+.pdx .flow.f1 { background:var(--f1-bg); color:var(--f1-ink); }
+.pdx .flow.f2 { background:var(--f2-bg); color:var(--f2-ink); }
+.pdx .flow.f3 { background:var(--f3-bg); color:var(--f3-ink); }
+.pdx .flow.f4 { background:var(--f4-bg); color:var(--f4-ink); }
+/* A day inside a run with no row at all: bridged by the rules, recorded by nobody. */
+.pdx .flow.gap { background:transparent; color:var(--muted); border:1px dashed var(--border); }
+.pdx .flow-key { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:8px; }
+.pdx .flow-key .flow { height:20px; line-height:20px; font-size:11.5px; padding:0 9px; }
+</style>
+{% endblock %}
 {% block title %}{{ person.name }} · periods{% endblock %}
 
 {% block content %}
@@ -74,7 +121,7 @@
     </form>
 </div>
 
-<div class="card" style="margin-top:16px">
+<div class="card pdx" style="margin-top:16px">
     <div class="card-head">
         {% icon "droplet" %}<h2>Periods</h2>
         <span class="small muted ml-auto">Days grouped into runs · newest first</span>
