@@ -3,8 +3,10 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    {# A saved choice, applied before first paint so there is no flash. Inside the SyncUp app the
-       phone's own dark setting never reaches the page, which is why the switch matters there. #}
+    {% comment %}
+    A saved choice, applied before first paint so there is no flash. Inside the SyncUp app the
+    phone's own dark setting never reaches the page, which is why the switch matters there.
+    {% endcomment %}
     <script>try{var t=localStorage.getItem("hibiscus-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
     {% include "_theme_color.html" with light="#fff6f2" dark="#17101a" %}
     <title>{% block title %}{{ config.display_name }}{% endblock %} · {{ config.display_name }}</title>

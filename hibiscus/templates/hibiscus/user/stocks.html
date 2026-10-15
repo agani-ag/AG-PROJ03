@@ -89,8 +89,10 @@
 {% endif %}
 
 {% if low %}
-{# The mockup keeps this space open on purpose: the low-stock moment is where a "buy more" link
-   would go. Nothing is wired to it until that is decided. #}
+{% comment %}
+The mockup keeps this space open on purpose: the low-stock moment is where a "buy more" link
+would go. Nothing is wired to it until that is decided.
+{% endcomment %}
 <div class="card flat" style="border-style:dashed">
     <div class="row">
         <span class="ico gold"><svg class="ic lg"><use href="#h-box"/></svg></span>

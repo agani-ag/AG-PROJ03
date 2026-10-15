@@ -36,8 +36,16 @@ PHASE_WORDS = {
 
 
 def _no_store(response):
+    """No caching, and a referrer policy that does not break form posts.
+
+    `no-referrer` looks stricter and was the first thing here, but under it a browser serialises
+    the Origin header of a form POST as the string "null" — which Django's CSRF check refuses,
+    so every form on this side answered 403 in a real browser (the test client sends no Origin at
+    all, so nothing caught it). `same-origin` keeps the referrer inside the site and sends none to
+    anyone else, which is what was actually wanted.
+    """
     response['Cache-Control'] = 'no-store'
-    response['Referrer-Policy'] = 'no-referrer'
+    response['Referrer-Policy'] = 'same-origin'
     return response
 
 

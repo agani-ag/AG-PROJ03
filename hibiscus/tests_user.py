@@ -3,7 +3,7 @@ from datetime import date as D
 from datetime import time, timedelta
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -228,6 +228,50 @@ class DiaryTests(TestCase):
         self.person.refresh_from_db()
         self.assertEqual(self.person.syncup_token, 'abc123')
         self.assertTrue(Audit.objects.filter(action='syncup_token_saved').exists())
+
+
+class BrowserBehaviourTests(TestCase):
+    """Things only a real browser does — both of these shipped broken and were found by eye.
+
+    The ordinary test client sends no Origin header and renders templates without complaint, so
+    neither bug showed up anywhere else.
+    """
+
+    def setUp(self):
+        self.person = make_person()
+
+    def test_a_form_post_with_an_origin_header_is_accepted(self):
+        """A browser sends Origin on every POST. Under `Referrer-Policy: no-referrer` it sends
+        the string "null" instead, which Django's CSRF check refuses — that was the 403."""
+        client = Client(enforce_csrf_checks=True)
+        page = client.get(reverse('hibiscus_me_login'))
+        token = page.context['csrf_token']
+        r = client.post(reverse('hibiscus_me_login'),
+                        {'contact': 'd@example.com', 'password': 'swan7tide',
+                         'csrfmiddlewaretoken': token},
+                        headers={'origin': 'http://testserver'})
+        self.assertEqual(r.status_code, 302)                    # not 403
+        self.assertEqual(r.url, reverse('hibiscus_me_home'))
+
+    def test_the_referrer_policy_does_not_null_the_origin(self):
+        r = self.client.get(reverse('hibiscus_me_login'))
+        self.assertEqual(r['Referrer-Policy'], 'same-origin')
+        self.assertNotEqual(r['Referrer-Policy'], 'no-referrer')
+
+    def test_no_page_leaks_a_raw_template_comment(self):
+        """Django's {# … #} is single-line only: a multi-line one is not a comment, and its text
+        renders onto the page. One did, right across the top of the sign-in screen."""
+        self.client.post(reverse('hibiscus_me_login'),
+                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+        item = StockItem.objects.create(person=self.person, name='Sofy', low_at=3)
+        StockMove.objects.create(item=item, date=Settings.load().today, change=1,
+                                 reason=StockMove.Reason.OPENING)
+        for name in ['hibiscus_me_login', 'hibiscus_me_signup', 'hibiscus_me_home',
+                     'hibiscus_me_calendar', 'hibiscus_me_log', 'hibiscus_me_stocks',
+                     'hibiscus_me_settings']:
+            body = self.client.get(reverse(name)).content.decode()
+            self.assertNotIn('{#', body, f'{name} shows a raw template comment')
+            self.assertNotIn('{%', body, f'{name} shows a raw template tag')
 
 
 class StockTests(TestCase):
