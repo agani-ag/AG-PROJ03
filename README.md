@@ -176,6 +176,14 @@ Hibiscus in short: flow is recorded **per day**, and a period is a *run* of days
 counted as a period day; one missing day inside a run is bridged, two start a new period. People
 sign themselves up with an email **or** a phone number. Notifications go out through SyncUp at
 times the admin sets, each time of day with its own words, delivered by the hub's 15-minute cron.
+Arriving at the diary — signing in, opening a magic link, or the first page of a new day on a
+session left open — fires one **browser notification** with where the cycle stands, the way the
+old Flask app did it: a one-shot session flag, popped by the first page that asks
+(`/hibiscus/me/reminder`). Moving around the diary never re-fires it. It is the plain Notification
+API, which the SyncUp app answers for the page, so the same code shows a real Android
+notification inside the app and a browser one outside it; where permission has not been given,
+the line is shown in the page instead.
+
 A person's page has a **Test push** button that sends one real notification there and then, and
 reports what SyncUp answered — the device token, the SyncUp address and the notify key are each
 only proved by a delivery. Tapping any notification opens the diary, using *this site's address*

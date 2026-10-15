@@ -82,6 +82,12 @@
                     </div>
                     {% endif %}{% endfor %}
                 </div>
+                {% if syncup_is_self %}
+                <div class="alert alert-danger">
+                    {% icon "triangle-alert" %}
+                    <div class="alert-body"><b>The SyncUp address is this same site</b>Messages would be posted back to SyncHub instead of to SyncUp, and a server asked to call itself while it is busy answering you simply waits until the timeout. Put the SyncUp server's address here — the two fields are different machines.</div>
+                </div>
+                {% endif %}
                 <p class="small muted">A notification opens <b>this site's address</b> when it is tapped. Leave it blank and the first <b>Test push</b> fills it in from the page you press it on.</p>
                 <div class="row">
                     <a class="btn btn-sm btn-primary" href="{% url 'hibiscus_notifications' %}">{% icon "bell" %}Times and words</a>

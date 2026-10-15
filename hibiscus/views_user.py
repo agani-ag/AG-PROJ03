@@ -138,6 +138,38 @@ def magic_login(request, key):
     return _no_store(redirect('hibiscus_me_home'))
 
 
+GREETED_ON = 'hibiscus_greeted_on'
+
+
+@never_cache
+@auth.person_required
+def my_reminder(request):
+    """What to show someone on arrival, and whether this arrival is one.
+
+    Asked by every diary page; answers `show: true` at most once per arrival, which is:
+      * right after signing in — by password, by magic link, or at sign-up — and
+      * the first page of a day for someone whose session was still open.
+
+    Walking from Today to Calendar and back does not count, which is the whole point: the old
+    Flask app fired its reminder once after login and never again until the next one.
+    """
+    person = request.person
+    config = Settings.load()
+    today = config.today
+    just_signed_in = request.session.pop(auth.GREET_KEY, False)
+    first_today = request.session.get(GREETED_ON) != today.isoformat()
+    show = bool(just_signed_in or first_today)
+    if show:
+        request.session[GREETED_ON] = today.isoformat()
+
+    message = push.arrival_message(person, config, today)
+    return _no_store(JsonResponse({
+        'show': show,
+        'title': message['title'],
+        'body': message['body'],
+    }))
+
+
 def sign_out_view(request):
     auth.sign_out(request)
     return redirect('hibiscus_me_login')

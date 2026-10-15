@@ -13,7 +13,7 @@
     <link rel="icon" href="{% static 'hibiscus/flower.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static_v 'hibiscus/user.css' %}">
 </head>
-<body{% if person %} data-token-url="{% url 'hibiscus_me_token' %}"{% endif %}>
+<body{% if person %} data-token-url="{% url 'hibiscus_me_token' %}" data-reminder-url="{% url 'hibiscus_me_reminder' %}"{% endif %}>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="h-flower" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6"/><path d="M12 9.4c0-2.5-1-4.4-2.6-4.4S6.8 6.9 6.8 9.4c0 1 .4 1.9 1 2.6"/><path d="M12 9.4c0-2.5 1-4.4 2.6-4.4s2.6 1.9 2.6 4.4c0 1-.4 1.9-1 2.6"/><path d="M12 14.6c0 2.5-1 4.4-2.6 4.4S6.8 17.1 6.8 14.6c0-1 .4-1.9 1-2.6"/><path d="M12 14.6c0 2.5 1 4.4 2.6 4.4s2.6-1.9 2.6-4.4c0-1-.4-1.9-1-2.6"/></symbol>

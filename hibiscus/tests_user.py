@@ -9,7 +9,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from . import auth, defaults, push
+from . import auth, defaults, push, views_user
 from .cron import notify, retention
 from .models import (Audit, Flow, NotifyLine, NotifyMute, NotifySent, NotifySlot, Person,
                      PeriodDay, Settings, StockItem, StockMove)
@@ -671,3 +671,148 @@ class CalendarGridTests(TestCase):
         self.assertIn('today', body)
         css = self.CSS.read_text(encoding='utf-8')
         self.assertIn('.cal .today { box-shadow: inset', css)            # a ring, not a size change
+
+class ArrivalReminderTests(TestCase):
+    """The line somebody gets when they arrive — once, the way the old Flask app did it.
+
+    Flask kept a one-shot `pt_notify` flag in the session, set at login and popped by the first
+    request that asked for it. The same idea here, widened a little: signing in by any route
+    greets, and so does the first page of a new day on a session that was left open. Moving
+    between Today, Calendar and Log does not.
+    """
+
+    URL = None
+
+    def setUp(self):
+        self.person = make_person()
+        self.URL = reverse('hibiscus_me_reminder')
+        self.client.post(reverse('hibiscus_me_login'),
+                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+
+    def _ask(self):
+        return self.client.get(self.URL).json()
+
+    def test_it_greets_once_after_signing_in(self):
+        self.assertTrue(self._ask()['show'])
+        self.assertFalse(self._ask()['show'])
+        self.assertFalse(self._ask()['show'])
+
+    def test_a_magic_link_counts_as_arriving(self):
+        key = auth.new_login_key(self.person)
+        fresh = Client()
+        fresh.get(reverse('hibiscus_me_key', args=[key]))
+        self.assertTrue(fresh.get(self.URL).json()['show'])
+        self.assertFalse(fresh.get(self.URL).json()['show'])
+
+    def test_signing_up_counts_too(self):
+        fresh = Client()
+        fresh.post(reverse('hibiscus_me_signup'), {
+            'name': 'Meena', 'kind': 'email', 'contact': 'm@example.com',
+            'password': 'rain4moss', 'cycle_hint': 30,
+        })
+        self.assertTrue(fresh.get(self.URL).json()['show'])
+
+    def test_a_session_left_open_is_greeted_once_the_next_day(self):
+        self._ask()                                   # today's greeting, used up
+        session = self.client.session
+        session[views_user.GREETED_ON] = (Settings.load().today - timedelta(days=1)).isoformat()
+        session.save()
+        self.assertTrue(self._ask()['show'])
+        self.assertFalse(self._ask()['show'])
+
+    def test_walking_around_the_diary_does_not_re_greet(self):
+        self.assertTrue(self._ask()['show'])
+        for name in ['hibiscus_me_home', 'hibiscus_me_calendar', 'hibiscus_me_stocks',
+                     'hibiscus_me_home']:
+            self.client.get(reverse(name))
+            self.assertFalse(self._ask()['show'], name)
+
+    def test_it_needs_to_be_signed_in(self):
+        self.client.logout()
+        self.assertEqual(Client().get(self.URL).status_code, 302)
+
+    # ---- what it says
+    def test_it_says_where_the_cycle_stands(self):
+        config = Settings.load()
+        today = config.today
+        for offset in range(3):
+            PeriodDay.objects.create(person=self.person, date=today - timedelta(days=offset),
+                                     flow=Flow.MEDIUM)
+        body = self._ask()['body']
+        self.assertIn('day 3 of your period', body)
+
+    def test_it_says_when_nothing_is_logged_yet(self):
+        self.assertIn('Log your first period', self._ask()['body'])
+
+    def test_it_mentions_anything_running_low(self):
+        item = StockItem.objects.create(person=self.person, name='Pads', low_at=5)
+        StockMove.objects.create(item=item, date=Settings.load().today, change=2,
+                                 reason=StockMove.Reason.OPENING)
+        self.assertIn('Running low: Pads (2 left)', self._ask()['body'])
+
+    def test_it_greets_by_first_name(self):
+        self.assertEqual(self._ask()['title'], 'Hi Divya')
+
+    def test_it_is_never_cached(self):
+        r = self.client.get(self.URL)
+        self.assertIn('no-store', r['Cache-Control'])
+
+    # ---- the page side
+    def test_every_diary_page_asks_for_it(self):
+        for name in ['hibiscus_me_home', 'hibiscus_me_calendar', 'hibiscus_me_stocks',
+                     'hibiscus_me_settings']:
+            body = self.client.get(reverse(name)).content.decode()
+            self.assertIn(f'data-reminder-url="{self.URL}"', body, name)
+
+    def test_the_script_uses_the_plain_notification_api(self):
+        js = (Path(settings.BASE_DIR) / 'static' / 'hibiscus' / 'user.js').read_text(
+            encoding='utf-8')
+        self.assertIn('new Notification(', js)
+        self.assertIn('Notification.requestPermission', js)
+        self.assertNotIn('ReactNativeWebView', js)     # the SyncUp app answers the real API
+        self.assertIn('data-reminder-url', js)
+
+    def test_there_is_a_fallback_for_a_browser_that_will_not_show_one(self):
+        js = (Path(settings.BASE_DIR) / 'static' / 'hibiscus' / 'user.js').read_text(
+            encoding='utf-8')
+        self.assertIn('function banner(', js)
+        css = (Path(settings.BASE_DIR) / 'static' / 'hibiscus' / 'user.css').read_text(
+            encoding='utf-8')
+        self.assertIn('.greet', css)
+
+    def test_the_settings_page_can_turn_it_on(self):
+        body = self.client.get(reverse('hibiscus_me_settings')).content.decode()
+        self.assertIn('data-notif', body)
+        self.assertIn('Notifications on this device', body)
+
+
+class RowAlignmentTests(TestCase):
+    """The controls down the right-hand edge of a list row line up with each other.
+
+    `.grow` was scoped to `.row`, so inside `.item` rows nothing expanded and each switch sat
+    wherever that row's text happened to end — a staircase instead of a column.
+    """
+
+    CSS = Path(settings.BASE_DIR) / 'static' / 'hibiscus' / 'user.css'
+
+    def test_grow_is_not_tied_to_one_container(self):
+        css = self.CSS.read_text(encoding='utf-8')
+        self.assertIn('\n.grow { flex: 1', css)
+        self.assertNotIn('.row .grow { flex: 1', css)
+
+    def test_a_row_control_keeps_its_width_whatever_it_says(self):
+        css = self.CSS.read_text(encoding='utf-8')
+        self.assertIn('.item > .btn.sm', css)
+        rule = css.split('.item > .btn.sm', 1)[1].split('}', 1)[0]
+        self.assertIn('flex: none', rule)
+        self.assertIn('min-width', rule)
+
+    def test_the_reminder_rows_use_it(self):
+        person = make_person()
+        self.client.post(reverse('hibiscus_me_login'),
+                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+        defaults.ensure_slots()
+        body = self.client.get(reverse('hibiscus_me_settings')).content.decode()
+        self.assertIn('class="grow"', body)
+        self.assertIn('class="btn sm mint"', body)
+        self.assertIsNotNone(person.pk)

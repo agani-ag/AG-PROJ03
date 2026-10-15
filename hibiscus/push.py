@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 TITLE_MAX = 100
 BODY_MAX = 200
 SEND_TIMEOUT = 5
+# A person pressed a button and is watching the page, so this one may wait longer than the cron.
+TEST_TIMEOUT = 12
 
 S = NotifyLine.Situation
 
@@ -127,8 +129,12 @@ def compose(person, slot, config, today=None):
     return {'situation': situation, 'line': line, 'title': title, 'body': body}
 
 
-def send_via_syncup(config, person, title, body, url):
-    """Post to SyncUp's partner endpoint. Returns (delivered, error)."""
+def send_via_syncup(config, person, title, body, url, timeout=SEND_TIMEOUT):
+    """Post to SyncUp's partner endpoint. Returns (delivered, error).
+
+    `timeout` is short for the cron — it has a whole run to get through and a slow host must not
+    hold it up — and longer for the Test push, where somebody is watching the page.
+    """
     if not config.syncup_base or not person.syncup_token:
         return 0, 'no syncup token' if config.syncup_base else 'syncup not configured'
     payload = json.dumps({
@@ -139,11 +145,51 @@ def send_via_syncup(config, person, title, body, url):
     request = urllib.request.Request(endpoint, data=payload,
                                      headers={'Content-Type': 'application/json'})
     try:
-        with urllib.request.urlopen(request, timeout=SEND_TIMEOUT) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.loads(response.read() or b'{}')
         return int(data.get('delivered') or 0), ''
     except (urllib.error.URLError, ValueError, TimeoutError) as exc:
         return 0, f'{type(exc).__name__}: {exc}'[:200]
+
+
+def arrival_message(person, config, today=None):
+    """One line about where the cycle stands, for someone who has just arrived.
+
+    The old Flask app did exactly this and nothing more: a status sentence, plus a word about
+    anything running low. It is deliberately not one of the slot wordings — those are written for
+    a time of day ("log before bed"), and this fires whenever somebody signs in.
+    """
+    today = today or config.today
+    situation, context = situation_for(person, config, today)
+    days = list(person.days.values_list('date', 'flow'))
+    stats = cycle.stats(days, today=today, default_cycle=config.default_cycle,
+                        default_period=config.default_period, cycle_hint=person.cycle_hint)
+
+    if stats.predicted_next is None:
+        body = 'Log your first period and the predictions start from there.'
+    elif situation in (S.RUNNING_LOGGED, S.RUNNING_UNLOGGED):
+        body = f'You are on day {stats.cycle_day} of your period.'
+        if situation == S.RUNNING_UNLOGGED:
+            body += ' Today is not logged yet.'
+    elif stats.is_overdue:
+        late = abs(stats.days_until)
+        body = (f'Your period is {late} day{"" if late == 1 else "s"} late — it was expected '
+                f'{stats.predicted_next:%a %d %b}.')
+    elif stats.days_until == 0:
+        body = f'Your period may start today ({stats.predicted_next:%a %d %b}).'
+    elif stats.days_until == 1:
+        body = f'Your period is expected tomorrow, {stats.predicted_next:%a %d %b}.'
+    else:
+        body = (f'Your next period is expected around {stats.predicted_next:%a %d %b} — '
+                f'about {stats.days_until} days away.')
+
+    lows = low_items(person)
+    if lows:
+        tail = ' Running low: ' + ', '.join(f'{i.name} ({i.in_stock} left)' for i in lows[:2]) + '.'
+        if len(body) + len(tail) <= BODY_MAX:
+            body += tail
+
+    return {'title': f'Hi {context["name"]}'[:TITLE_MAX], 'body': body[:BODY_MAX]}
 
 
 def diary_url(config):
@@ -168,7 +214,8 @@ def send_test(config, person, url=''):
     title = f'{config.display_name} · test message'[:TITLE_MAX]
     body = (f'Sent from the admin console at {when:%H:%M}. '
             f'If this reached you, notifications are working.')[:BODY_MAX]
-    delivered, error = send_via_syncup(config, person, title, body, url or diary_url(config))
+    delivered, error = send_via_syncup(config, person, title, body, url or diary_url(config),
+                                       timeout=TEST_TIMEOUT)
     return {'delivered': delivered, 'error': error, 'title': title, 'body': body}
 
 

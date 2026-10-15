@@ -1,8 +1,9 @@
-/* Hibiscus — the only JavaScript on the diary side, about 2 KB.
-   Three jobs, each of which saves a page load:
+/* Hibiscus — the only JavaScript on the diary side, about 3 KB.
+   Four jobs, each of which saves a page load or a trip to the admin:
      1. the day sheet on the calendar,
      2. the plus/minus buttons on stocks,
-     3. the theme switch.
+     3. the theme switch,
+     4. the reminder shown once when somebody arrives.
    Everything else is a plain form post. No framework, nothing loaded from outside. */
 (function () {
   "use strict";
@@ -89,6 +90,84 @@
     try { localStorage.setItem("hibiscus-theme", next); } catch (err) {}
     post(btn.dataset.themeNext, { theme: next }).catch(function () {});
   });
+
+
+  /* ---------- the arrival reminder ----------
+     Once when somebody arrives — after signing in, after opening a magic link, or on their first
+     page of the day with a session still running — and never again while they move around the
+     diary. The server decides which of those it is; this only asks and delivers.
+
+     Delivery is the plain Notification API. Inside the SyncUp app that same call becomes a real
+     Android notification, because the app answers Notification.permission and new Notification()
+     for the page, so there is nothing app-specific to write here. When permission has not been
+     given, the line is shown in the page instead — a notification nobody sees is worse than a
+     banner, and the browser will not let us ask without a tap. */
+  var reminderUrl = document.body.getAttribute("data-reminder-url");
+
+  function banner(title, body, askable) {
+    var box = document.createElement("div");
+    box.className = "greet";
+    box.innerHTML =
+      '<b></b><span></span>' +
+      (askable ? '<button type="button" class="btn sm ghost" data-ask>Turn on notifications</button>' : '') +
+      '<button type="button" class="x" aria-label="Dismiss">&times;</button>';
+    box.querySelector("b").textContent = title;
+    box.querySelector("span").textContent = body;
+    box.querySelector(".x").addEventListener("click", function () { box.remove(); });
+    var ask = box.querySelector("[data-ask]");
+    if (ask) {
+      ask.addEventListener("click", function () {
+        Notification.requestPermission().then(function (p) {
+          if (p === "granted") { show(title, body); box.remove(); }
+          else { ask.remove(); }
+        });
+      });
+    }
+    var main = document.querySelector("main .wrap");
+    if (main) main.insertBefore(box, main.firstChild);
+  }
+
+  function show(title, body) {
+    try {
+      new Notification(title, { body: body, tag: "hibiscus", icon: "/static/hibiscus/flower.svg" });
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  if (reminderUrl) {
+    fetch(reminderUrl, { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.show) return;
+        var can = ("Notification" in window);
+        if (can && Notification.permission === "granted" && show(d.title, d.body)) return;
+        banner(d.title, d.body, can && Notification.permission === "default");
+      })
+      .catch(function () {});
+  }
+
+  /* The same thing from the settings page, where it can be turned on deliberately rather than
+     the one moment the arrival line offers it. */
+  var notifRow = document.querySelector("[data-notif]");
+  if (notifRow) {
+    var state = notifRow.querySelector("[data-notif-state]");
+    var askBtn = notifRow.querySelector("[data-notif-ask]");
+    var paint = function () {
+      var p = ("Notification" in window) ? Notification.permission : "unsupported";
+      state.textContent = p === "granted" ? "On — reminders show on this device."
+        : p === "denied" ? "Blocked in this browser's site settings."
+        : p === "default" ? "Off — turn it on to get the daily line here."
+        : "This browser cannot show notifications.";
+      askBtn.hidden = p !== "default";
+    };
+    notifRow.hidden = false;
+    paint();
+    askBtn.addEventListener("click", function () {
+      Notification.requestPermission().then(paint);
+    });
+  }
 
   /* ---------- the SyncUp push handshake ----------
      Inside the SyncUp app the page is handed window.SyncUp.token. Post it once so the server can

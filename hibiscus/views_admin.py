@@ -7,6 +7,7 @@ the other half of that bargain.
 """
 import csv
 from datetime import date, datetime, timedelta
+from urllib.parse import urlparse
 
 from django.contrib import messages
 from django.db import transaction
@@ -23,6 +24,19 @@ from .forms import (DayForm, DayRangeForm, PersonForm, SettingsForm, StockItemEd
                     StockItemForm, StockMoveForm)
 from .models import (Audit, DaySymptom, Flow, NotifyLine, NotifySent, NotifySlot, Person,
                      PeriodDay, Settings, StockItem, StockMove, Symptom)
+
+
+def _points_at_this_site(request, address):
+    """True when an address someone typed is this very site.
+
+    Worth catching on its own: SyncUp lives somewhere else, and a server asked to call itself
+    while it is busy serving that same request has nothing left to answer with — it sits there
+    until the timeout, which reads like "SyncUp is down" rather than "that is the wrong address".
+    """
+    if not address:
+        return False
+    host = urlparse(address if '//' in address else '//' + address).netloc.lower()
+    return host.split(':')[0] == request.get_host().split(':')[0].lower()
 
 
 def _magic_url(request, person):
@@ -173,11 +187,24 @@ def person_test_push(request, pk):
         config.site_base = request.build_absolute_uri('/').rstrip('/')
         config.save(update_fields=['site_base'])
 
+    if _points_at_this_site(request, config.syncup_base):
+        auth.log('test_push', person=person, actor=request.user,
+                 detail='syncup address points at this site')
+        messages.error(request, 'The SyncUp address is this same site, so the message would be '
+                                'sent to SyncHub rather than to SyncUp — which just times out. '
+                                'Put the SyncUp server address there instead.')
+        return redirect('hibiscus_person', pk=person.pk)
+
     result = push.send_test(config, person, url=push.diary_url(config))
     detail = result['error'] or f"{result['delivered']} device(s)"
     auth.log('test_push', person=person, actor=request.user, detail=detail)
 
-    if result['error'] == 'syncup not configured':
+    if 'timed out' in result['error'] or result['error'].startswith('TimeoutError'):
+        messages.error(request, f'No answer from {config.syncup_base} within '
+                                f'{push.TEST_TIMEOUT} seconds. Either the address is wrong, or '
+                                f'this server is not allowed to reach it — a PythonAnywhere free '
+                                f'account can only call sites on its own whitelist.')
+    elif result['error'] == 'syncup not configured':
         messages.error(request, 'No SyncUp address yet — set it on the Hibiscus settings page, '
                                 'then try again.')
     elif result['error'] == 'no syncup token':
@@ -634,6 +661,7 @@ def settings_page(request):
         messages.success(request, 'Settings saved.')
         return redirect('hibiscus_settings')
     return render(request, 'hibiscus/admin/settings.html', {
+        'syncup_is_self': _points_at_this_site(request, Settings.load().syncup_base),
         'form': form, 'config': config,
         'now_local': timezone.localtime(timezone.now(), config.tzinfo),
         'recent': Audit.objects.filter(action='changed_settings')[:5],

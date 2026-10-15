@@ -26,6 +26,7 @@ urlpatterns = [
     path('me/reminders/<int:pk>/toggle', views_user.toggle_slot, name='hibiscus_me_slot_toggle'),
     path('me/theme', views_user.set_theme, name='hibiscus_me_theme'),
     path('me/syncup-token', views_user.save_syncup_token, name='hibiscus_me_token'),
+    path('me/reminder', views_user.my_reminder, name='hibiscus_me_reminder'),
 
     # ---- the admin side, inside SyncHub
     path('', views_admin.people, name='hibiscus_people'),

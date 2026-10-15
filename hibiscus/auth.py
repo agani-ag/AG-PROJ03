@@ -17,6 +17,9 @@ from django.utils import timezone
 from .models import Audit, Person
 
 SESSION_KEY = 'hibiscus_person_id'
+# Set the moment a session starts — by password, by magic link, or at sign-up — and popped by the
+# first page that asks. That is what makes the greeting fire on arrival and not on every page.
+GREET_KEY = 'hibiscus_greet'
 
 # No look-alike characters: someone reads this off a screen and types it on a phone.
 PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
@@ -92,6 +95,7 @@ def find_person(sign_in_id):
 def sign_in(request, person):
     """Start a session for this person. Their own session key, separate from the admin's login."""
     request.session[SESSION_KEY] = person.pk
+    request.session[GREET_KEY] = True
     request.session.set_expiry(60 * 60 * 24 * 30)      # a diary is not a bank: 30 days
     Person.objects.filter(pk=person.pk).update(
         last_opened_at=timezone.now(), open_count=F('open_count') + 1)

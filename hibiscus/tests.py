@@ -945,3 +945,72 @@ class DiaryLinkTests(TestCase):
         self.assertIsNotNone(fake.payload, 'nothing was sent at all')
         self.assertEqual(fake.payload['url'],
                          'https://synchub.example.com' + reverse('hibiscus_me_home'))
+
+class SyncUpAddressTests(TestCase):
+    """The SyncUp address pointing at this same site — the one wrong value that hangs.
+
+    It does not fail: the server is asked to call itself while it is busy answering the page that
+    asked, so nothing answers until the timeout, and the trail fills with TimeoutError. Both the
+    Test push and the settings page name it instead.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.person = Person.objects.create(name='Riya', email='r@example.com',
+                                            syncup_token='tok-123')
+        self.url = reverse('hibiscus_person_test_push', args=[self.person.pk])
+
+    def _set(self, address):
+        config = Settings.load()
+        config.syncup_base = address
+        config.syncup_notify_key = 'k'
+        config.save()
+
+    def test_a_self_pointing_address_is_refused_before_anything_is_sent(self):
+        self._set('https://testserver')
+        fake = FakeSyncUp()
+        with patch('hibiscus.push.urllib.request.urlopen', fake):
+            r = self.client.post(self.url, follow=True)
+        self.assertIsNone(fake.url, 'it tried to send anyway')
+        self.assertContains(r, 'this same site')
+        self.assertTrue(Audit.objects.filter(person=self.person, action='test_push',
+                                             detail='syncup address points at this site').exists())
+
+    def test_the_settings_page_says_so_too(self):
+        self._set('https://testserver/')
+        self.assertContains(self.client.get(reverse('hibiscus_settings')),
+                            'The SyncUp address is this same site')
+
+    def test_a_real_address_is_left_alone(self):
+        self._set('https://syncup.example.com')
+        self.assertNotContains(self.client.get(reverse('hibiscus_settings')),
+                               'The SyncUp address is this same site')
+        fake = FakeSyncUp()
+        with patch('hibiscus.push.urllib.request.urlopen', fake):
+            self.client.post(self.url, follow=True)
+        self.assertEqual(fake.url, 'https://syncup.example.com/app/v1/partner/notify')
+
+    def test_a_timeout_explains_itself(self):
+        self._set('https://syncup.example.com')
+        r = self._timeout()
+        self.assertContains(r, 'No answer from https://syncup.example.com')
+        self.assertContains(r, 'whitelist')
+
+    def _timeout(self):
+        fake = FakeSyncUp(raises=TimeoutError('The read operation timed out'))
+        with patch('hibiscus.push.urllib.request.urlopen', fake):
+            return self.client.post(self.url, follow=True)
+
+    def test_the_manual_test_waits_longer_than_the_cron(self):
+        self.assertGreater(push.TEST_TIMEOUT, push.SEND_TIMEOUT)
+        self._set('https://syncup.example.com')
+        seen = {}
+
+        def capture(request, timeout=None):
+            seen['timeout'] = timeout
+            raise TimeoutError('The read operation timed out')
+
+        with patch('hibiscus.push.urllib.request.urlopen', capture):
+            self.client.post(self.url)
+        self.assertEqual(seen['timeout'], push.TEST_TIMEOUT)
