@@ -74,7 +74,7 @@
             <div class="card-body">
                 <p class="muted">How many messages a day, at what times, and the words for each time of day. Sent through SyncUp and delivered by SyncHub's 15-minute cron — this module gets no cron URL of its own.</p>
                 <div class="form-grid">
-                    {% for f in form %}{% if f.name == 'syncup_base' or f.name == 'syncup_notify_key' or f.name == 'notify_late_hours' %}
+                    {% for f in form %}{% if f.name == 'site_base' or f.name == 'syncup_base' or f.name == 'syncup_notify_key' or f.name == 'notify_late_hours' %}
                     <div class="field{% if f.errors %} invalid{% endif %}">
                         <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
                         {{ f }}
@@ -82,6 +82,7 @@
                     </div>
                     {% endif %}{% endfor %}
                 </div>
+                <p class="small muted">A notification opens <b>this site's address</b> when it is tapped. Leave it blank and the first <b>Test push</b> fills it in from the page you press it on.</p>
                 <div class="row">
                     <a class="btn btn-sm btn-primary" href="{% url 'hibiscus_notifications' %}">{% icon "bell" %}Times and words</a>
                     <a class="btn btn-sm" href="{% url 'cron_page' %}">{% icon "clock" %}Cron jobs</a>

@@ -30,10 +30,9 @@ def check_deploy(app_configs, **kwargs):
     # hosted at. It is only needed when another domain posts into this one — and it can never
     # be "*", which Django rejects outright (4_0.E001).
 
-    # Two files, not one: `css/app.css` comes from the project's own static/ folder, while
-    # `hibiscus/user.css` only exists after collectstatic copies it out of the app. A server
-    # pointed at static/ instead of staticfiles/ serves the first and 404s the second, which
-    # looks like "only one module has no styling" rather than a static-files problem.
+    # One file per kind: the console's, a module's, and the sprite. All three live in the
+    # project's static/ folder (see README, Layout) so either mapping serves them — but they
+    # still have to have been collected, which is what this looks for.
     static_root = getattr(settings, 'STATIC_ROOT', None)
     expected = ['css/app.css', 'icons.svg', 'hibiscus/user.css']
     missing = [f for f in expected if static_root and not (static_root / f).exists()]
@@ -43,8 +42,8 @@ def check_deploy(app_configs, **kwargs):
             + ', '.join(missing) + '.',
             hint=("Run manage.py collectstatic after every deploy, and map the web server "
                   f"/static/ to {static_root}. Mapping it to the project static/ folder "
-                  "instead serves the shared files and 404s every file an app brings with "
-                  "it, so one module looks unstyled while the rest look fine."),
+                  "serves this project's own files but none of Django's admin, so "
+                  "/django-admin/ loses its styling."),
             id='synchub.W003',
         ))
 

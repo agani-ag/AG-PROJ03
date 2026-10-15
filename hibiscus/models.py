@@ -77,6 +77,11 @@ class Settings(models.Model):
     syncup_base = models.CharField(max_length=120, blank=True,
                                    help_text='e.g. https://syncup.example.com')
     syncup_notify_key = models.CharField(max_length=80, blank=True)
+    # Where *this* site lives, used as the link a notification opens. The cron has no request to
+    # work it out from, so it is kept here; the Test push button fills it in the first time.
+    site_base = models.CharField(max_length=120, blank=True,
+                                 help_text='e.g. https://synchub.example.com — what a tapped '
+                                           'notification opens.')
     notify_quiet_from = models.TimeField(default='22:00')
     notify_quiet_to = models.TimeField(default='06:00')
     notify_late_hours = models.PositiveSmallIntegerField(

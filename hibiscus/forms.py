@@ -271,7 +271,8 @@ class SettingsForm(forms.ModelForm):
         model = Settings
         fields = ['display_name', 'time_zone', 'week_starts_sunday', 'default_cycle',
                   'default_period', 'luteal_days', 'bridge_days', 'signup_open', 'invite_code',
-                  'keep_audit_days', 'syncup_base', 'syncup_notify_key', 'notify_late_hours']
+                  'keep_audit_days', 'site_base', 'syncup_base', 'syncup_notify_key',
+                  'notify_late_hours']
         labels = {
             'display_name': 'Name shown to people',
             'time_zone': 'Time zone for "today"',
@@ -283,6 +284,7 @@ class SettingsForm(forms.ModelForm):
             'signup_open': 'Anyone may sign up',
             'invite_code': 'Invite code',
             'keep_audit_days': 'Keep the activity trail for (days)',
+            'site_base': "This site's address",
             'syncup_base': 'SyncUp address',
             'syncup_notify_key': 'SyncUp notify key',
             'notify_late_hours': 'Drop a message later than (hours)',

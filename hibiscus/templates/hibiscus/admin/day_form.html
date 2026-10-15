@@ -9,7 +9,7 @@
         <h1>{{ day.date|date:"D d M Y" }}</h1>
         <p class="page-sub">
             One day on its own.
-            {% if day.created_by %}Added by {{ day.created_by.first_name|default:day.created_by.username }} on her behalf{% else %}Logged by {{ person.name }}{% endif %}
+            {% if day.created_by %}Added by {{ day.created_by.first_name|default:day.created_by.username }} on their behalf{% else %}Logged by {{ person.name }}{% endif %}
             · {{ day.created_at|date:"d M Y, H:i" }}
         </p>
     </div>

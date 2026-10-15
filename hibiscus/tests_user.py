@@ -1,7 +1,9 @@
 """The diary side, stocks, export and notifications."""
 from datetime import date as D
 from datetime import time, timedelta
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -625,3 +627,47 @@ class MagicLinkTests(TestCase):
         r = self.client.post(reverse('hibiscus_me_login'),
                              {'contact': 'd@example.com', 'password': 'swan7tide'})
         self.assertEqual(r.status_code, 302)
+
+class CalendarGridTests(TestCase):
+    """The month grid: seven equal squares a row, whatever element a cell happens to be.
+
+    A past day is a link (it opens the day sheet), a future day is a span, and an out-of-month
+    day is a muted span. The stylesheet used to name `button, span` only, so every past day fell
+    out of the grid: short, underlined, and out of line with the rest of the month.
+    """
+
+    CSS = Path(settings.BASE_DIR) / 'static' / 'hibiscus' / 'user.css'
+
+    def setUp(self):
+        self.person = make_person()
+        self.client.post(reverse('hibiscus_me_login'),
+                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+
+    def _month(self):
+        return self.client.get(reverse('hibiscus_me_calendar')).content.decode()
+
+    def test_the_month_has_both_kinds_of_cell(self):
+        body = self._month()
+        self.assertIn('<div class="cal">', body)
+        self.assertRegex(body, r'<a href="[^"]*/hibiscus/me/day/')      # a past day
+        self.assertIn('<span class="oth', body)                          # a neighbouring month
+
+    def test_every_cell_is_styled_whatever_its_tag(self):
+        css = self.CSS.read_text(encoding='utf-8')
+        self.assertIn('.cal > *', css)
+        self.assertNotIn('.cal button, .cal span {', css)                # the rule that missed links
+        rule = css.split('.cal > *', 1)[1].split('}', 1)[0]
+        for prop in ['aspect-ratio', 'place-items', 'text-decoration']:
+            self.assertIn(prop, rule)
+
+    def test_a_tappable_day_says_so_and_a_future_one_does_not(self):
+        css = self.CSS.read_text(encoding='utf-8')
+        self.assertIn('.cal a { cursor: pointer', css)
+        self.assertIn('.cal span { cursor: default', css)
+        self.assertIn('.cal a:focus-visible', css)
+
+    def test_today_is_marked_and_still_sized_like_the_rest(self):
+        body = self._month()
+        self.assertIn('today', body)
+        css = self.CSS.read_text(encoding='utf-8')
+        self.assertIn('.cal .today { box-shadow: inset', css)            # a ring, not a size change

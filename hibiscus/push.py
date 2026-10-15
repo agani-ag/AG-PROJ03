@@ -15,6 +15,7 @@ import urllib.request
 from datetime import datetime, timedelta
 
 from django.db import IntegrityError
+from django.urls import reverse
 from django.utils import timezone
 
 from . import cycle
@@ -143,6 +144,32 @@ def send_via_syncup(config, person, title, body, url):
         return int(data.get('delivered') or 0), ''
     except (urllib.error.URLError, ValueError, TimeoutError) as exc:
         return 0, f'{type(exc).__name__}: {exc}'[:200]
+
+
+def diary_url(config):
+    """Where a tapped notification should land: the diary, on this site.
+
+    Empty until someone sets the address (the Test push button fills it in from the page it was
+    pressed on), and an empty link is harmless — SyncUp just opens its own app.
+    """
+    if not config.site_base:
+        return ''
+    return config.site_base.rstrip('/') + reverse('hibiscus_me_home')
+
+
+def send_test(config, person, url=''):
+    """One message, now, to one person — the admin pressing "Test push".
+
+    Deliberately not a composed line: it says what it is, so whoever gets it on their phone knows
+    why. Nothing is written to NotifySent, because that table is the once-a-day guarantee for
+    real slots and a test is not one of those; the audit row is the record.
+    """
+    when = timezone.localtime(timezone.now(), config.tzinfo)
+    title = f'{config.display_name} · test message'[:TITLE_MAX]
+    body = (f'Sent from the admin console at {when:%H:%M}. '
+            f'If this reached you, notifications are working.')[:BODY_MAX]
+    delivered, error = send_via_syncup(config, person, title, body, url or diary_url(config))
+    return {'delivered': delivered, 'error': error, 'title': title, 'body': body}
 
 
 def slot_is_due(slot, config, now_local):

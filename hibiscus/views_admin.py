@@ -157,6 +157,46 @@ def person_password(request, pk):
 
 @admin_required
 @require_POST
+def person_test_push(request, pk):
+    """Send one real notification to this person, now, and say exactly what came back.
+
+    This is the only way to tell the difference between "set up correctly" and "looks set up":
+    the token, the SyncUp address and the notify key are all only proved by a delivery. The
+    answer is reported as SyncUp gave it — how many devices took it, or the error verbatim.
+    """
+    person = get_object_or_404(Person, pk=pk)
+    config = Settings.load()
+
+    # A tapped notification should open the diary, and the cron has no request to work the
+    # address out from. This is the one page where it is known, so it is remembered here.
+    if not config.site_base:
+        config.site_base = request.build_absolute_uri('/').rstrip('/')
+        config.save(update_fields=['site_base'])
+
+    result = push.send_test(config, person, url=push.diary_url(config))
+    detail = result['error'] or f"{result['delivered']} device(s)"
+    auth.log('test_push', person=person, actor=request.user, detail=detail)
+
+    if result['error'] == 'syncup not configured':
+        messages.error(request, 'No SyncUp address yet — set it on the Hibiscus settings page, '
+                                'then try again.')
+    elif result['error'] == 'no syncup token':
+        messages.error(request, f'{person.name} has no device token yet. One arrives the first '
+                                f'time the diary is opened inside the SyncUp app.')
+    elif result['error']:
+        messages.error(request, f'SyncUp refused it: {result["error"]}')
+    elif result['delivered']:
+        messages.success(request, f'Sent. SyncUp delivered it to {result["delivered"]} '
+                                  f'device{"" if result["delivered"] == 1 else "s"}.')
+    else:
+        messages.warning(request, 'SyncUp accepted the message but delivered it to no device. '
+                                  'The token is probably stale — it is replaced the next time '
+                                  'the diary is opened in the app.')
+    return redirect('hibiscus_person', pk=person.pk)
+
+
+@admin_required
+@require_POST
 def person_link(request, pk, what):
     """Make, replace or switch off someone's magic link.
 
@@ -445,7 +485,7 @@ def stock_item_edit(request, pk, item_pk):
     """Rename an item, or change the level that makes it count as low.
 
     The low level is the one thing on this page that changes what gets *sent*: an item at or
-    below it puts a line in her reminders, so it belongs with the admin as well as with her.
+    below it puts a line in their reminders, so it belongs with the admin as well as with them.
     """
     person = get_object_or_404(Person, pk=pk)
     item = get_object_or_404(StockItem, pk=item_pk, person=person)

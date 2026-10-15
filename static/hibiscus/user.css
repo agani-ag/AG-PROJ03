@@ -180,9 +180,18 @@ textarea { padding: 11px 13px; min-height: 76px; line-height: 1.45; resize: vert
 .wk { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 12px;
       font-size: 11px; font-weight: 700; color: var(--mut); text-align: center; }
 .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 5px; }
-.cal button, .cal span { aspect-ratio: 1/1; border: 0; border-radius: 12px; font: 650 14px var(--font);
+/* Every cell, whatever element it is: a past day is a link, a future day is a span. Naming the
+   two tag names here instead of the children is how the links ended up unstyled — short,
+   underlined and out of line with the rest of the grid. */
+.cal > * { aspect-ratio: 1/1; border: 0; border-radius: 12px; font: 650 14px var(--font);
       background: color-mix(in srgb, var(--card) 70%, transparent); color: var(--ink);
-      display: grid; place-items: center; cursor: pointer; padding: 0; position: relative; }
+      display: grid; place-items: center; padding: 0; position: relative;
+      text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.cal a { cursor: pointer; transition: transform .08s ease; }
+.cal a:hover { filter: brightness(.97); }
+.cal a:active { transform: scale(.94); }
+.cal a:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+.cal span { cursor: default; }                 /* a day that has not happened yet */
 .cal .oth { color: var(--faint); background: transparent; cursor: default; }
 .cal .f0 { background: #e8dfe3; color: #6b5a60; }
 .cal .f1 { background: #f7cfd8; color: var(--rose-dark); }

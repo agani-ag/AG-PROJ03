@@ -176,6 +176,10 @@ Hibiscus in short: flow is recorded **per day**, and a period is a *run* of days
 counted as a period day; one missing day inside a run is bridged, two start a new period. People
 sign themselves up with an email **or** a phone number. Notifications go out through SyncUp at
 times the admin sets, each time of day with its own words, delivered by the hub's 15-minute cron.
+A person's page has a **Test push** button that sends one real notification there and then, and
+reports what SyncUp answered — the device token, the SyncUp address and the notify key are each
+only proved by a delivery. Tapping any notification opens the diary, using *this site's address*
+from the module settings; the first Test push fills that in from the page it was pressed on.
 
 The admin can also hand someone a **magic link** (`/hibiscus/me/k/<key>`): opening it signs that
 person in with no password and **no expiry**, which is the point — one tap from a bookmark or a

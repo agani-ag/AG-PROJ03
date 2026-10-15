@@ -41,7 +41,8 @@ def notify(ctx):
         if ctx.out_of_time():
             result['remaining'] = True
             break
-        summary = push.run_slot(slot, config, now_local=now_local)
+        summary = push.run_slot(slot, config, now_local=now_local,
+                                base_url=push.diary_url(config))
         result['slots'][slot.key] = summary
         result['items'] += summary['sent']
 

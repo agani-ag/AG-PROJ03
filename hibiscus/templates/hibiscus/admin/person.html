@@ -61,7 +61,23 @@
                     <dt>Signed up</dt><dd>{{ person.created_at|date:"d M Y, H:i" }} · {{ person.get_signed_up_with_display|default:person.signed_up_with }}</dd>
                     <dt>Cycle hint</dt><dd>{% if person.cycle_hint %}{{ person.cycle_hint }} days{% else %}not given{% endif %}</dd>
                     <dt>Opened</dt><dd>{{ person.open_count }} time{{ person.open_count|pluralize }}</dd>
-                    <dt>SyncUp push</dt><dd>{% if person.syncup_token %}<span class="badge badge-success"><span class="dot"></span>Ready</span>{% else %}<span class="badge"><span class="dot"></span>No token yet</span>{% endif %}</dd>
+                    <dt>SyncUp push</dt>
+                    <dd>
+                        {% if person.syncup_token %}
+                        <div class="row" style="gap:8px">
+                            <span class="badge badge-success"><span class="dot"></span>Ready</span>
+                            <form method="POST" action="{% url 'hibiscus_person_test_push' person.pk %}"
+                                  data-confirm="Send a test message to {{ person.name }}?"
+                                  data-confirm-text="A real notification goes to their phone now, saying it is a test from the console."
+                                  data-confirm-button="Send it">{% csrf_token %}
+                                <button class="btn btn-sm" type="submit">{% icon "send" %}Test push</button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <span class="badge"><span class="dot"></span>No token yet</span>
+                        <div class="small muted">One arrives the first time the diary is opened inside the SyncUp app.</div>
+                        {% endif %}
+                    </dd>
                     <dt>Magic link</dt><dd>{% if person.login_key %}<span class="badge badge-success"><span class="dot"></span>On</span> <span class="small muted">used {{ person.login_key_uses }} time{{ person.login_key_uses|pluralize }}</span>{% else %}<span class="badge"><span class="dot"></span>Off</span>{% endif %}</dd>
                 </dl>
             </div>

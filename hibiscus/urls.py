@@ -35,6 +35,7 @@ urlpatterns = [
     path('<int:pk>/edit/', views_admin.person_edit, name='hibiscus_person_edit'),
     path('<int:pk>/password', views_admin.person_password, name='hibiscus_person_password'),
     path('<int:pk>/link/<slug:what>', views_admin.person_link, name='hibiscus_person_link'),
+    path('<int:pk>/test-push', views_admin.person_test_push, name='hibiscus_person_test_push'),
     path('<int:pk>/state/<slug:what>', views_admin.person_state, name='hibiscus_person_state'),
     path('<int:pk>/delete/', views_admin.person_delete, name='hibiscus_person_delete'),
     path('<int:pk>/periods/', views_admin.person_periods, name='hibiscus_person_periods'),

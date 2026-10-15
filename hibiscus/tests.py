@@ -3,8 +3,11 @@
 The five worked examples in the mockup (section 3) are the first five tests here — they are the
 agreed definition of the rules, so they belong in code where they can fail.
 """
+import json
+import urllib.error
 from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.db import IntegrityError
@@ -12,8 +15,9 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from . import auth, cycle
-from .models import Audit, Flow, Person, PeriodDay, Settings, StockItem, StockMove
+from . import auth, cycle, defaults, push
+from .models import (Audit, Flow, NotifySent, NotifySlot, Person, PeriodDay, Settings,
+                     StockItem, StockMove)
 
 D = date
 
@@ -763,3 +767,181 @@ class StockItemEditTests(TestCase):
         self.assertEqual(self.client.post(self.url, {'name': 'X', 'low_at': 1}).status_code, 302)
         self.item.refresh_from_db()
         self.assertEqual(self.item.name, 'Pads')
+
+class FakeSyncUp:
+    """Stands in for SyncUp's partner endpoint and keeps what was posted to it."""
+
+    def __init__(self, delivered=1, raises=None):
+        self.delivered = delivered
+        self.raises = raises
+        self.url = None
+        self.payload = None
+
+    def __call__(self, request, timeout=None):
+        self.url = request.full_url
+        self.payload = json.loads(request.data)
+        if self.raises:
+            raise self.raises
+        fake = self
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return json.dumps({'delivered': fake.delivered}).encode()
+
+        return Response()
+
+
+class TestPushTests(TestCase):
+    """The Test push button: one real notification, now, and the answer as SyncUp gave it.
+
+    Everything about push looks fine until something is actually delivered — the token, the
+    address and the key are each only proved by a send — so the button exists to prove it and
+    the messages have to be specific about which of the three is missing.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.person = Person.objects.create(name='Riya', email='r@example.com',
+                                            syncup_token='tok-123')
+        self.url = reverse('hibiscus_person_test_push', args=[self.person.pk])
+        config = Settings.load()
+        config.syncup_base = 'https://syncup.example.com'
+        config.syncup_notify_key = 'secret-key'
+        config.site_base = ''
+        config.save()
+
+    def _send(self, fake):
+        with patch('hibiscus.push.urllib.request.urlopen', fake):
+            return self.client.post(self.url, follow=True)
+
+    # ---- the button
+    def test_the_button_is_there_when_a_token_is(self):
+        r = self.client.get(reverse('hibiscus_person', args=[self.person.pk]))
+        self.assertContains(r, 'Test push')
+        self.assertContains(r, self.url)
+
+    def test_no_token_means_no_button_but_an_explanation(self):
+        self.person.syncup_token = ''
+        self.person.save()
+        r = self.client.get(reverse('hibiscus_person', args=[self.person.pk]))
+        self.assertNotContains(r, 'Test push')
+        self.assertContains(r, 'No token yet')
+        self.assertContains(r, 'inside the SyncUp app')
+
+    # ---- what actually goes out
+    def test_it_posts_a_real_message_to_syncups_endpoint(self):
+        fake = FakeSyncUp(delivered=2)
+        r = self._send(fake)
+        self.assertEqual(fake.url, 'https://syncup.example.com/app/v1/partner/notify')
+        self.assertEqual(fake.payload['token'], 'tok-123')
+        self.assertEqual(fake.payload['key'], 'secret-key')
+        self.assertIn('test message', fake.payload['title'])
+        self.assertIn('notifications are working', fake.payload['body'])
+        self.assertContains(r, 'delivered it to 2 devices')
+
+    def test_the_notification_opens_the_diary_when_tapped(self):
+        fake = FakeSyncUp()
+        self._send(fake)
+        self.assertTrue(fake.payload['url'].endswith(reverse('hibiscus_me_home')),
+                        fake.payload['url'])
+
+    def test_the_first_test_remembers_this_sites_address(self):
+        self.assertEqual(Settings.load().site_base, '')
+        self._send(FakeSyncUp())
+        self.assertEqual(Settings.load().site_base, 'http://testserver')
+
+    def test_an_address_already_set_is_left_alone(self):
+        config = Settings.load()
+        config.site_base = 'https://synchub.example.com'
+        config.save()
+        self._send(FakeSyncUp())
+        self.assertEqual(Settings.load().site_base, 'https://synchub.example.com')
+
+    # ---- every way it can go wrong says which one it was
+    def test_no_syncup_address_yet(self):
+        config = Settings.load()
+        config.syncup_base = ''
+        config.save()
+        fake = FakeSyncUp()
+        r = self._send(fake)
+        self.assertIsNone(fake.url)                      # nothing was posted anywhere
+        self.assertContains(r, 'No SyncUp address yet')
+
+    def test_the_person_has_no_token(self):
+        self.person.syncup_token = ''
+        self.person.save()
+        fake = FakeSyncUp()
+        r = self._send(fake)
+        self.assertIsNone(fake.url)
+        self.assertContains(r, 'no device token yet')
+
+    def test_syncup_refusing_it_is_shown_verbatim(self):
+        r = self._send(FakeSyncUp(raises=urllib.error.URLError('connection refused')))
+        self.assertContains(r, 'SyncUp refused it')
+        self.assertContains(r, 'connection refused')
+
+    def test_accepted_but_delivered_to_nothing(self):
+        r = self._send(FakeSyncUp(delivered=0))
+        self.assertContains(r, 'delivered it to no device')
+        self.assertContains(r, 'token is probably stale')
+
+    # ---- the record
+    def test_every_test_is_audited_with_its_outcome(self):
+        self._send(FakeSyncUp(delivered=3))
+        row = Audit.objects.filter(person=self.person, action='test_push').first()
+        self.assertEqual(row.actor, self.admin)
+        self.assertEqual(row.detail, '3 device(s)')
+
+    def test_a_test_does_not_use_up_a_days_real_message(self):
+        self._send(FakeSyncUp())
+        self.assertFalse(NotifySent.objects.exists())
+
+    # ---- access
+    def test_post_only_and_admin_only(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+        self.client.logout()
+        fake = FakeSyncUp()
+        with patch('hibiscus.push.urllib.request.urlopen', fake):
+            self.assertEqual(self.client.post(self.url).status_code, 302)
+        self.assertIsNone(fake.url)
+
+
+class DiaryLinkTests(TestCase):
+    """The link a notification opens — the cron's one blind spot until now."""
+
+    def test_no_address_means_no_link(self):
+        config = Settings.load()
+        config.site_base = ''
+        config.save()
+        self.assertEqual(push.diary_url(config), '')
+
+    def test_the_link_points_at_the_diary(self):
+        config = Settings.load()
+        config.site_base = 'https://synchub.example.com/'
+        config.save()
+        self.assertEqual(push.diary_url(config),
+                         'https://synchub.example.com' + reverse('hibiscus_me_home'))
+
+    def test_the_cron_sends_that_link_with_every_message(self):
+        config = Settings.load()
+        config.site_base = 'https://synchub.example.com'
+        config.syncup_base = 'https://syncup.example.com'
+        config.save()
+        defaults.ensure_slots()
+        person = Person.objects.create(name='Riya', email='r@example.com',
+                                       syncup_token='tok-123')
+        PeriodDay.objects.create(person=person, date=config.today, flow=Flow.MEDIUM)
+        slot = NotifySlot.objects.filter(is_enabled=True).first()
+        fake = FakeSyncUp()
+        with patch('hibiscus.push.urllib.request.urlopen', fake):
+            push.run_slot(slot, config, base_url=push.diary_url(config))
+        self.assertIsNotNone(fake.payload, 'nothing was sent at all')
+        self.assertEqual(fake.payload['url'],
+                         'https://synchub.example.com' + reverse('hibiscus_me_home'))
