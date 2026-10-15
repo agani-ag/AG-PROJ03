@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ person.name }}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'hibiscus_person' person.pk %}">{% icon "arrow-left" %}{{ person.name }}</a>
+        <h1>Delete {{ person.name }}</h1>
+        <p class="page-sub">This cannot be undone.</p>
+    </div>
+</div>
+
+<div class="card card-danger">
+    <div class="card-head">{% icon "triangle-alert" %}<h2>What goes with them</h2></div>
+    <div class="card-body">
+        <ul>
+            <li><b>{{ counts.days }}</b> logged day{{ counts.days|pluralize }}, with their symptoms and notes</li>
+            <li><b>{{ counts.items }}</b> stock item{{ counts.items|pluralize }} and <b>{{ counts.moves }}</b> movement{{ counts.moves|pluralize }}</li>
+            <li>Their account and their activity trail</li>
+        </ul>
+        <div class="alert">
+            {% icon "info" %}
+            <div class="alert-body">In the old Flask app deleting someone left their check-ins, stock items and movements behind — 14 orphan rows are still in that database. Here everything goes together.</div>
+        </div>
+        <form method="POST" class="form" novalidate>
+            {% csrf_token %}
+            <div class="field">
+                <label class="label" for="confirm">Type <b>{{ person.name }}</b> to confirm</label>
+                <input class="input" id="confirm" name="confirm" autocomplete="off" placeholder="{{ person.name }}" required>
+            </div>
+            <div class="row">
+                <button class="btn btn-danger" type="submit">{% icon "trash" %}Delete everything</button>
+                <a class="btn btn-ghost" href="{% url 'hibiscus_person' person.pk %}">Keep them</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}{{ config.display_name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>{{ config.display_name }}</h1>
+        <p class="page-sub">Cycle diary · {{ active_count }} {{ active_count|pluralize:"person,people" }} · formerly Red Hibiscus</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" href="{% url 'hibiscus_settings' %}">{% icon "settings" %}Module settings</a>
+        <a class="btn btn-primary" href="{% url 'hibiscus_person_add' %}">{% icon "user-plus" %}Add person</a>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat">
+        <span class="stat-label">{% icon "users" %}People</span>
+        <span class="stat-value">{{ active_count }}</span>
+        <span class="stat-meta">{% if archived_count %}{{ archived_count }} archived{% else %}none archived{% endif %}</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "calendar" %}Days logged</span>
+        <span class="stat-value">{{ day_total }}</span>
+        <span class="stat-meta">one row per day, not per period</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "package" %}Low stock</span>
+        <span class="stat-value">{{ low_total }}</span>
+        <span class="stat-meta">item{{ low_total|pluralize }} at or below their level</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "clock" %}Today here</span>
+        <span class="stat-value" style="font-size:18px">{{ config.today|date:"d M Y" }}</span>
+        <span class="stat-meta">{{ config.time_zone }}</span>
+    </div>
+</div>
+
+<div class="card" data-table style="margin-top:16px">
+    <div class="card-head">
+        {% icon "users" %}<h2>{% if show_archived %}Archived{% else %}People{% endif %}</h2>
+        <div class="table-tools ml-auto">
+            <div class="input-icon">{% icon "search" "icon-sm" %}<input class="input input-sm" data-table-search placeholder="Search"></div>
+            {% if show_archived %}
+            <a class="btn btn-sm" href="{% url 'hibiscus_people' %}">{% icon "arrow-left" %}Active people</a>
+            {% elif archived_count %}
+            <a class="btn btn-sm" href="?archived=1">{% icon "archive" %}Archived · {{ archived_count }}</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead>
+                <tr>
+                    <th data-sort="text">Name</th>
+                    <th data-sort="text">Signs in with</th>
+                    <th>State</th>
+                    <th data-sort="num">Days</th>
+                    <th data-sort="num">Avg cycle</th>
+                    <th data-sort="num">Avg period</th>
+                    <th>Stock</th>
+                    <th>Next expected</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr data-href="{% url 'hibiscus_person' row.person.pk %}">
+                    <td class="t-primary" data-label="Name">
+                        <b>{{ row.person.name }}</b>
+                        <div class="small faint">joined {{ row.person.created_at|date:"d M Y" }}{% if row.last_day %} · last logged {{ row.last_day|date:"d M" }}{% endif %}</div>
+                    </td>
+                    <td data-label="Signs in with"><span class="small">{{ row.person.sign_in_id }}</span></td>
+                    <td data-label="State">
+                        {% if row.person.is_archived %}<span class="badge"><span class="dot"></span>Archived</span>
+                        {% elif row.person.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
+                        {% else %}<span class="badge badge-danger"><span class="dot"></span>Suspended</span>{% endif %}
+                    </td>
+                    <td data-label="Days" class="num">{{ row.day_count }}</td>
+                    <td data-label="Avg cycle" class="num">{% if row.stats.avg_cycle %}{{ row.stats.avg_cycle }} d{% else %}—{% endif %}</td>
+                    <td data-label="Avg period" class="num">{% if row.stats.avg_period %}{{ row.stats.avg_period }} d{% else %}—{% endif %}</td>
+                    <td data-label="Stock">
+                        {% if row.low_items %}<span class="badge badge-danger">{{ row.low_items }} low</span>
+                        {% elif row.person.items.exists %}<span class="badge badge-success">OK</span>
+                        {% else %}<span class="faint">—</span>{% endif %}
+                    </td>
+                    <td data-label="Next expected">
+                        {% if row.stats.predicted_next %}
+                            {{ row.stats.predicted_next|date:"d M Y" }}
+                            {% if row.stats.is_overdue %}<div class="small text-danger">{{ row.stats.days_until|cut:"-" }} days ago</div>
+                            {% elif row.stats.days_until == 0 %}<div class="small">today</div>
+                            {% else %}<div class="small faint">in {{ row.stats.days_until }} day{{ row.stats.days_until|pluralize }}{% if row.stats.estimated %} · estimated{% endif %}</div>{% endif %}
+                        {% else %}<span class="faint">nothing logged yet</span>{% endif %}
+                    </td>
+                    <td data-label=""><span class="btn btn-ghost btn-icon btn-sm">{% icon "chevron-right" %}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9">
+                    <div class="empty">
+                        {% icon "users" %}
+                        <b>{% if show_archived %}Nobody is archived{% else %}No one here yet{% endif %}</b>
+                        <span>{% if not show_archived %}Add someone, or let them sign themselves up.{% endif %}</span>
+                        {% if not show_archived %}<a class="btn btn-sm btn-primary" href="{% url 'hibiscus_person_add' %}">{% icon "user-plus" %}Add person</a>{% endif %}
+                    </div>
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="table-foot"><span class="small muted" data-table-count></span></div>
+</div>
+
+<div class="alert" style="margin-top:16px">
+    {% icon "shield-check" %}
+    <div class="alert-body"><b>Every look is recorded</b>Opening someone's diary writes a row in their activity trail. {% if config.signup_open %}Sign-up is open: anyone with the link can create an account, and you can suspend anything odd.{% else %}Sign-up is closed, so only you can add people.{% endif %}</div>
+</div>
+{% endblock %}

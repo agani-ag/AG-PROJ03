@@ -7,6 +7,8 @@ and a single flow level for the whole thing. Here flow is recorded **per day** a
 
 The rules that turn days into periods live in `cycle.py` and nowhere else.
 """
+import zoneinfo
+
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -45,6 +47,60 @@ class Symptom(models.TextChoices):
     MOODS = 'moods', 'Mood swings'
     ACNE = 'acne', 'Acne'
     CRAVINGS = 'cravings', 'Cravings'
+
+
+class Settings(models.Model):
+    """One row (pk=1) holding what used to be constants in the Flask file.
+
+    `cycle.py` takes these as arguments rather than reading them, so the rules stay pure and the
+    numbers stay visible on a settings page.
+    """
+    display_name = models.CharField(max_length=40, default='Hibiscus')
+    time_zone = models.CharField(max_length=40, default='Asia/Kolkata',
+                                 help_text='Whose "today" the diary follows.')
+    week_starts_sunday = models.BooleanField(default=True)
+
+    default_cycle = models.PositiveSmallIntegerField(default=28)
+    default_period = models.PositiveSmallIntegerField(default=5)
+    luteal_days = models.PositiveSmallIntegerField(default=14)
+    bridge_days = models.PositiveSmallIntegerField(
+        default=1, help_text='Missing days a period is allowed to span. 1 = one forgotten day.')
+
+    signup_open = models.BooleanField(default=True)
+    invite_code = models.CharField(max_length=24, blank=True,
+                                   help_text='Blank = anyone may sign up.')
+    keep_audit_days = models.PositiveSmallIntegerField(default=180)
+
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'settings'
+
+    def __str__(self):
+        return self.display_name
+
+    def save(self, *args, **kwargs):
+        self.pk = 1                       # one row, always
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        return cls.objects.get_or_create(pk=1)[0]
+
+    @property
+    def today(self):
+        """The diary's local date. Never `date.today()`: on a UTC server that rolls over at
+        05:30 IST, so anything logged before then landed on the previous day in the old app."""
+        return timezone.localtime(timezone.now(), self.tzinfo).date()
+
+    @property
+    def tzinfo(self):
+        try:
+            return zoneinfo.ZoneInfo(self.time_zone)
+        except Exception:                 # noqa: BLE001 — a bad name must not break every page
+            return timezone.get_current_timezone()
 
 
 class Person(models.Model):

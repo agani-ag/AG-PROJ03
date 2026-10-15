@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ config.display_name }} settings{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'hibiscus_people' %}">{% icon "arrow-left" %}{{ config.display_name }}</a>
+        <h1>Module settings</h1>
+        <p class="page-sub">Applies to everyone in {{ config.display_name }}. These were constants in the old Flask file.</p>
+    </div>
+</div>
+
+<form method="POST" novalidate>
+    {% csrf_token %}
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-head">{% icon "clock" %}<h2>Cycle rules</h2></div>
+            <div class="card-body form">
+                <div class="form-grid">
+                    {% for f in form %}{% if f.name == 'default_cycle' or f.name == 'default_period' or f.name == 'luteal_days' or f.name == 'bridge_days' %}
+                    <div class="field{% if f.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
+                        {{ f }}
+                        {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+                        {% for e in f.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    </div>
+                    {% endif %}{% endfor %}
+                </div>
+                <div class="alert">
+                    {% icon "info" %}
+                    <div class="alert-body"><b>How days become periods</b>Flow is recorded per day. A period is a run of days; {{ config.bridge_days }} missing day{{ config.bridge_days|pluralize }} is bridged, and {{ config.bridge_days|add:1 }} or more start a new one. Spotting shows on the calendar but never counts as day 1. Cycle gaps under 1 or over 89 days are left out of the average.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "settings" %}<h2>Module</h2></div>
+            <div class="card-body form">
+                <div class="form-grid">
+                    {% for f in form %}{% if f.name == 'display_name' or f.name == 'time_zone' or f.name == 'keep_audit_days' %}
+                    <div class="field{% if f.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
+                        {{ f }}
+                        {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+                        {% for e in f.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    </div>
+                    {% endif %}{% endfor %}
+                </div>
+                <div class="switch-row">
+                    <div class="text"><b>Week starts on Sunday</b><span class="help">How the calendar grid is laid out.</span></div>
+                    <label class="switch">{{ form.week_starts_sunday }}<span class="track"></span></label>
+                </div>
+                <p class="small muted">It is <b>{{ now_local|date:"D d M Y, H:i" }}</b> in {{ config.time_zone }} — that is the date a day is logged against. The old app used the server's UTC date, so anything logged before 05:30 landed on the day before.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "user-plus" %}<h2>Sign-up</h2></div>
+            <div class="card-body form">
+                <div class="switch-row">
+                    <div class="text"><b>Anyone may sign up</b><span class="help">With an email address or a phone number. You can suspend anything odd.</span></div>
+                    <label class="switch">{{ form.signup_open }}<span class="track"></span></label>
+                </div>
+                <div class="field{% if form.invite_code.errors %} invalid{% endif %}" style="max-width:260px">
+                    <label class="label" for="{{ form.invite_code.id_for_label }}">{{ form.invite_code.label }} <span class="opt">optional</span></label>
+                    {{ form.invite_code }}
+                    <span class="help">{{ form.invite_code.help_text }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "bell" %}<h2>Notifications</h2><span class="badge badge-warning ml-auto"><span class="dot"></span>Step 7</span></div>
+            <div class="card-body">
+                <p class="muted">How many messages a day, at what times, and the words for each time of day. Sent through SyncUp and delivered by SyncHub's 15-minute cron — this module gets no cron URL of its own.</p>
+                <a class="btn btn-sm" href="{% url 'cron_page' %}">{% icon "clock" %}See the hub's cron jobs</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="savebar" style="margin-top:16px">
+        <span>{% if config.updated_at %}Last saved {{ config.updated_at|ago }}{% if config.updated_by %} by {{ config.updated_by.first_name|default:config.updated_by.username }}{% endif %}{% else %}Not saved yet{% endif %}</span>
+        <a class="btn btn-sm" href="{% url 'hibiscus_people' %}">Discard</a>
+        <button class="btn btn-sm btn-primary" type="submit">{% icon "check" %}Save settings</button>
+    </div>
+</form>
+{% endblock %}

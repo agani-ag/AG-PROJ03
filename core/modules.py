@@ -42,6 +42,7 @@ MODULES = [
         icon='heart-pulse',
         group='Modules',
         description='Cycle diary — day-by-day log, calendar and stocks. Was Red Hibiscus.',
+        url_name='hibiscus_people',
     ),
     Module(
         key='chat',

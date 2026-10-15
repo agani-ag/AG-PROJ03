@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}{{ person.name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'hibiscus_people' %}">{% icon "arrow-left" %}{{ config.display_name }}</a>
+        <h1>{{ person.name }}</h1>
+        <p class="page-sub">
+            {% if person.is_archived %}Archived{% elif person.is_active %}Active{% else %}Suspended{% endif %}
+            · signs in with {{ person.sign_in_id }}
+            {% if person.last_opened_at %}· last opened {{ person.last_opened_at|ago }}{% else %}· never opened it{% endif %}
+        </p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" href="{% url 'hibiscus_person_edit' person.pk %}">{% icon "pencil" %}Edit details</a>
+        <form method="POST" action="{% url 'hibiscus_person_password' person.pk %}" data-confirm="Set a new password?" data-confirm-text="Their current password stops working at once. The new one is shown on the next screen.">{% csrf_token %}
+            <button class="btn" type="submit">{% icon "key-round" %}New password</button>
+        </form>
+    </div>
+</div>
+
+<div class="tabs" data-tabs>
+    <button data-tab="account" aria-selected="true">Account</button>
+    <button data-tab="periods">Periods · {{ day_count }} day{{ day_count|pluralize }}</button>
+    <button data-tab="activity">Activity</button>
+</div>
+
+<div data-tab-panel="account" class="stack" style="margin-top:14px">
+    <div class="stats">
+        <div class="stat">
+            <span class="stat-label">{% icon "clock" %}Average cycle</span>
+            <span class="stat-value">{% if stats.avg_cycle %}{{ stats.avg_cycle }} d{% else %}—{% endif %}</span>
+            <span class="stat-meta">{% if stats.estimated %}using {{ stats.cycle_len }} days until two periods exist{% else %}measured from {{ stats.count }} period{{ stats.count|pluralize }}{% endif %}</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">{% icon "calendar" %}Average period</span>
+            <span class="stat-value">{% if stats.avg_period %}{{ stats.avg_period }} d{% else %}—{% endif %}</span>
+            <span class="stat-meta">spotting days are not counted</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">{% icon "calendar-clock" %}Next expected</span>
+            <span class="stat-value" style="font-size:17px">{% if stats.predicted_next %}{{ stats.predicted_next|date:"d M Y" }}{% else %}—{% endif %}</span>
+            <span class="stat-meta">
+                {% if stats.is_overdue %}{{ stats.days_until|cut:"-" }} days ago · cycle day {{ stats.cycle_day }}
+                {% elif stats.days_until %}in {{ stats.days_until }} day{{ stats.days_until|pluralize }} · cycle day {{ stats.cycle_day }}
+                {% else %}nothing logged yet{% endif %}
+            </span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">{% icon "package" %}Stock items</span>
+            <span class="stat-value">{{ items|length }}</span>
+            <span class="stat-meta">{% for i in items %}{% if i.is_low %}{{ i.name }} low · {% endif %}{% endfor %}{% if not items %}none yet{% endif %}</span>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-head">{% icon "user-round" %}<h2>Account</h2></div>
+            <div class="card-body">
+                <dl class="kv">
+                    <dt>Email</dt><dd>{{ person.email|default:"—" }}</dd>
+                    <dt>Phone</dt><dd>{{ person.phone|default:"—" }}</dd>
+                    <dt>Signed up</dt><dd>{{ person.created_at|date:"d M Y, H:i" }} · {{ person.get_signed_up_with_display|default:person.signed_up_with }}</dd>
+                    <dt>Cycle hint</dt><dd>{% if person.cycle_hint %}{{ person.cycle_hint }} days{% else %}not given{% endif %}</dd>
+                    <dt>Opened</dt><dd>{{ person.open_count }} time{{ person.open_count|pluralize }}</dd>
+                    <dt>SyncUp push</dt><dd>{% if person.syncup_token %}<span class="badge badge-success"><span class="dot"></span>Ready</span>{% else %}<span class="badge"><span class="dot"></span>No token yet</span>{% endif %}</dd>
+                </dl>
+            </div>
+            <div class="card-foot bordered">
+                <div class="row">
+                    {% if person.is_active %}
+                    <form method="POST" action="{% url 'hibiscus_person_state' person.pk 'suspend' %}" data-confirm="Suspend {{ person.name }}?" data-confirm-text="They will not be able to sign in. Their diary is kept.">{% csrf_token %}
+                        <button class="btn btn-sm" type="submit">{% icon "lock" %}Suspend</button>
+                    </form>
+                    {% else %}
+                    <form method="POST" action="{% url 'hibiscus_person_state' person.pk 'resume' %}">{% csrf_token %}
+                        <button class="btn btn-sm" type="submit">{% icon "circle-check" %}Let them back in</button>
+                    </form>
+                    {% endif %}
+                    {% if person.is_archived %}
+                    <form method="POST" action="{% url 'hibiscus_person_state' person.pk 'restore' %}">{% csrf_token %}
+                        <button class="btn btn-sm" type="submit">{% icon "arrow-up" %}Restore</button>
+                    </form>
+                    {% else %}
+                    <form method="POST" action="{% url 'hibiscus_person_state' person.pk 'archive' %}" data-confirm="Archive {{ person.name }}?" data-confirm-text="They move out of the main list. Nothing is deleted.">{% csrf_token %}
+                        <button class="btn btn-sm" type="submit">{% icon "archive" %}Archive</button>
+                    </form>
+                    {% endif %}
+                    <a class="btn btn-sm text-danger ml-auto" href="{% url 'hibiscus_person_delete' person.pk %}">{% icon "trash" %}Delete…</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "droplet" %}<h2>Recent periods</h2><a class="small ml-auto" href="#" data-tab-link="periods">All days</a></div>
+            <div class="card-body">
+                {% if periods %}
+                <ul class="list">
+                    {% for p in periods %}
+                    <li class="list-item">
+                        <div class="main-col">
+                            <div class="title">{{ p.start|date:"d M" }} – {{ p.end|date:"d M Y" }}</div>
+                            <div class="sub">
+                                {{ p.days }} day{{ p.days|pluralize }}
+                                {% if p.shown_from != p.start %}· spotting from {{ p.shown_from|date:"d M" }}{% endif %}
+                                {% if p.shown_to != p.end %}· spotting to {{ p.shown_to|date:"d M" }}{% endif %}
+                            </div>
+                        </div>
+                        <span class="badge">{{ p.days }} d</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="empty">{% icon "droplet" %}<b>Nothing logged yet</b><span>Period days are added on the Periods tab — that is built next.</span></div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div data-tab-panel="periods" hidden style="margin-top:14px">
+    <div class="card"><div class="card-body">
+        <div class="empty">
+            {% icon "calendar" %}
+            <b>Day-by-day entry is the next step</b>
+            <span>This tab gets the range form and the per-day table. The rules behind it — runs of days, bridged gaps, spotting not counted — are already built and tested.</span>
+        </div>
+    </div></div>
+</div>
+
+<div data-tab-panel="activity" hidden style="margin-top:14px">
+    <div class="card">
+        <div class="card-head">{% icon "scroll-text" %}<h2>Recent activity</h2><a class="small ml-auto" href="{% url 'hibiscus_person_activity' person.pk %}">Full trail</a></div>
+        <div class="table-wrap">
+            <table class="table table-stack">
+                <thead><tr><th>When</th><th>What</th><th>Who</th><th>Detail</th></tr></thead>
+                <tbody>
+                    {% for row in audit %}
+                    <tr>
+                        <td class="t-primary" data-label="When">{{ row.at|date:"d M Y, H:i" }}</td>
+                        <td data-label="What">{{ row.action }}</td>
+                        <td data-label="Who">{% if row.actor %}{{ row.actor.first_name|default:row.actor.username }}{% else %}{{ person.name }}{% endif %}</td>
+                        <td data-label="Detail"><span class="small muted">{{ row.detail|default:"—" }}</span></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4"><div class="empty">{% icon "scroll-text" %}<b>Nothing yet</b></div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+// Tab panels: app.js styles the buttons, this shows the matching panel.
+(function () {
+    var tabs = document.querySelector("[data-tabs]");
+    if (!tabs) return;
+    function show(name) {
+        document.querySelectorAll("[data-tab-panel]").forEach(function (p) {
+            p.hidden = p.dataset.tabPanel !== name;
+        });
+        tabs.querySelectorAll("button[data-tab]").forEach(function (b) {
+            b.setAttribute("aria-selected", b.dataset.tab === name ? "true" : "false");
+        });
+    }
+    tabs.addEventListener("click", function (e) {
+        var b = e.target.closest("button[data-tab]");
+        if (b) show(b.dataset.tab);
+    });
+    document.querySelectorAll("[data-tab-link]").forEach(function (a) {
+        a.addEventListener("click", function (e) { e.preventDefault(); show(a.dataset.tabLink); });
+    });
+})();
+</script>
+{% endblock %}

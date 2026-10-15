@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ person.name }} · activity{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'hibiscus_person' person.pk %}">{% icon "arrow-left" %}{{ person.name }}</a>
+        <h1>Activity</h1>
+        <p class="page-sub">Every look and every change, newest first. Kept for {{ config.keep_audit_days }} days.</p>
+    </div>
+</div>
+
+<div class="card" data-table>
+    <div class="card-head">
+        {% icon "scroll-text" %}<h2>Trail</h2>
+        <div class="table-tools ml-auto"><div class="input-icon">{% icon "search" "icon-sm" %}<input class="input input-sm" data-table-search placeholder="Search"></div></div>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th data-sort="text">When</th><th data-sort="text">What</th><th data-sort="text">Who</th><th>Detail</th></tr></thead>
+            <tbody>
+                {% for row in audit %}
+                <tr>
+                    <td class="t-primary" data-label="When">{{ row.at|date:"d M Y, H:i:s" }}</td>
+                    <td data-label="What">{{ row.action }}</td>
+                    <td data-label="Who">
+                        {% if row.actor %}<span class="badge badge-accent">{{ row.actor.first_name|default:row.actor.username }}</span>
+                        {% else %}<span class="badge">{{ person.name }}</span>{% endif %}
+                    </td>
+                    <td data-label="Detail"><span class="small muted">{{ row.detail|default:"—" }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4"><div class="empty">{% icon "scroll-text" %}<b>Nothing recorded yet</b></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="table-foot"><span class="small muted" data-table-count></span></div>
+</div>
+{% endblock %}

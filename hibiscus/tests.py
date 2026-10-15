@@ -8,9 +8,11 @@ from datetime import date, timedelta
 from django.contrib.auth.models import User
 from django.db import IntegrityError
 from django.test import TestCase
+from django.urls import reverse
+from django.utils import timezone
 
-from . import cycle
-from .models import Flow, Person, PeriodDay, StockItem, StockMove
+from . import auth, cycle
+from .models import Audit, Flow, Person, PeriodDay, Settings, StockItem, StockMove
 
 D = date
 
@@ -233,3 +235,193 @@ class ModelTests(TestCase):
         admin = User.objects.create_superuser('admin2', 'a2@example.com', 'pw-for-tests-1234')
         day = PeriodDay.objects.create(person=self.person, date=D(2026, 10, 2), created_by=admin)
         self.assertEqual(day.created_by, admin)
+
+
+class SettingsTests(TestCase):
+    def test_there_is_only_ever_one_row(self):
+        a = Settings.load()
+        a.default_cycle = 30
+        a.save()
+        b = Settings.load()
+        self.assertEqual(b.pk, 1)
+        self.assertEqual(b.default_cycle, 30)
+        self.assertEqual(Settings.objects.count(), 1)
+
+    def test_today_follows_the_module_time_zone(self):
+        config = Settings.load()
+        config.time_zone = 'Asia/Kolkata'
+        config.save()
+        self.assertEqual(config.today, timezone.localtime(timezone.now(), config.tzinfo).date())
+
+    def test_a_bad_time_zone_does_not_break_the_page(self):
+        config = Settings.load()
+        config.time_zone = 'Not/AZone'
+        config.save()
+        self.assertIsNotNone(config.today)
+
+
+class PasswordTests(TestCase):
+    def setUp(self):
+        self.person = Person.objects.create(name='Divya', email='d@example.com')
+
+    def test_generated_passwords_avoid_look_alike_characters(self):
+        for _ in range(20):
+            pw = auth.generate_password()
+            self.assertEqual(len(pw), auth.PASSWORD_LENGTH)
+            self.assertFalse(set(pw) & set('ol01iI'))
+
+    def test_password_is_stored_hashed_and_checks_out(self):
+        auth.set_password(self.person, 'swan7tide')
+        self.person.refresh_from_db()
+        self.assertNotIn('swan7tide', self.person.password_hash)
+        self.assertTrue(auth.check_person_password(self.person, 'swan7tide'))
+        self.assertFalse(auth.check_person_password(self.person, 'wrong'))
+
+    def test_no_password_set_means_no_sign_in(self):
+        self.assertFalse(auth.check_person_password(self.person, ''))
+
+    def test_people_are_found_by_email_or_phone(self):
+        other = Person.objects.create(name='Meena', phone='9876543210')
+        self.assertEqual(auth.find_person('D@Example.com'), self.person)
+        self.assertEqual(auth.find_person('9876543210'), other)
+        self.assertEqual(auth.find_person('+91 98765 43210'), other)   # typed with spaces
+        self.assertIsNone(auth.find_person('nobody@example.com'))
+        self.assertIsNone(auth.find_person(''))
+
+
+class AdminSideTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.person = Person.objects.create(name='Divya', email='d@example.com')
+
+    # ---- access
+    def test_every_page_needs_the_admin(self):
+        self.client.logout()
+        for url in [reverse('hibiscus_people'),
+                    reverse('hibiscus_person', args=[self.person.pk]),
+                    reverse('hibiscus_person_add'),
+                    reverse('hibiscus_settings')]:
+            self.assertEqual(self.client.get(url).status_code, 302, url)
+
+    def test_a_signed_in_non_superuser_is_turned_away(self):
+        User.objects.create_user('helper', 'h@example.com', 'pw-for-tests-1234')
+        self.client.logout()
+        self.client.login(username='helper', password='pw-for-tests-1234')
+        self.assertEqual(self.client.get(reverse('hibiscus_people')).status_code, 302)
+
+    # ---- people list
+    def test_people_list_shows_everyone_active(self):
+        r = self.client.get(reverse('hibiscus_people'))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Divya')
+
+    def test_archived_people_are_behind_their_own_view(self):
+        self.person.is_archived = True
+        self.person.save()
+        self.assertNotContains(self.client.get(reverse('hibiscus_people')), 'd@example.com')
+        self.assertContains(self.client.get(reverse('hibiscus_people') + '?archived=1'), 'Divya')
+
+    # ---- adding
+    def test_adding_someone_shows_a_password_once(self):
+        r = self.client.post(reverse('hibiscus_person_add'),
+                             {'name': 'Meena', 'phone': '9876543210', 'email': '', 'cycle_hint': ''})
+        self.assertEqual(r.status_code, 200)
+        meena = Person.objects.get(name='Meena')
+        self.assertEqual(meena.phone, '9876543210')
+        self.assertEqual(meena.signed_up_with, 'admin')
+        self.assertEqual(meena.created_by, self.admin)
+        self.assertTrue(meena.password_hash)
+        shown = r.context['password']
+        self.assertTrue(auth.check_person_password(meena, shown))      # the one on screen works
+        self.assertNotContains(r, meena.password_hash)                 # the hash is not on screen
+
+    def test_an_account_needs_an_email_or_a_phone(self):
+        r = self.client.post(reverse('hibiscus_person_add'), {'name': 'Nobody'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Add an email address or a phone number.')
+        self.assertFalse(Person.objects.filter(name='Nobody').exists())
+
+    def test_a_bad_phone_number_is_refused(self):
+        r = self.client.post(reverse('hibiscus_person_add'), {'name': 'X', 'phone': '12345'})
+        self.assertContains(r, 'Enter a 10-digit mobile number.')
+
+    def test_phone_numbers_are_stored_as_ten_digits(self):
+        self.client.post(reverse('hibiscus_person_add'),
+                         {'name': 'Meena', 'phone': '+91 98765 43210'})
+        self.assertEqual(Person.objects.get(name='Meena').phone, '9876543210')
+
+    # ---- password, state
+    def test_new_password_replaces_the_old_one(self):
+        auth.set_password(self.person, 'old7pass')
+        r = self.client.post(reverse('hibiscus_person_password', args=[self.person.pk]))
+        self.person.refresh_from_db()
+        self.assertFalse(auth.check_person_password(self.person, 'old7pass'))
+        self.assertTrue(auth.check_person_password(self.person, r.context['password']))
+
+    def test_suspend_and_resume(self):
+        self.client.post(reverse('hibiscus_person_state', args=[self.person.pk, 'suspend']))
+        self.person.refresh_from_db()
+        self.assertFalse(self.person.is_active)
+        self.client.post(reverse('hibiscus_person_state', args=[self.person.pk, 'resume']))
+        self.person.refresh_from_db()
+        self.assertTrue(self.person.is_active)
+
+    def test_unknown_state_action_is_404(self):
+        r = self.client.post(reverse('hibiscus_person_state', args=[self.person.pk, 'explode']))
+        self.assertEqual(r.status_code, 404)
+
+    # ---- deleting
+    def test_delete_needs_the_name_typed_correctly(self):
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1))
+        r = self.client.post(reverse('hibiscus_person_delete', args=[self.person.pk]),
+                             {'confirm': 'wrong name'})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(Person.objects.filter(pk=self.person.pk).exists())
+
+    def test_delete_takes_everything(self):
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1))
+        item = StockItem.objects.create(person=self.person, name='Pads')
+        StockMove.objects.create(item=item, date=D(2026, 10, 1), change=5,
+                                 reason=StockMove.Reason.OPENING)
+        self.client.post(reverse('hibiscus_person_delete', args=[self.person.pk]),
+                         {'confirm': 'divya'})                     # case does not matter
+        self.assertFalse(Person.objects.filter(pk=self.person.pk).exists())
+        self.assertEqual(PeriodDay.objects.count(), 0)
+        self.assertEqual(StockMove.objects.count(), 0)
+        self.assertTrue(Audit.objects.filter(action='deleted_person').exists())
+
+    # ---- audit
+    def test_opening_a_diary_is_recorded(self):
+        self.client.get(reverse('hibiscus_person', args=[self.person.pk]))
+        row = Audit.objects.filter(action='viewed_person', person=self.person).first()
+        self.assertEqual(row.actor, self.admin)
+
+    def test_creating_and_resetting_are_recorded(self):
+        self.client.post(reverse('hibiscus_person_add'), {'name': 'Meena', 'phone': '9876543210'})
+        self.client.post(reverse('hibiscus_person_password', args=[self.person.pk]))
+        self.assertTrue(Audit.objects.filter(action='created_person').exists())
+        self.assertTrue(Audit.objects.filter(action='reset_password').exists())
+
+    # ---- settings
+    def test_settings_can_be_saved(self):
+        r = self.client.post(reverse('hibiscus_settings'), {
+            'display_name': 'Hibiscus', 'time_zone': 'Asia/Kolkata', 'week_starts_sunday': 'on',
+            'default_cycle': 30, 'default_period': 4, 'luteal_days': 14, 'bridge_days': 1,
+            'signup_open': 'on', 'invite_code': '', 'keep_audit_days': 180,
+        })
+        self.assertEqual(r.status_code, 302)
+        config = Settings.load()
+        self.assertEqual(config.default_cycle, 30)
+        self.assertEqual(config.updated_by, self.admin)
+        self.assertTrue(Audit.objects.filter(action='changed_settings').exists())
+
+    def test_the_list_uses_the_module_defaults_for_a_prediction(self):
+        """A person with one period and no history is predicted from the settings, not a constant."""
+        config = Settings.load()
+        config.default_cycle = 30
+        config.save()
+        for i in range(3):
+            PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1) + timedelta(days=i))
+        r = self.client.get(reverse('hibiscus_people'))
+        self.assertContains(r, '31 Oct 2026')                      # 1 Oct + 30 days

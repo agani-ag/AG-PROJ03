@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{% if person %}Edit {{ person.name }}{% else %}Add person{% endif %}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% if person %}{% url 'hibiscus_person' person.pk %}{% else %}{% url 'hibiscus_people' %}{% endif %}">{% icon "arrow-left" %}Back</a>
+        <h1>{% if person %}Edit {{ person.name }}{% else %}Add a person{% endif %}</h1>
+        <p class="page-sub">{% if person %}Changing these does not change their password.{% else %}They get a password on the next screen, shown once.{% endif %}</p>
+    </div>
+</div>
+
+<div class="card">
+    <form method="POST" class="card-body form" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <div class="alert alert-danger">{% icon "circle-alert" %}<div class="alert-body">{{ form.non_field_errors.0 }}</div></div>
+        {% endif %}
+
+        <div class="field{% if form.name.errors %} invalid{% endif %}">
+            <label class="label" for="{{ form.name.id_for_label }}">Name</label>
+            {{ form.name }}
+            {% for e in form.name.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+
+        <div class="form-grid">
+            <div class="field{% if form.email.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.email.id_for_label }}">Email <span class="opt">optional</span></label>
+                {{ form.email }}
+                {% for e in form.email.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="field{% if form.phone.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.phone.id_for_label }}">Phone <span class="opt">optional</span></label>
+                {{ form.phone }}
+                {% for e in form.phone.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+        </div>
+        <span class="help">One of the two is needed — it is what they sign in with.</span>
+
+        <div class="field{% if form.cycle_hint.errors %} invalid{% endif %}" style="max-width:220px">
+            <label class="label" for="{{ form.cycle_hint.id_for_label }}">Usual cycle length <span class="opt">optional</span></label>
+            {{ form.cycle_hint }}
+            <span class="help">{{ form.cycle_hint.help_text }}</span>
+            {% for e in form.cycle_hint.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+
+        <div class="row">
+            <button class="btn btn-primary" type="submit">{% icon "check" %}{% if person %}Save changes{% else %}Create account{% endif %}</button>
+            <a class="btn btn-ghost" href="{% if person %}{% url 'hibiscus_person' person.pk %}{% else %}{% url 'hibiscus_people' %}{% endif %}">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
