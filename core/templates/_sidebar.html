@@ -1,6 +1,6 @@
-<aside class="sidebar" id="sidebar" aria-label="Main navigation">
+{% load static %}<aside class="sidebar" id="sidebar" aria-label="Main navigation">
     <a class="side-brand" href="{% url 'dashboard' %}">
-        <span class="brand-mark">{% icon "rotate-cw" %}</span>{{ app_name }}
+        <span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>{{ app_name }}
     </a>
     <nav class="side-nav">
         <div class="nav-group">

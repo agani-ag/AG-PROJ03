@@ -304,13 +304,14 @@ class BrandMarkTests(TestCase):
 
     def test_the_sign_in_page_wears_the_repeat_mark(self):
         r = self.client.get(reverse('login'))
-        self.assertContains(r, '#i-rotate-cw')
-        self.assertNotContains(r, 'brand-mark is-app')
+        self.assertContains(r, 'brand-mark is-app')
+        self.assertContains(r, 'images/app-icon.svg')
 
     def test_the_sidebar_wears_it_too(self):
         self.client.force_login(self.admin)
         r = self.client.get(reverse('dashboard'))
-        self.assertContains(r, '#i-rotate-cw')
+        self.assertContains(r, 'brand-mark is-app')
+        self.assertContains(r, 'images/app-icon.svg')
 
     def test_hibiscus_shows_its_flower(self):
         self.client.force_login(self.admin)
@@ -324,9 +325,51 @@ class BrandMarkTests(TestCase):
         for module in MODULES:
             self.assertIn(f'id="i-{module.icon}"', sprite, module.key)
 
-    def test_the_favicon_artwork_is_the_same_mark(self):
+    def test_the_artwork_is_the_repeat_arrow_in_black_and_white(self):
+        """One file for the favicon, the sidebar badge and the sign-in page.
+
+        Black tile, white mark — the same treatment as the SyncUp app icon, which is why the
+        badge is an image rather than a sprite icon tinted with the accent colour.
+        """
         art = (Path(settings.BASE_DIR) / 'static' / 'images' / 'app-icon.svg').read_text(
             encoding='utf-8')
         self.assertIn('SyncHub', art)
-        self.assertIn('#2563eb', art)                 # --accent, so the two marks match
-        self.assertNotIn('SyncUp', art)
+        self.assertIn('fill="#000000"', art)          # the tile
+        self.assertIn('stroke="#ffffff"', art)        # the arrow
+        self.assertIn('a31.5 31.5', art)              # the loop
+        self.assertNotIn('M12,6V9l4,-4', art)         # the old SyncUp two-arrow path is gone
+
+class StaticLayoutTests(TestCase):
+    """Every asset this project ships lives in the project's own `static/` folder.
+
+    Not in `<app>/static/`, which is Django's other convention: a server whose /static/ points at
+    `static/` rather than `staticfiles/` serves a project-level file and 404s anything that only
+    appears after collectstatic. That is not theoretical — the diary shipped unstyled on the live
+    server for exactly that reason. Keeping assets here means either mapping works.
+    """
+
+    def test_no_app_ships_its_own_static_folder(self):
+        root = Path(settings.BASE_DIR)
+        strays = [p.relative_to(root).as_posix()
+                  for p in root.glob('*/static')
+                  if p.is_dir() and p.parent.name not in ('staticfiles',)
+                  and (root / 'static') != p]
+        self.assertEqual(strays, [], 'move these into static/<module>/ — see README, Layout')
+
+    def test_the_diary_assets_are_where_the_pages_ask_for_them(self):
+        from django.contrib.staticfiles import finders
+        for path in ['hibiscus/user.css', 'hibiscus/user.js', 'hibiscus/flower.svg',
+                     'css/app.css', 'icons.svg', 'images/app-icon.svg']:
+            found = finders.find(path)
+            self.assertIsNotNone(found, path)
+            self.assertTrue(Path(found).is_relative_to(Path(settings.BASE_DIR) / 'static'), path)
+
+    def test_the_diary_pages_only_ask_for_files_that_exist(self):
+        import re
+
+        from django.contrib.staticfiles import finders
+        body = self.client.get(reverse('hibiscus_me_login')).content.decode()
+        asked = re.findall(r'(?:href|src)="/static/([^"?]+)', body)
+        self.assertTrue(asked)
+        for path in asked:
+            self.assertIsNotNone(finders.find(path), path)

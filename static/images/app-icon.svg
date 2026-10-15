@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108" role="img" aria-label="SyncHub">
   <!-- SyncHub's mark: the repeat arrow. One loop that comes back round, which is what the hub
-       does — the same two cron jobs, every 15 minutes, for every module. Drawn here rather than
-       referenced from the sprite so it also works as a favicon and as a bookmark icon.
-       The blue is --accent from app.css. -->
-  <rect width="108" height="108" rx="24" ry="24" fill="#2563eb"/>
+       does — the same two cron jobs, every 15 minutes, for every module. Black and white, the
+       same treatment as the SyncUp app icon, so the family looks like a family.
+       One file for all three uses: favicon, sidebar badge and the sign-in page. -->
+  <rect width="108" height="108" rx="24" ry="24" fill="#000000"/>
   <g fill="none" stroke="#ffffff" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M85.5 54a31.5 31.5 0 1 1-31.5-31.5c8.8 0 17.3 3.5 23.6 9.6L85.5 40"/>
     <path d="M85.5 22.5V40H68"/>

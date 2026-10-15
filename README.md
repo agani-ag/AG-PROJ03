@@ -215,14 +215,22 @@ core/            the shell
   templates/       base.html, _sidebar.html, _messages.html, _theme_color.html,
                    auth/login.html, core/*.html, 404.html, 500.html
 static/          app.css, app.js, icons.svg, images/app-icon.svg  (copied from AG-PROJ01)
+  hibiscus/        user.css, user.js, flower.svg — the diary's own assets
 ```
 
+**Every asset lives in this one `static/` folder, including a module's own** — not in
+`<app>/static/`, which is Django's other convention. The reason is operational: a server whose
+`/static/` points at `static/` instead of `staticfiles/` serves a project-level file fine and
+404s anything that only appears after `collectstatic`, which is how the diary once came up as
+unstyled plain text while the console looked perfect. Keeping assets here means both mappings
+work. (`collectstatic` is still required — Django's own admin pages have assets of their own.)
+
 SyncHub's mark is the **repeat arrow** — one loop that comes back round, which is what the hub
-does: the same two cron jobs, every 15 minutes, for every module. It is drawn twice on purpose.
-`static/images/app-icon.svg` is the standalone artwork (blue tile, white arrow) used as the
-favicon; the sidebar and the sign-in page use `{% icon "rotate-cw" %}` from the sprite instead, so
-the badge follows the theme and costs no extra request. A module's own mark goes in
-`core/modules.py` — Hibiscus uses `flower`, the same flower its own pages and favicon carry.
+does: the same two cron jobs, every 15 minutes, for every module. It is **black and white**, the
+same treatment as the SyncUp app icon, so the family looks like a family.
+`static/images/app-icon.svg` is the only copy: the favicon, the sidebar badge and the sign-in
+page all point at that one file. A module's own mark goes in `core/modules.py` — Hibiscus uses
+`flower`, the same flower its own pages and favicon carry.
 `static/icons.svg` is Lucide and is meant to be regenerated rather than hand-edited; the one
 exception is that flower, which is ours and is marked as such at the end of the file.
 
@@ -247,6 +255,11 @@ exception is that flower, which is ours and is marked as such at the end of the 
 5. Guard every view with `@admin_required` from `core.views`.
 6. Set `url_name` on that module's entry in `core/modules.py`, and the sidebar and dashboard card
    link straight to it instead of the placeholder.
+
+7. If the module needs CSS or images of its own, put them in `static/<module>/` — the project
+   folder, not `<app>/static/`. See the note under **Layout** for why. A page-sized scrap of CSS
+   (under a kilobyte or so, used by one page) is better inlined in a `{% block head %}` than
+   given a file: one request fewer, and nothing to collect.
 
 Keep modules independent: no imports between module apps, and each keeps its own models,
 templates and URLs.
