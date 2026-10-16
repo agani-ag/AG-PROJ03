@@ -15,6 +15,8 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from core.models import HubSettings
+
 from . import auth, cycle, defaults, push
 from .models import (Audit, Flow, NotifySent, NotifySlot, Person, PeriodDay, Settings,
                      StockItem, StockMove)
@@ -576,7 +578,7 @@ class MagicLinkAdminTests(TestCase):
         self._make()
         self.person.refresh_from_db()
         r = self.client.get(reverse('hibiscus_person', args=[self.person.pk]))
-        self.assertContains(r, f'http://testserver/hibiscus/me/k/{self.person.login_key}')
+        self.assertContains(r, f'http://testserver/hibiscus/k/{self.person.login_key}')
         self.assertContains(r, 'New link')
         self.assertContains(r, 'Switch it off')
 
@@ -811,11 +813,11 @@ class TestPushTests(TestCase):
         self.person = Person.objects.create(name='Riya', email='r@example.com',
                                             syncup_token='tok-123')
         self.url = reverse('hibiscus_person_test_push', args=[self.person.pk])
-        config = Settings.load()
-        config.syncup_base = 'https://syncup.example.com'
-        config.syncup_notify_key = 'secret-key'
-        config.site_base = ''
-        config.save()
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://syncup.example.com'
+        hub.syncup_notify_key = 'secret-key'
+        hub.site_base = ''
+        hub.save()
 
     def _send(self, fake):
         with patch('hibiscus.push.urllib.request.urlopen', fake):
@@ -852,23 +854,23 @@ class TestPushTests(TestCase):
         self.assertTrue(fake.payload['url'].endswith(reverse('hibiscus_me_home')),
                         fake.payload['url'])
 
-    def test_the_first_test_remembers_this_sites_address(self):
-        self.assertEqual(Settings.load().site_base, '')
+    def test_the_first_test_remembers_this_sites_address_for_the_whole_hub(self):
+        self.assertEqual(HubSettings.load().site_base, '')
         self._send(FakeSyncUp())
-        self.assertEqual(Settings.load().site_base, 'http://testserver')
+        self.assertEqual(HubSettings.load().site_base, 'http://testserver')
 
     def test_an_address_already_set_is_left_alone(self):
-        config = Settings.load()
-        config.site_base = 'https://synchub.example.com'
-        config.save()
+        hub = HubSettings.load()
+        hub.site_base = 'https://synchub.example.com'
+        hub.save()
         self._send(FakeSyncUp())
-        self.assertEqual(Settings.load().site_base, 'https://synchub.example.com')
+        self.assertEqual(HubSettings.load().site_base, 'https://synchub.example.com')
 
     # ---- every way it can go wrong says which one it was
     def test_no_syncup_address_yet(self):
-        config = Settings.load()
-        config.syncup_base = ''
-        config.save()
+        hub = HubSettings.load()
+        hub.syncup_base = ''
+        hub.save()
         fake = FakeSyncUp()
         r = self._send(fake)
         self.assertIsNone(fake.url)                      # nothing was posted anywhere
@@ -917,23 +919,24 @@ class DiaryLinkTests(TestCase):
     """The link a notification opens — the cron's one blind spot until now."""
 
     def test_no_address_means_no_link(self):
-        config = Settings.load()
-        config.site_base = ''
-        config.save()
-        self.assertEqual(push.diary_url(config), '')
+        hub = HubSettings.load()
+        hub.site_base = ''
+        hub.save()
+        self.assertEqual(push.diary_url(), '')
 
     def test_the_link_points_at_the_diary(self):
-        config = Settings.load()
-        config.site_base = 'https://synchub.example.com/'
-        config.save()
-        self.assertEqual(push.diary_url(config),
+        hub = HubSettings.load()
+        hub.site_base = 'https://synchub.example.com/'
+        hub.save()
+        self.assertEqual(push.diary_url(),
                          'https://synchub.example.com' + reverse('hibiscus_me_home'))
 
     def test_the_cron_sends_that_link_with_every_message(self):
         config = Settings.load()
-        config.site_base = 'https://synchub.example.com'
-        config.syncup_base = 'https://syncup.example.com'
-        config.save()
+        hub = HubSettings.load()
+        hub.site_base = 'https://synchub.example.com'
+        hub.syncup_base = 'https://syncup.example.com'
+        hub.save()
         defaults.ensure_slots()
         person = Person.objects.create(name='Riya', email='r@example.com',
                                        syncup_token='tok-123')
@@ -962,10 +965,10 @@ class SyncUpAddressTests(TestCase):
         self.url = reverse('hibiscus_person_test_push', args=[self.person.pk])
 
     def _set(self, address):
-        config = Settings.load()
-        config.syncup_base = address
-        config.syncup_notify_key = 'k'
-        config.save()
+        hub = HubSettings.load()
+        hub.syncup_base = address
+        hub.syncup_notify_key = 'k'
+        hub.save()
 
     def test_a_self_pointing_address_is_refused_before_anything_is_sent(self):
         self._set('https://testserver')

@@ -70,7 +70,7 @@
         <div class="card">
             <div class="card-head">{% icon "bell" %}<h2>Notifications</h2></div>
             <div class="card-body form">
-                {% for f in form %}{% if f.name == 'site_base' or f.name == 'syncup_base' or f.name == 'syncup_notify_key' or f.name == 'push_enabled' %}
+                {% for f in form %}{% if f.name == 'push_enabled' %}
                 <div class="field{% if f.errors %} invalid{% endif %}">
                     <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
                     {{ f }}
@@ -78,8 +78,14 @@
                 </div>
                 {% endif %}{% endfor %}
                 <span class="help">Unread messages are pushed on the hub's 15-minute tick, one summary per account —
-                    never one buzz per message, and never to somebody whose page is open. The SyncUp address is kept
-                    here rather than shared with Hibiscus so the two modules stay independent of each other.</span>
+                    never one buzz per message, and never to somebody whose page is open.</span>
+                <div class="alert">
+                    {% icon "settings" %}
+                    <div class="alert-body"><b>Where SyncUp lives is a hub setting</b>The SyncUp address, its notify key
+                        and this site's own address are shared by every module, so they live at
+                        <a href="{% url 'system_settings' %}">System → Settings</a>. The switch above is J6's own:
+                        whether to push at all.</div>
+                </div>
             </div>
         </div>
     </div>
@@ -90,6 +96,22 @@
         <button class="btn btn-sm btn-primary" type="submit">{% icon "check" %}Save</button>
     </div>
 </form>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "trash" %}<h2>Start again</h2>
+        <span class="small muted ml-auto">for while this is being tried out</span></div>
+    <div class="card-body">
+        <div class="row">
+            <div class="grow">
+                <b>Factory reset</b>
+                <p class="small muted">Deletes every account, chat and message, and hands out no replacements —
+                    J6 comes back as if it had just been installed. Useful while the thing is being tested with
+                    throwaway accounts; the page tells you exactly what will go and asks you to type RESET.</p>
+            </div>
+            <a class="btn text-danger" href="{% url 'j6_reset' %}">{% icon "trash" %}Factory reset…</a>
+        </div>
+    </div>
+</div>
 
 <div class="card" style="margin-top:16px">
     <div class="card-head">{% icon "triangle-alert" %}<h2>What the admin can see</h2>

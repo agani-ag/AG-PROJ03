@@ -5,6 +5,7 @@ scheduled work runs through them.
 """
 from datetime import timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -373,3 +374,127 @@ class StaticLayoutTests(TestCase):
         self.assertTrue(asked)
         for path in asked:
             self.assertIsNotNone(finders.find(path), path)
+
+
+class HubSettingsTests(TestCase):
+    """What every module needs and none of them owns.
+
+    These three were duplicated in Hibiscus and in J6 — two places to set one value, and two
+    chances to set it differently. They live here now, and the modules read them.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+
+    def test_the_page_needs_the_admin(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('system_settings')).status_code, 302)
+
+    def test_it_is_in_the_sidebar_under_system(self):
+        body = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn(reverse('system_settings'), body)
+
+    def test_saving_the_three_values(self):
+        from core.models import HubSettings
+        r = self.client.post(reverse('system_settings'), {
+            'site_base': 'https://synchub.example.com',
+            'syncup_base': 'https://syncup.example.com',
+            'syncup_notify_key': 'secret-key',
+        }, follow=True)
+        self.assertEqual(r.status_code, 200)
+        hub = HubSettings.load()
+        self.assertEqual(hub.syncup_base, 'https://syncup.example.com')
+        self.assertEqual(hub.updated_by, self.admin)
+
+    def test_it_warns_when_syncup_points_at_this_site(self):
+        from core.models import HubSettings
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://testserver'
+        hub.save()
+        self.assertContains(self.client.get(reverse('system_settings')),
+                            'The SyncUp address is this same site')
+
+    def test_it_suggests_this_sites_address_while_it_is_blank(self):
+        r = self.client.get(reverse('system_settings'))
+        self.assertContains(r, 'This site looks like')
+        self.assertContains(r, 'testserver')
+
+    def test_it_lists_the_modules_that_use_them(self):
+        r = self.client.get(reverse('system_settings'))
+        self.assertContains(r, 'Hibiscus')
+        self.assertContains(r, 'J6')
+
+    def test_a_link_is_built_only_when_the_address_is_known(self):
+        from core.models import HubSettings
+        hub = HubSettings.load()
+        self.assertEqual(hub.url_for('/j6/'), '')
+        hub.site_base = 'https://synchub.example.com/'
+        hub.save()
+        self.assertEqual(HubSettings.load().url_for('/j6/'),
+                         'https://synchub.example.com/j6/')
+
+    def test_the_modules_no_longer_carry_their_own_copies(self):
+        """The duplication this page exists to remove must not come back."""
+        from hibiscus.models import Settings as DiarySettings
+        from j6.models import Settings as ChatSettings
+        for model in (DiarySettings, ChatSettings):
+            names = {f.name for f in model._meta.get_fields()}
+            for moved in ('site_base', 'syncup_base', 'syncup_notify_key'):
+                self.assertNotIn(moved, names, f'{model.__module__} still owns {moved}')
+
+
+class CarrySyncUpCommandTests(TestCase):
+    """The command that saves a server's SyncUp settings from the column drop.
+
+    It exists because migrations are generated per environment here, so the data step written on
+    a laptop never reaches the server — and a deploy that silently loses a typed-in address is
+    the one kind of deploy that is not allowed.
+    """
+
+    def _run(self, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+        out = StringIO()
+        call_command('carry_syncup_to_hub', *args, stdout=out)
+        return out.getvalue()
+
+    def test_it_says_so_when_the_columns_are_already_gone(self):
+        """Which is the normal case after the migration — it must be harmless, not noisy."""
+        output = self._run()
+        self.assertIn('Nothing to carry', output)
+
+    def test_it_is_safe_to_run_twice(self):
+        self._run()
+        self.assertIn('Nothing to carry', self._run())
+
+    def test_it_never_overwrites_what_the_hub_already_has(self):
+        from core.models import HubSettings
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://syncup.example.com'
+        hub.save()
+        self._run()
+        self.assertEqual(HubSettings.load().syncup_base, 'https://syncup.example.com')
+
+    def test_a_dry_run_changes_nothing(self):
+        from core.models import HubSettings
+        before = HubSettings.load().syncup_base
+        self._run('--dry-run')
+        self.assertEqual(HubSettings.load().syncup_base, before)
+
+    def test_it_carries_a_value_that_is_still_in_an_old_column(self):
+        """Simulated with a real table shaped like the old one, since ours no longer has it."""
+        from django.db import connection
+
+        from core.models import HubSettings
+        with connection.cursor() as cursor:
+            cursor.execute('CREATE TABLE IF NOT EXISTS j6_settings_old '
+                           '(id integer primary key, syncup_base varchar(120))')
+            cursor.execute("INSERT INTO j6_settings_old (id, syncup_base) "
+                           "VALUES (1, 'https://syncup.example.com')")
+        with patch('core.management.commands.carry_syncup_to_hub.SOURCES',
+                   [('j6_settings_old', 'J6')]):
+            output = self._run()
+        self.assertIn('syncup_base', output)
+        self.assertEqual(HubSettings.load().syncup_base, 'https://syncup.example.com')

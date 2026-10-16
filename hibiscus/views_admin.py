@@ -17,6 +17,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from core.models import HubSettings
 from core.views import admin_required
 
 from . import auth, cycle, defaults, push
@@ -180,19 +181,21 @@ def person_test_push(request, pk):
     """
     person = get_object_or_404(Person, pk=pk)
     config = Settings.load()
+    hub = HubSettings.load()
 
     # A tapped notification should open the diary, and the cron has no request to work the
-    # address out from. This is the one page where it is known, so it is remembered here.
-    if not config.site_base:
-        config.site_base = request.build_absolute_uri('/').rstrip('/')
-        config.save(update_fields=['site_base'])
+    # address out from. This is the one page where it is known, so it is remembered for the whole
+    # hub rather than for this module.
+    if not hub.site_base:
+        hub.site_base = request.build_absolute_uri('/').rstrip('/')
+        hub.save(update_fields=['site_base'])
 
-    if _points_at_this_site(request, config.syncup_base):
+    if _points_at_this_site(request, hub.syncup_base):
         auth.log('test_push', person=person, actor=request.user,
                  detail='syncup address points at this site')
         messages.error(request, 'The SyncUp address is this same site, so the message would be '
                                 'sent to SyncHub rather than to SyncUp — which just times out. '
-                                'Put the SyncUp server address there instead.')
+                                'Put the SyncUp server address in System → Settings instead.')
         return redirect('hibiscus_person', pk=person.pk)
 
     result = push.send_test(config, person, url=push.diary_url(config))
@@ -200,12 +203,12 @@ def person_test_push(request, pk):
     auth.log('test_push', person=person, actor=request.user, detail=detail)
 
     if 'timed out' in result['error'] or result['error'].startswith('TimeoutError'):
-        messages.error(request, f'No answer from {config.syncup_base} within '
+        messages.error(request, f'No answer from {hub.syncup_base} within '
                                 f'{push.TEST_TIMEOUT} seconds. Either the address is wrong, or '
                                 f'this server is not allowed to reach it — a PythonAnywhere free '
                                 f'account can only call sites on its own whitelist.')
     elif result['error'] == 'syncup not configured':
-        messages.error(request, 'No SyncUp address yet — set it on the Hibiscus settings page, '
+        messages.error(request, 'No SyncUp address yet — set it at System → Settings, '
                                 'then try again.')
     elif result['error'] == 'no syncup token':
         messages.error(request, f'{person.name} has no device token yet. One arrives the first '
@@ -661,7 +664,8 @@ def settings_page(request):
         messages.success(request, 'Settings saved.')
         return redirect('hibiscus_settings')
     return render(request, 'hibiscus/admin/settings.html', {
-        'syncup_is_self': _points_at_this_site(request, Settings.load().syncup_base),
+        'syncup_is_self': _points_at_this_site(request, HubSettings.load().syncup_base),
+        'hub': HubSettings.load(),
         'form': form, 'config': config,
         'now_local': timezone.localtime(timezone.now(), config.tzinfo),
         'recent': Audit.objects.filter(action='changed_settings')[:5],

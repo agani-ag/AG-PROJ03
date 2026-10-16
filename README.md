@@ -124,15 +124,15 @@ about the rest:
    tab) and re-run `collectstatic` after every deploy. It must be `staticfiles/`, not the
    project's own `static/`: that folder holds the shared console files only, so mapping it serves
    `css/app.css` and 404s everything an app ships with — the console then looks perfect while
-   `/hibiscus/me/` renders as plain text. `manage.py check` looks for both kinds of file and
+   `/hibiscus/` renders as plain text. `manage.py check` looks for both kinds of file and
    warns with `synchub.W003`.
 2. **Generate migrations.** Migration files are gitignored, as in AG-PROJ01 and AG-PROJ02, so a
    fresh clone has none: run `makemigrations` *before* `migrate`, or nothing gets created. Plain
    `makemigrations` is enough — it picks up every installed app.
 
 **Then, in order:** set the cron service (below) → open `/cron/health?key=…` to confirm → fill in
-the SyncUp address and notify key on the Hibiscus settings page → add the people and their
-history → and only then switch the old Flask tracker off.
+this site's address and the SyncUp address at **System → Settings** (once, for every module) →
+add the people and their history → and only then switch the old Flask tracker off.
 
 ## Cron — two jobs for the whole hub
 
@@ -169,8 +169,8 @@ recorded and shown on **System → Cron**, which also has "Run now" buttons.
 
 | Module | What it is |
 |---|---|
-| **Hibiscus** (`/hibiscus/`) | A cycle diary. Admin side inside SyncHub; the diary itself at `/hibiscus/me/` with its own sign-up, session and theme. Was a separate Flask app called Red Hibiscus. |
-| **J6** (`/j6/`) | Chat with no sign-up. Console side inside SyncHub; the chat itself at `/j6/me/`, plus a portable Windows client in [desktop/](desktop/). |
+| **Hibiscus** (`/hibiscus/`) | A cycle diary. The diary itself is at `/hibiscus/` with its own sign-up, session and theme; the console side is at `/hibiscus/admin/`. Was a separate Flask app called Red Hibiscus. |
+| **J6** (`/j6/`) | Chat with no sign-up. The chat is at `/j6/`, the console at `/j6/admin/`, plus a portable Windows client in [desktop/](desktop/). |
 
 Hibiscus in short: flow is recorded **per day**, and a period is a *run* of days worked out by
 `hibiscus/cycle.py` — no start or end dates are stored. Spotting shows on the calendar but is not
@@ -180,7 +180,7 @@ times the admin sets, each time of day with its own words, delivered by the hub'
 Arriving at the diary — signing in, opening a magic link, or the first page of a new day on a
 session left open — fires one **browser notification** with where the cycle stands, the way the
 old Flask app did it: a one-shot session flag, popped by the first page that asks
-(`/hibiscus/me/reminder`). Moving around the diary never re-fires it. It is the plain Notification
+(`/hibiscus/reminder`). Moving around the diary never re-fires it. It is the plain Notification
 API, which the SyncUp app answers for the page, so the same code shows a real Android
 notification inside the app and a browser one outside it; where permission has not been given,
 the line is shown in the page instead.
@@ -190,7 +190,7 @@ reports what SyncUp answered — the device token, the SyncUp address and the no
 only proved by a delivery. Tapping any notification opens the diary, using *this site's address*
 from the module settings; the first Test push fills that in from the page it was pressed on.
 
-The admin can also hand someone a **magic link** (`/hibiscus/me/k/<key>`): opening it signs that
+The admin can also hand someone a **magic link** (`/hibiscus/k/<key>`): opening it signs that
 person in with no password and **no expiry**, which is the point — one tap from a bookmark or a
 chat message. The link is therefore the credential, so there is one key per person (making a new
 one retires the old link immediately), an off switch, a refusal for suspended or archived
@@ -204,7 +204,9 @@ a new account. Chats are one-to-one, text only, and any **public media link play
 Nothing is ever uploaded; a message with a picture in it is a message with a URL in its body.
 Delivery is polling (3s focused, 8s for the list, 20s hidden, `304` when nothing changed), because
 the host cannot do WebSockets. The console reads **by account**: pick a person, see their chats,
-open one as they see it. Messages are kept 90 days and idle accounts 180, both by SyncHub's
+open one as they see it, and delete a single message outright if it should not be there — no
+placeholder is left behind. A **factory reset** on the module settings page empties J6 entirely,
+behind a typed confirmation, for while it is being tested. Messages are kept 90 days and idle accounts 180, both by SyncHub's
 nightly cron.
 
 The same server also answers `/j6/api/` for non-browser clients, authenticated by the Self-ID in
@@ -220,12 +222,13 @@ an `X-J6-Self` header — that is what the Windows app and the terminal client s
 | `/ui/` | UI kit: every component in `app.css`, to copy from when building a module |
 | `/profile/` | Admin name, password, PIN and the database backup |
 | `/download/sqlite` | Downloads the whole SQLite database (admin only) |
+| `/system/` | Hub settings: this site's address and how to reach SyncUp — read by every module |
 | `/cron/` | The two hub jobs, their hooks and recent runs (admin only) |
-| `/hibiscus/` | Hibiscus admin: people, periods, stocks, notifications, settings |
-| `/hibiscus/me/` | The diary, for the people who keep it (their own sign-in) |
-| `/hibiscus/me/k/<key>` | Magic link: signs that person in and redirects, no password, no expiry |
-| `/j6/` | J6 console: accounts → one account's chats → one conversation, read only |
-| `/j6/me/` | The chat itself (its own session) |
+| `/hibiscus/admin/` | Hibiscus console: people, periods, stocks, notifications, settings |
+| `/hibiscus/` | The diary, for the people who keep it (their own sign-in) |
+| `/hibiscus/k/<key>` | Magic link: signs that person in and redirects, no password, no expiry |
+| `/j6/admin/` | J6 console: accounts → one account's chats → one conversation, read only |
+| `/j6/` | The chat itself (its own session) |
 | `/j6/s/<self-id>` | One-tap sign-in link, also how the Windows app hands its account to the page |
 | `/j6/api/…` | `start · hello · poll · send · new · read · version` for desktop and terminal clients |
 | `/m/<key>/` | Placeholder for a module that isn't built yet |

@@ -2,7 +2,7 @@
 {% block title %}{% if chat %}{{ thread_with }}{% else %}Chats{% endif %}{% endblock %}
 
 {% comment %}
-One template for both URLs. /j6/me/ renders the list; /j6/me/c/<id> renders the list *and* the
+One template for both URLs. /j6/ renders the list; /j6/c/<id> renders the list *and* the
 thread and adds `open`, which is all a phone needs to show one pane instead of two. Same markup,
 one stylesheet — AG-PROJ01's support inbox, re-cut for two users.
 {% endcomment %}

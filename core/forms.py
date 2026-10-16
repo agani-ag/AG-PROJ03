@@ -3,7 +3,7 @@ from django import forms
 from django.contrib.auth import password_validation
 from django.contrib.auth.forms import AuthenticationForm
 
-from .models import AdminPin
+from .models import AdminPin, HubSettings
 
 
 def _style(form):
@@ -74,3 +74,20 @@ class ProfileForm(forms.Form):
             else:
                 password_validation.validate_password(new, self.user)
         return data
+
+
+class HubSettingsForm(forms.ModelForm):
+    """The hub's own settings. Every module reads these; none of them owns them."""
+
+    class Meta:
+        model = HubSettings
+        fields = ['site_base', 'syncup_base', 'syncup_notify_key']
+        labels = {
+            'site_base': "This site's address",
+            'syncup_base': 'SyncUp address',
+            'syncup_notify_key': 'SyncUp notify key',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _style(self)

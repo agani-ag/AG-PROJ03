@@ -38,7 +38,11 @@ way a collected file can when a server's /static/ mapping points at the wrong fo
           line-height: 1.42; white-space: pre-wrap; overflow-wrap: anywhere; border-bottom-left-radius: 5px; }
 .j6-msg.right .j6-bub { background: var(--accent); color: var(--on-accent); border-color: transparent;
                         border-bottom-left-radius: 16px; border-bottom-right-radius: 5px; }
-.j6-meta { margin-top: 2px; font-size: 11px; color: var(--faint); }
+.j6-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 11px; color: var(--faint); }
+.j6-del { display: inline-flex; }
+.j6-x { border: 0; background: transparent; padding: 0 2px; color: var(--faint); cursor: pointer;
+        opacity: 0; transition: opacity .12s ease; }
+.j6-msg:hover .j6-x, .j6-x:focus-visible { opacity: 1; color: var(--danger); }
 .j6-url { display: flex; align-items: center; gap: 8px; }
 .j6-url code { font-size: 11px; }
 .j6-foot { padding: 10px 14px; background: var(--surface); border-top: 1px solid var(--border);
@@ -104,7 +108,17 @@ way a collected file can when a server's /static/ mapping points at the wrong fo
                     {% else %}
                     <div class="j6-bub">{{ row.m.body }}</div>
                     {% endif %}
-                    <div class="j6-meta">{{ row.m.created_at|date:"H:i" }} · {{ row.m.sender.name }}</div>
+                    <div class="j6-meta">
+                        {{ row.m.created_at|date:"H:i" }} · {{ row.m.sender.name }}
+                        <form method="POST" action="{% url 'j6_message_delete' person.pk chat.pk row.m.seq %}"
+                              class="j6-del"
+                              data-confirm="Delete this message?"
+                              data-confirm-text="It is removed outright — no placeholder, nothing left in its place, for either of them."
+                              data-confirm-button="Delete" data-danger>{% csrf_token %}
+                            <button class="j6-x" type="submit" title="Delete this message"
+                                    aria-label="Delete this message">{% icon "trash" "icon-sm" %}</button>
+                        </form>
+                    </div>
                 </div>
             </div>
             {% empty %}
@@ -114,7 +128,8 @@ way a collected file can when a server's /static/ mapping points at the wrong fo
 
         <div class="j6-foot">
             {% icon "info" "icon-sm" %}
-            Read only — the console cannot write into a chat. {{ person.name }}'s messages are on the right,
+            The console cannot write into a chat — but it can remove a line: hover a message for its delete button,
+            which takes it outright, with no placeholder left behind. {{ person.name }}'s messages are on the right,
             because this is their view. Media is never fetched here on its own: <b>Show media</b> loads it only if you ask.
         </div>
     </section>

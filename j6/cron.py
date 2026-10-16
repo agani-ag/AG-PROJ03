@@ -15,6 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core import cronhub
+from core.models import HubSettings
 
 from . import service
 from .models import Account, Chat, Member, Message, Settings
@@ -28,19 +29,19 @@ BODY_MAX = 200
 QUIET_AFTER_SECONDS = 120
 
 
-def _diary_url(config):
-    if not config.site_base:
-        return ''
-    return config.site_base.rstrip('/') + reverse('j6_inbox')
+def _chat_url():
+    """Where a tapped notification lands. The address is the hub's — every module opens on it."""
+    return HubSettings.load().url_for(reverse('j6_inbox'))
 
 
-def _send_via_syncup(config, account, title, body, url):
+def _send_via_syncup(account, title, body, url):
     """Post to SyncUp's partner endpoint. Returns (delivered, error)."""
-    if not config.syncup_base or not account.syncup_token:
-        return 0, 'no syncup token' if config.syncup_base else 'syncup not configured'
+    hub = HubSettings.load()
+    if not hub.syncup_base or not account.syncup_token:
+        return 0, 'no syncup token' if hub.syncup_base else 'syncup not configured'
     payload = json.dumps({'token': account.syncup_token, 'title': title, 'body': body,
-                          'url': url, 'key': config.syncup_notify_key}).encode()
-    endpoint = config.syncup_base.rstrip('/') + '/app/v1/partner/notify'
+                          'url': url, 'key': hub.syncup_notify_key}).encode()
+    endpoint = hub.syncup_base.rstrip('/') + '/app/v1/partner/notify'
     request = urllib.request.Request(endpoint, data=payload,
                                      headers={'Content-Type': 'application/json'})
     try:
@@ -61,10 +62,11 @@ def push(ctx):
     config = Settings.load()
     if not config.push_enabled:
         return {'items': 0, 'note': 'push is switched off in module settings'}
-    if not config.syncup_base:
-        return {'items': 0, 'note': 'SyncUp address not set, so nothing can be delivered'}
+    if not HubSettings.load().syncup_base:
+        return {'items': 0,
+                'note': 'SyncUp address not set at System → Settings, so nothing can be sent'}
 
-    url = _diary_url(config)
+    url = _chat_url()
     quiet_before = timezone.now() - timedelta(seconds=QUIET_AFTER_SECONDS)
     out = {'items': 0, 'sent': 0, 'failed': 0, 'skipped': 0}
 
@@ -97,7 +99,7 @@ def push(ctx):
             title = 'J6'
             body = f'{total} new messages from ' + ', '.join(p[0] for p in pending[:3])
 
-        delivered, error = _send_via_syncup(config, account, title, body[:BODY_MAX], url)
+        delivered, error = _send_via_syncup(account, title, body[:BODY_MAX], url)
         for _, _, newest, member in pending:
             Member.objects.filter(pk=member.pk).update(last_push_seq=newest.seq)
         out['items'] += total

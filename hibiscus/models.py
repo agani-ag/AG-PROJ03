@@ -72,16 +72,9 @@ class Settings(models.Model):
                                    help_text='Blank = anyone may sign up.')
     keep_audit_days = models.PositiveSmallIntegerField(default=180)
 
-    # Pushing goes through SyncUp's partner endpoint with the token a page is handed inside the
-    # SyncUp app. Blank base = nothing is sent, and the cron hook says so instead of failing.
-    syncup_base = models.CharField(max_length=120, blank=True,
-                                   help_text='e.g. https://syncup.example.com')
-    syncup_notify_key = models.CharField(max_length=80, blank=True)
-    # Where *this* site lives, used as the link a notification opens. The cron has no request to
-    # work it out from, so it is kept here; the Test push button fills it in the first time.
-    site_base = models.CharField(max_length=120, blank=True,
-                                 help_text='e.g. https://synchub.example.com — what a tapped '
-                                           'notification opens.')
+    # Where SyncUp lives and what this site is called are *hub* settings now, not this module's:
+    # see core.models.HubSettings and System → Settings. They were duplicated here and in J6,
+    # which meant two places to set one value. What stays here is what only the diary knows.
     notify_quiet_from = models.TimeField(default='22:00')
     notify_quiet_to = models.TimeField(default='06:00')
     notify_late_hours = models.PositiveSmallIntegerField(

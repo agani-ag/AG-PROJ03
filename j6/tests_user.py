@@ -169,3 +169,39 @@ class StylesheetTests(TestCase):
         css = CSS.read_text(encoding='utf-8')
         for forbidden in ['@import', 'https://', 'fonts.googleapis', 'cdn.']:
             self.assertNotIn(forbidden, css)
+
+
+class RouteTests(TestCase):
+    """The short address belongs to the people using it; the console takes the long one."""
+
+    def setUp(self):
+        self.admin_user = None
+        self.anand = make('Anand')
+
+    def test_the_chat_is_at_the_module_root(self):
+        self.assertEqual(reverse('j6_inbox'), '/j6/')
+        self.assertEqual(reverse('j6_welcome'), '/j6/welcome')
+
+    def test_the_console_is_under_admin(self):
+        self.assertEqual(reverse('j6_accounts'), '/j6/admin/')
+        self.assertEqual(reverse('j6_settings'), '/j6/admin/settings/')
+
+    def test_the_console_is_not_public(self):
+        self.assertEqual(self.client.get('/j6/admin/').status_code, 302)
+
+    def test_old_addresses_still_land(self):
+        """Sign-in links were handed out with /me/ in them; they have to keep working."""
+        r = self.client.get('/j6/me/profile')
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r['Location'], '/j6/profile')
+
+    def test_a_query_string_survives_the_redirect(self):
+        r = self.client.get('/j6/me/poll?chat=1&since=0')
+        self.assertEqual(r['Location'], '/j6/poll?chat=1&since=0')
+
+    def test_the_sign_in_link_is_unchanged(self):
+        self.assertEqual(reverse('j6_magic', args=[self.anand.self_id]),
+                         f'/j6/s/{self.anand.self_id}')
+
+    def test_the_client_api_is_unchanged(self):
+        self.assertEqual(reverse('j6_api_hello'), '/j6/api/hello')

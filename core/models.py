@@ -36,6 +36,55 @@ class AdminPin(models.Model):
         return f"PIN for {self.user.username}"
 
 
+class HubSettings(models.Model):
+    """What every module needs and none of them should own: where this site lives, and how to
+    reach SyncUp.
+
+    These three were duplicated in Hibiscus and in J6, which meant two places to set the same
+    value and two chances to set it differently. They belong to the hub: a module decides *what*
+    to say and *when*, the hub knows *where to post it*.
+
+    One row, pk=1, like a module's own settings.
+    """
+    site_base = models.CharField(
+        max_length=120, blank=True,
+        help_text="This site's address, e.g. https://synchub.example.com — used as the link a "
+                  'pushed notification opens. The cron has no request to work it out from.')
+    syncup_base = models.CharField(
+        max_length=120, blank=True,
+        help_text='Where SyncUp lives, e.g. https://syncup.example.com — a different machine '
+                  'from this one.')
+    syncup_notify_key = models.CharField(max_length=80, blank=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'hub settings'
+
+    def __str__(self):
+        return 'Hub settings'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        return cls.objects.get_or_create(pk=1)[0]
+
+    @property
+    def can_push(self):
+        return bool(self.syncup_base)
+
+    def url_for(self, path='/'):
+        """An absolute link to somewhere on this site, or '' when nobody has said where it is."""
+        if not self.site_base:
+            return ''
+        return self.site_base.rstrip('/') + path
+
+
 class CronLock(models.Model):
     """A named, self-expiring lock so two overlapping cron calls can't run the same job.
 

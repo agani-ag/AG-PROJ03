@@ -13,8 +13,10 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
+from core.models import HubSettings
+
 from . import auth, service
-from .models import Chat, Settings
+from .models import Chat
 
 VERSION = '1.0.0'          # of the desktop client this server expects; see desktop/j6desk
 
@@ -124,10 +126,8 @@ def read(request):
 @require_GET
 def version(request):
     """What the client checks on launch to know whether a newer build exists."""
-    config = Settings.load()
-    base = (config.site_base or '').rstrip('/')
     return _nostore(JsonResponse({
         'version': VERSION,
         'download': 'https://github.com/agani-ag/AG-PROJ03/releases/latest/download/j6.exe',
-        'site': base,
+        'site': HubSettings.load().site_base.rstrip('/'),
     }))

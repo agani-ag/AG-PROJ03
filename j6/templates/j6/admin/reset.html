@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Factory reset{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'j6_settings' %}">{% icon "arrow-left" %}Module settings</a>
+        <h1>Factory reset</h1>
+        <p class="page-sub">Empty J6 completely and start again</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">{% icon "triangle-alert" %}<h2>What goes</h2></div>
+    <div class="card-body">
+        <dl class="kv">
+            <dt>Accounts</dt><dd><b>{{ counts.accounts }}</b> — every name, Account ID and Self-ID</dd>
+            <dt>Chats</dt><dd><b>{{ counts.chats }}</b> — both sides of each, with their read marks and blocks</dd>
+            <dt>Messages</dt><dd><b>{{ counts.messages }}</b>{% if oldest %} · oldest {{ oldest|date:"d M Y" }}{% endif %}</dd>
+        </dl>
+        <div class="alert alert-danger">
+            {% icon "triangle-alert" %}
+            <div class="alert-body"><b>There is no undo and no backup taken</b>Every Self-ID stops working, so
+                anybody still using J6 will need a new account. If you want a copy first, take the database backup from
+                the sidebar — the icon beside your name — and then come back.</div>
+        </div>
+        <p class="small muted">What is <b>not</b> touched: SyncHub's own settings, the other modules, and the
+            <a href="{% url 'system_settings' %}">hub's SyncUp details</a>. This empties J6 and nothing else.</p>
+    </div>
+</div>
+
+<form method="POST" class="card" style="margin-top:16px">
+    {% csrf_token %}
+    <div class="card-head">{% icon "trash" %}<h2>Confirm</h2></div>
+    <div class="card-body form">
+        <div class="field">
+            <label class="label" for="confirm">Type <code>RESET</code> to confirm</label>
+            <input class="input" id="confirm" name="confirm" autocomplete="off" placeholder="RESET"
+                   autocapitalize="characters" spellcheck="false">
+        </div>
+        <div class="field">
+            <label class="check">
+                <input type="checkbox" name="settings">
+                <span>Also put the module settings back to their defaults</span>
+            </label>
+            <span class="help">Caps, retention, media rules and the new-accounts switch. Leave it off to keep the
+                numbers you have tuned.</span>
+        </div>
+    </div>
+    <div class="card-foot bordered">
+        <div class="row">
+            <a class="btn" href="{% url 'j6_settings' %}">Cancel</a>
+            <button class="btn btn-danger ml-auto" type="submit"
+                    data-confirm="Empty J6?"
+                    data-confirm-text="{{ counts.accounts }} account{{ counts.accounts|pluralize }}, {{ counts.chats }} chat{{ counts.chats|pluralize }} and {{ counts.messages }} message{{ counts.messages|pluralize }} are deleted. There is no undo."
+                    data-confirm-button="Delete everything" data-danger>
+                {% icon "trash" %}Delete everything in J6
+            </button>
+        </div>
+    </div>
+</form>
+{% endblock %}

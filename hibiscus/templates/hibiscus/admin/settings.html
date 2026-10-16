@@ -74,7 +74,7 @@
             <div class="card-body">
                 <p class="muted">How many messages a day, at what times, and the words for each time of day. Sent through SyncUp and delivered by SyncHub's 15-minute cron — this module gets no cron URL of its own.</p>
                 <div class="form-grid">
-                    {% for f in form %}{% if f.name == 'site_base' or f.name == 'syncup_base' or f.name == 'syncup_notify_key' or f.name == 'notify_late_hours' %}
+                    {% for f in form %}{% if f.name == 'notify_late_hours' %}
                     <div class="field{% if f.errors %} invalid{% endif %}">
                         <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
                         {{ f }}
@@ -82,13 +82,22 @@
                     </div>
                     {% endif %}{% endfor %}
                 </div>
+                <div class="alert">
+                    {% icon "settings" %}
+                    <div class="alert-body"><b>Where SyncUp lives is a hub setting</b>The SyncUp address, its notify key
+                        and this site's own address are shared by every module, so they live at
+                        <a href="{% url 'system_settings' %}">System → Settings</a> rather than here.
+                        {% if hub.syncup_base %}Currently <code>{{ hub.syncup_base }}</code>.{% else %}Nothing is set yet,
+                        so nothing can be delivered.{% endif %}</div>
+                </div>
+
                 {% if syncup_is_self %}
                 <div class="alert alert-danger">
                     {% icon "triangle-alert" %}
-                    <div class="alert-body"><b>The SyncUp address is this same site</b>Messages would be posted back to SyncHub instead of to SyncUp, and a server asked to call itself while it is busy answering you simply waits until the timeout. Put the SyncUp server's address here — the two fields are different machines.</div>
+                    <div class="alert-body"><b>The SyncUp address is this same site</b>Messages would be posted back to SyncHub instead of to SyncUp, and a server asked to call itself while it is busy answering you simply waits until the timeout. Put the SyncUp server's address in <a href="{% url 'system_settings' %}">System → Settings</a> — the two are different machines.</div>
                 </div>
                 {% endif %}
-                <p class="small muted">A notification opens <b>this site's address</b> when it is tapped. Leave it blank and the first <b>Test push</b> fills it in from the page you press it on.</p>
+                <p class="small muted">A notification opens <b>this site's address</b> when it is tapped — also a hub setting. Leave it blank and the first <b>Test push</b> fills it in for the whole hub.</p>
                 <div class="row">
                     <a class="btn btn-sm btn-primary" href="{% url 'hibiscus_notifications' %}">{% icon "bell" %}Times and words</a>
                     <a class="btn btn-sm" href="{% url 'cron_page' %}">{% icon "clock" %}Cron jobs</a>

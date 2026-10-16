@@ -1,6 +1,6 @@
 """The diary itself — what Divya and Meena see.
 
-A separate route (`/hibiscus/me/`), its own session, its own small stylesheet. Nothing of
+A separate route (`/hibiscus/`), its own session, its own small stylesheet. Nothing of
 SyncHub's console chrome. Four tabs: Today, Calendar, Log, Stocks.
 
 Every page is server-rendered and sends `Cache-Control: no-store`, because inside the SyncUp app
@@ -16,6 +16,7 @@ from django.db import transaction
 from django.db.models import F
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
@@ -518,3 +519,15 @@ def save_syncup_token(request):
         person.save(update_fields=['syncup_token'])
         auth.log('syncup_token_saved', person=person)
     return HttpResponse(status=204)
+
+def moved_from_me(request, rest=''):
+    """Old `/hibiscus/me/…` addresses, kept working.
+
+    The diary's magic links and the chat's sign-in links were handed out with `me/` in them, and
+    a link somebody saved in a note has to keep working — so the old shape answers a permanent
+    redirect to the new one rather than a 404.
+    """
+    target = reverse('hibiscus_me_home') + (rest or '')
+    if request.META.get('QUERY_STRING'):
+        target += '?' + request.META['QUERY_STRING']
+    return redirect(target, permanent=True)

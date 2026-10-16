@@ -1,7 +1,7 @@
-"""The chat itself — what people see at /j6/me/.
+"""The chat itself — what people see at /j6/.
 
 Server-rendered pages with one JSON endpoint behind them. The inbox is a single template used
-twice: at /j6/me/ it is a list, at /j6/me/c/<id> it is a list *and* a thread, and CSS decides
+twice: at /j6/ it is a list, at /j6/c/<id> it is a list *and* a thread, and CSS decides
 which of the two a phone shows. That is AG-PROJ01's support-chat layout, and it is why there is
 one stylesheet rather than two.
 
@@ -277,3 +277,15 @@ def _json(request):
         return json.loads(request.body or b'{}')
     except ValueError:
         return {}
+
+def moved_from_me(request, rest=''):
+    """Old `/j6/me/…` addresses, kept working.
+
+    The diary's magic links and the chat's sign-in links were handed out with `me/` in them, and
+    a link somebody saved in a note has to keep working — so the old shape answers a permanent
+    redirect to the new one rather than a 404.
+    """
+    target = reverse('j6_inbox') + (rest or '')
+    if request.META.get('QUERY_STRING'):
+        target += '?' + request.META['QUERY_STRING']
+    return redirect(target, permanent=True)

@@ -22,12 +22,13 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from urllib.parse import urlparse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
 from . import cron_views, cronhub
-from .forms import AuthForm, ProfileForm
-from .models import AdminPin, CronRun
+from .forms import AuthForm, HubSettingsForm, ProfileForm
+from .models import AdminPin, CronRun, HubSettings
 from .modules import MODULES, MODULES_BY_KEY
 
 # PIN sign-ins don't go through authenticate(), so they have to name the backend.
@@ -192,6 +193,46 @@ def cron_page(request):
         'tick_url': request.build_absolute_uri(reverse('cron_tick')),
         'cleanup_url': request.build_absolute_uri(reverse('cron_cleanup')),
     })
+
+
+@admin_required
+def system_settings(request):
+    """Where this site lives and how to reach SyncUp — once, for every module.
+
+    Modules decide what to say and when; this is where the hub says where to post it. The page
+    also lists which modules are set up to use it, so the effect of a change is visible from the
+    screen that makes it.
+    """
+    config = HubSettings.load()
+    form = HubSettingsForm(request.POST or None, instance=config)
+    if request.method == 'POST' and form.is_valid():
+        saved = form.save(commit=False)
+        saved.updated_by = request.user
+        saved.save()
+        messages.success(request, 'Saved. Every module uses these from the next send.')
+        return redirect('system_settings')
+
+    here = request.build_absolute_uri('/').rstrip('/')
+    return render(request, 'core/system_settings.html', {
+        'form': form,
+        'config': config,
+        'here': here,
+        'points_at_self': _same_host(config.syncup_base, request.get_host()),
+        'modules': [m for m in MODULES if m.is_live],
+    })
+
+
+def _same_host(address, host):
+    """True when an address somebody typed is this very site.
+
+    Worth catching on its own: SyncUp lives somewhere else, and a server asked to call itself
+    while it is busy answering that same request has nothing left to answer with — it waits until
+    the timeout, which reads like "SyncUp is down" rather than "that is the wrong address".
+    """
+    if not address:
+        return False
+    netloc = urlparse(address if '//' in address else '//' + address).netloc.lower()
+    return netloc.split(':')[0] == host.split(':')[0].lower()
 
 
 @admin_required

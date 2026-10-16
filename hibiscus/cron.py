@@ -10,6 +10,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from core import cronhub
+from core.models import HubSettings
 
 from . import defaults, push
 from .models import Audit, NotifySent, NotifySlot, Settings
@@ -46,8 +47,9 @@ def notify(ctx):
         result['slots'][slot.key] = summary
         result['items'] += summary['sent']
 
-    if not config.syncup_base:
-        result['note'] = 'SyncUp base not set, so nothing can be delivered yet'
+    if not HubSettings.load().syncup_base:
+        result['note'] = ('SyncUp address not set at System → Settings, so nothing can be '
+                          'delivered yet')
     return result
 
 

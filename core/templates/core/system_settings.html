@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}System settings{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>System settings</h1>
+        <p class="page-sub">What every module needs and none of them owns</p>
+    </div>
+</div>
+
+<form method="POST" novalidate>
+    {% csrf_token %}
+    <div class="card">
+        <div class="card-head">{% icon "bell" %}<h2>Notifications</h2>
+            <span class="small muted ml-auto">used by every module</span></div>
+        <div class="card-body form">
+            {% for f in form %}
+            <div class="field{% if f.errors %} invalid{% endif %}">
+                <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
+                {{ f }}
+                {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+                {% for e in f.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            {% endfor %}
+
+            {% if points_at_self %}
+            <div class="alert alert-danger">
+                {% icon "triangle-alert" %}
+                <div class="alert-body"><b>The SyncUp address is this same site</b>Messages would be posted back to
+                    SyncHub instead of to SyncUp, and a server asked to call itself while it is busy answering you
+                    simply waits until the timeout. SyncUp is a different machine — put its address here.</div>
+            </div>
+            {% endif %}
+
+            {% if not config.site_base %}
+            <div class="alert">
+                {% icon "info" %}
+                <div class="alert-body"><b>This site looks like <code>{{ here }}</code></b>A notification opens this
+                    address when it is tapped. The cron has no request to work it out from, which is why it is typed
+                    here once rather than guessed every run.</div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="card-foot bordered">
+            <div class="row">
+                <span class="small muted">
+                    {% if config.updated_at %}Last saved {{ config.updated_at|ago }}{% if config.updated_by %} by
+                    {{ config.updated_by.first_name|default:config.updated_by.username }}{% endif %}
+                    {% else %}Not saved yet{% endif %}
+                </span>
+                <button class="btn btn-primary ml-auto" type="submit">{% icon "check" %}Save</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "package" %}<h2>Who uses these</h2></div>
+    <div class="card-body">
+        <ul class="list">
+            {% for m in modules %}
+            <li class="list-item">
+                <span class="list-icon">{% icon m.icon %}</span>
+                <div class="main-col">
+                    <div class="title">{{ m.title }}</div>
+                    <div class="sub">{{ m.description }}</div>
+                </div>
+                <a class="btn btn-sm btn-ghost" href="{% url m.url_name %}">Open</a>
+            </li>
+            {% empty %}
+            <li class="list-item"><div class="main-col"><div class="sub">No modules are live yet.</div></div></li>
+            {% endfor %}
+        </ul>
+        <p class="small muted" style="margin-top:10px">Each module keeps its own rules — how many messages a day, what
+            they say, how long anything is kept — and reads the three values above when it is time to send. Change them
+            here and every module follows from its next send.</p>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "clock" %}<h2>When sending happens</h2></div>
+    <div class="card-body">
+        <p class="muted">Nothing is pushed from a page. SyncHub's <b>15-minute tick</b> does the sending for every
+            module, and the nightly <b>cleanup</b> trims what has aged out — which is why a module never gets a cron
+            URL of its own.</p>
+        <div class="row" style="margin-top:10px">
+            <a class="btn btn-sm" href="{% url 'cron_page' %}">{% icon "clock" %}Cron jobs</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -477,7 +477,9 @@ class NotificationTests(TestCase):
         self.log_period(self.today - timedelta(days=12))
         result = notify(cronhub.Context(kind=cronhub.TICK))
         self.assertIn('slots', result)
-        self.assertIn('SyncUp base not set', result['note'])
+        # The address lives at System → Settings now, and the note says where to go.
+        self.assertIn('SyncUp address not set', result['note'])
+        self.assertIn('Settings', result['note'])
 
     def test_retention_trims_old_rows(self):
         old = NotifySent.objects.create(person=self.person, slot=self.morning,
@@ -649,7 +651,7 @@ class CalendarGridTests(TestCase):
     def test_the_month_has_both_kinds_of_cell(self):
         body = self._month()
         self.assertIn('<div class="cal">', body)
-        self.assertRegex(body, r'<a href="[^"]*/hibiscus/me/day/')      # a past day
+        self.assertRegex(body, r'<a href="[^"]*/hibiscus/day/')      # a past day
         self.assertIn('<span class="oth', body)                          # a neighbouring month
 
     def test_every_cell_is_styled_whatever_its_tag(self):
@@ -816,3 +818,30 @@ class RowAlignmentTests(TestCase):
         self.assertIn('class="grow"', body)
         self.assertIn('class="btn sm mint"', body)
         self.assertIsNotNone(person.pk)
+
+
+class RouteTests(TestCase):
+    """The diary took the short address; the console moved under /admin/."""
+
+    def test_the_diary_is_at_the_module_root(self):
+        self.assertEqual(reverse('hibiscus_me_home'), '/hibiscus/')
+        self.assertEqual(reverse('hibiscus_me_login'), '/hibiscus/login')
+
+    def test_the_console_is_under_admin(self):
+        self.assertEqual(reverse('hibiscus_people'), '/hibiscus/admin/')
+        self.assertEqual(reverse('hibiscus_settings'), '/hibiscus/admin/settings/')
+
+    def test_the_diarys_own_settings_did_not_move_into_the_console(self):
+        self.assertEqual(reverse('hibiscus_me_settings'), '/hibiscus/settings/')
+
+    def test_a_magic_link_handed_out_before_the_move_still_works(self):
+        person = make_person()
+        key = auth.new_login_key(person)
+        r = self.client.get(f'/hibiscus/me/k/{key}')
+        self.assertEqual(r.status_code, 301)
+        self.assertEqual(r['Location'], f'/hibiscus/k/{key}')
+        self.assertEqual(self.client.get(r['Location'])['Location'],
+                         reverse('hibiscus_me_home'))      # and it signs them in
+
+    def test_the_console_is_not_public(self):
+        self.assertEqual(self.client.get('/hibiscus/admin/').status_code, 302)

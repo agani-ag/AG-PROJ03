@@ -55,9 +55,9 @@ def validate_name(value):
 class Settings(models.Model):
     """One row, pk=1. The numbers that would otherwise be constants in the code.
 
-    SyncUp's address is kept here rather than read from another module: modules in SyncHub do not
-    import one another, so J6 carries its own copy of the two values even though Hibiscus has the
-    same ones. A duplicated setting is cheaper than a dependency between modules.
+    What is *not* here: where SyncUp lives and what this site is called. Those are the hub's
+    (`core.models.HubSettings`), because every module sends to the same SyncUp and lives at the
+    same address — duplicating them per module meant two places to set one value.
     """
     signup_open = models.BooleanField(default=True)
     keep_days = models.PositiveSmallIntegerField(
@@ -76,12 +76,9 @@ class Settings(models.Model):
     max_media_px = models.PositiveSmallIntegerField(default=240)
     allow_svg = models.BooleanField(default=True)
 
-    site_base = models.CharField(max_length=120, blank=True,
-                                 help_text="This site's address, used as the link a pushed "
-                                           'notification opens.')
-    syncup_base = models.CharField(max_length=120, blank=True,
-                                   help_text='e.g. https://syncup.example.com')
-    syncup_notify_key = models.CharField(max_length=80, blank=True)
+    # Where SyncUp lives and what this site is called belong to the hub — core.models.HubSettings,
+    # edited at System → Settings — because every module posts to the same place. What is left
+    # here is J6's own decision: whether to push at all.
     push_enabled = models.BooleanField(default=True)
 
     updated_at = models.DateTimeField(auto_now=True)

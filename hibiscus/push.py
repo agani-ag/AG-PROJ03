@@ -18,6 +18,8 @@ from django.db import IntegrityError
 from django.urls import reverse
 from django.utils import timezone
 
+from core.models import HubSettings
+
 from . import cycle
 from .models import Flow, NotifyLine, NotifyMute, NotifySent, NotifySlot, Person, Settings
 
@@ -135,13 +137,14 @@ def send_via_syncup(config, person, title, body, url, timeout=SEND_TIMEOUT):
     `timeout` is short for the cron — it has a whole run to get through and a slow host must not
     hold it up — and longer for the Test push, where somebody is watching the page.
     """
-    if not config.syncup_base or not person.syncup_token:
-        return 0, 'no syncup token' if config.syncup_base else 'syncup not configured'
+    hub = HubSettings.load()
+    if not hub.syncup_base or not person.syncup_token:
+        return 0, 'no syncup token' if hub.syncup_base else 'syncup not configured'
     payload = json.dumps({
         'token': person.syncup_token, 'title': title, 'body': body, 'url': url,
-        'key': config.syncup_notify_key,
+        'key': hub.syncup_notify_key,
     }).encode()
-    endpoint = config.syncup_base.rstrip('/') + '/app/v1/partner/notify'
+    endpoint = hub.syncup_base.rstrip('/') + '/app/v1/partner/notify'
     request = urllib.request.Request(endpoint, data=payload,
                                      headers={'Content-Type': 'application/json'})
     try:
@@ -192,15 +195,14 @@ def arrival_message(person, config, today=None):
     return {'title': f'Hi {context["name"]}'[:TITLE_MAX], 'body': body[:BODY_MAX]}
 
 
-def diary_url(config):
+def diary_url(config=None):
     """Where a tapped notification should land: the diary, on this site.
 
-    Empty until someone sets the address (the Test push button fills it in from the page it was
-    pressed on), and an empty link is harmless — SyncUp just opens its own app.
+    The address belongs to the hub (System → Settings), because every module opens on the same
+    site. Empty until somebody sets it, and an empty link is harmless — SyncUp just opens its
+    own app.
     """
-    if not config.site_base:
-        return ''
-    return config.site_base.rstrip('/') + reverse('hibiscus_me_home')
+    return HubSettings.load().url_for(reverse('hibiscus_me_home'))
 
 
 def send_test(config, person, url=''):

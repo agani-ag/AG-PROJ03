@@ -18,6 +18,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core import cronhub
+from core.models import HubSettings
 
 from . import service
 from .cron import push, retention
@@ -468,8 +469,7 @@ class ConsoleTests(TestCase):
         config = Settings.load()
         data = {f: getattr(config, f) for f in
                 ['new_chats_per_hour', 'msgs_per_minute', 'max_chars', 'keep_days',
-                 'idle_account_days', 'autoplay_seconds', 'max_media_px', 'site_base',
-                 'syncup_base', 'syncup_notify_key']}
+                 'idle_account_days', 'autoplay_seconds', 'max_media_px']}
         data.update({'signup_open': 'on', 'render_media': 'on', 'allow_svg': 'on',
                      'push_enabled': 'on', 'keep_days': 30})
         r = self.client.post(reverse('j6_settings'), data, follow=True)
@@ -507,10 +507,10 @@ class CronTests(TestCase):
         self.assertIn('note', push(_ctx('tick')))
 
     def test_push_sends_one_summary_and_does_not_repeat_it(self):
-        config = Settings.load()
-        config.syncup_base = 'https://syncup.example.com'
-        config.site_base = 'https://synchub.example.com'
-        config.save()
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://syncup.example.com'
+        hub.site_base = 'https://synchub.example.com'
+        hub.save()
         Account.objects.filter(pk=self.mani.pk).update(
             syncup_token='tok', last_seen_at=timezone.now() - timedelta(minutes=10))
         service.send(self.anand, self.chat, 'one')
@@ -538,9 +538,9 @@ class CronTests(TestCase):
         self.assertTrue(sent[0]['url'].endswith(reverse('j6_inbox')))
 
     def test_push_skips_somebody_whose_page_is_open(self):
-        config = Settings.load()
-        config.syncup_base = 'https://syncup.example.com'
-        config.save()
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://syncup.example.com'
+        hub.save()
         Account.objects.filter(pk=self.mani.pk).update(syncup_token='tok',
                                                        last_seen_at=timezone.now())
         service.send(self.anand, self.chat, 'hello')
@@ -562,3 +562,132 @@ class StaticLayoutTests(TestCase):
             self.assertIsNotNone(found, path)
             self.assertTrue(Path(found).is_relative_to(
                 Path(django_settings.BASE_DIR) / 'static'), path)
+
+
+class MessageDeleteTests(TestCase):
+    """The console can remove a line outright — no placeholder, nothing left behind."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.anand, self.mani = make('Anand'), make('Mani')
+        self.chat, _ = service.start_chat(self.anand, self.mani.account_id)
+        self.keep = service.send(self.anand, self.chat, 'keep this one')
+        self.drop = service.send(self.mani, self.chat, 'delete this one')
+        self.url = reverse('j6_message_delete',
+                           args=[self.anand.pk, self.chat.pk, self.drop.seq])
+
+    def test_the_thread_offers_it_on_every_message(self):
+        r = self.client.get(reverse('j6_admin_chat', args=[self.anand.pk, self.chat.pk]))
+        self.assertContains(r, self.url)
+
+    def test_it_deletes_the_row_rather_than_marking_it(self):
+        self.client.post(self.url)
+        self.assertFalse(Message.objects.filter(pk=self.drop.pk).exists())
+        self.assertTrue(Message.objects.filter(pk=self.keep.pk).exists())
+
+    def test_nothing_is_left_in_its_place(self):
+        self.client.post(self.url)
+        body = self.client.get(
+            reverse('j6_admin_chat', args=[self.anand.pk, self.chat.pk])).content.decode()
+        self.assertNotIn('delete this one', body)
+        self.assertNotIn('was deleted', body)
+        self.assertNotIn('removed by', body)
+
+    def test_it_disappears_for_both_of_them(self):
+        self.client.post(self.url)
+        for account in (self.anand, self.mani):
+            bodies = [m['body'] for m in service.thread(account, self.chat)['messages']]
+            self.assertNotIn('delete this one', bodies)
+
+    def test_the_gap_in_seq_breaks_nothing(self):
+        self.client.post(self.url)
+        after = service.send(self.anand, self.chat, 'life goes on')
+        self.assertGreater(after.seq, self.drop.seq)
+        seqs = [m['seq'] for m in service.thread(self.mani, self.chat)['messages']]
+        self.assertEqual(seqs, [self.keep.seq, after.seq])
+
+    def test_post_only_and_admin_only(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+        self.client.logout()
+        self.assertEqual(self.client.post(self.url).status_code, 302)
+        self.assertTrue(Message.objects.filter(pk=self.drop.pk).exists())
+
+    def test_a_message_from_another_chat_is_a_404(self):
+        other, _ = service.start_chat(make('Riya'), make('Karthik').account_id)
+        service.send(other.low, other, 'elsewhere')
+        r = self.client.post(reverse('j6_message_delete', args=[self.anand.pk, other.pk, 1]))
+        self.assertEqual(r.status_code, 404)
+
+
+class FactoryResetTests(TestCase):
+    """Empty J6 and start again — for the weeks when everything in it is a test."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.anand, self.mani = make('Anand'), make('Mani')
+        self.chat, _ = service.start_chat(self.anand, self.mani.account_id)
+        service.send(self.anand, self.chat, 'one')
+        service.send(self.mani, self.chat, 'two')
+        self.url = reverse('j6_reset')
+
+    def test_the_page_says_exactly_what_will_go(self):
+        r = self.client.get(self.url)
+        self.assertContains(r, 'Factory reset')
+        self.assertContains(r, '>2</b>')                      # two accounts, two messages
+        self.assertContains(r, 'no undo')
+
+    def test_it_is_reachable_from_module_settings(self):
+        self.assertContains(self.client.get(reverse('j6_settings')), self.url)
+
+    def test_nothing_happens_without_the_word(self):
+        r = self.client.post(self.url, {'confirm': 'yes please'}, follow=True)
+        self.assertContains(r, 'type RESET')
+        self.assertEqual(Account.objects.count(), 2)
+
+    def test_it_empties_every_table(self):
+        r = self.client.post(self.url, {'confirm': 'RESET'}, follow=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(Account.objects.count(), 0)
+        self.assertEqual(Chat.objects.count(), 0)
+        self.assertEqual(Message.objects.count(), 0)
+        self.assertEqual(Member.objects.count(), 0)
+
+    def test_lower_case_is_accepted_because_people_type_it(self):
+        self.client.post(self.url, {'confirm': 'reset'})
+        self.assertEqual(Account.objects.count(), 0)
+
+    def test_settings_are_kept_unless_asked(self):
+        config = Settings.load()
+        config.keep_days = 30
+        config.save()
+        self.client.post(self.url, {'confirm': 'RESET'})
+        self.assertEqual(Settings.load().keep_days, 30)
+
+    def test_settings_can_be_reset_too(self):
+        config = Settings.load()
+        config.keep_days = 30
+        config.save()
+        self.client.post(self.url, {'confirm': 'RESET', 'settings': 'on'})
+        self.assertEqual(Settings.load().keep_days, 90)       # back to the default
+
+    def test_it_touches_nothing_outside_j6(self):
+        from core.models import HubSettings
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://syncup.example.com'
+        hub.save()
+        self.client.post(self.url, {'confirm': 'RESET'})
+        self.assertEqual(HubSettings.load().syncup_base, 'https://syncup.example.com')
+
+    def test_it_needs_the_admin(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(self.url).status_code, 302)
+        self.assertEqual(self.client.post(self.url, {'confirm': 'RESET'}).status_code, 302)
+        self.assertEqual(Account.objects.count(), 2)
+
+    def test_afterwards_a_new_account_starts_clean(self):
+        self.client.post(self.url, {'confirm': 'RESET'})
+        fresh = make('Riya')
+        self.assertEqual(Account.objects.count(), 1)
+        self.assertEqual(service.chat_rows(fresh), [])
