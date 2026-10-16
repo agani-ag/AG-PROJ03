@@ -1,0 +1,34 @@
+{% extends "j6/user/base.html" %}
+{% block title %}Welcome{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <div class="wordmark">J6</div>
+    <p class="muted">Chat without signing up.</p>
+</div>
+
+{% if config.signup_open %}
+<form method="POST" class="card stack" novalidate>
+    {% csrf_token %}
+    <div>
+        <b>What should people call you?</b>
+        <p class="sub">Shown to whoever you chat with. Two letters is enough, and you can change it later.</p>
+    </div>
+    <input class="input" type="text" name="name" maxlength="24" placeholder="Your name" autofocus
+           autocomplete="nickname" value="{{ request.POST.name|default:'' }}">
+    {% if error %}<span class="err">{{ error }}</span>{% endif %}
+    <p class="tiny">That is the only thing asked of you — no email, no number, no password.</p>
+    <button class="btn" type="submit"><svg class="ic"><use href="#j-send"/></svg>Start chatting</button>
+</form>
+{% else %}
+<div class="card stack">
+    <b>New accounts are closed</b>
+    <p class="sub">The admin has stopped new sign-ups on this server. If you already have a Self-ID you can still get in.</p>
+</div>
+{% endif %}
+
+<p class="center"><a class="link" href="{% url 'j6_login' %}">I already have a Self-ID</a></p>
+
+<p class="tiny center fade">Messages are kept on this server for {{ config.keep_days }} days and can be read by its
+    admin. Nothing here is end-to-end encrypted.</p>
+{% endblock %}

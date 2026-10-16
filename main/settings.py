@@ -51,8 +51,7 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     'core.apps.CoreConfig',
     'hibiscus.apps.HibiscusConfig',
-    # Feature modules go here as they are built, e.g.
-    # 'chat.apps.ChatConfig',
+    'j6.apps.J6Config',
 ]
 
 MIDDLEWARE = [

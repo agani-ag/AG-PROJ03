@@ -34,7 +34,7 @@ def check_deploy(app_configs, **kwargs):
     # project's static/ folder (see README, Layout) so either mapping serves them — but they
     # still have to have been collected, which is what this looks for.
     static_root = getattr(settings, 'STATIC_ROOT', None)
-    expected = ['css/app.css', 'icons.svg', 'hibiscus/user.css']
+    expected = ['css/app.css', 'icons.svg', 'hibiscus/user.css', 'j6/user.css']
     missing = [f for f in expected if static_root and not (static_root / f).exists()]
     if missing:
         problems.append(Warning(

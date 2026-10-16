@@ -1,0 +1,97 @@
+{% extends "j6/user/base.html" %}
+{% block title %}{% if chat %}{{ thread_with }}{% else %}Chats{% endif %}{% endblock %}
+
+{% comment %}
+One template for both URLs. /j6/me/ renders the list; /j6/me/c/<id> renders the list *and* the
+thread and adds `open`, which is all a phone needs to show one pane instead of two. Same markup,
+one stylesheet — AG-PROJ01's support inbox, re-cut for two users.
+{% endcomment %}
+
+{% block layout %}
+<div class="inbox{% if has_thread %} open{% endif %}" id="inbox">
+
+    <!-- the list -->
+    <section class="list" aria-label="Chats">
+        <header class="bar">
+            <span class="wordmark xs">J6</span>
+            <span class="sp"></span>
+            <a class="rb" href="{% url 'j6_new' %}" aria-label="New chat"><svg class="ic"><use href="#j-plus"/></svg></a>
+            <a class="rb" href="{% url 'j6_profile' %}" aria-label="Profile"><svg class="ic"><use href="#j-user"/></svg></a>
+        </header>
+        <div class="search">
+            <svg class="ic sm"><use href="#j-search"/></svg>
+            <input id="q" type="search" placeholder="Search chats" autocomplete="off" aria-label="Search chats">
+        </div>
+        <div id="rows" class="rows">
+            {% for row in rows %}
+            <a class="row{% if row.unread %} unread{% endif %}{% if chat and row.id == chat.pk %} on{% endif %}"
+               href="{% url 'j6_chat' row.id %}" data-row="{{ row.id }}" data-name="{{ row.name }}">
+                <span class="av" style="background:{{ row.colour }}">{{ row.initials }}
+                    <span class="dot{% if row.online %} on{% endif %}"></span></span>
+                <span class="main">
+                    <span class="top"><b class="nm">{{ row.name }}</b><span class="tm" data-at="{{ row.last_at }}"></span></span>
+                    <span class="pv">
+                        {% if row.blocked %}<svg class="ic sm"><use href="#j-block"/></svg>{% endif %}
+                        <span class="txt">{% if row.last_mine %}You: {% endif %}{{ row.last|default:"No messages yet" }}</span>
+                        {% if row.unread %}<span class="badge">{{ row.unread }}</span>{% endif %}
+                    </span>
+                </span>
+            </a>
+            {% empty %}
+            <div class="empty">
+                <b>No chats yet</b>
+                <span>Give someone your Account ID, or paste theirs.</span>
+                <a class="btn sm" href="{% url 'j6_new' %}"><svg class="ic sm"><use href="#j-plus"/></svg>New chat</a>
+            </div>
+            {% endfor %}
+        </div>
+        <footer class="foot">
+            <a class="btn sm ghost" href="{% url 'j6_new' %}"><svg class="ic sm"><use href="#j-plus"/></svg>New chat</a>
+            <button class="btn sm ghost" type="button" data-copy="{{ account.account_id }}">
+                <svg class="ic sm"><use href="#j-copy"/></svg>My ID</button>
+            {% comment %}
+            Only ever visible inside the Windows app, where there is something to open a console
+            with. In a browser the script leaves it hidden.
+            {% endcomment %}
+            <button class="btn sm ghost" type="button" data-terminal hidden>
+                <svg class="ic sm"><use href="#j-send"/></svg>Terminal</button>
+        </footer>
+    </section>
+
+    <!-- the thread -->
+    <section class="thread" aria-label="Conversation">
+        {% if chat %}
+        <header class="bar">
+            <a class="rb back-link" href="{% url 'j6_inbox' %}" aria-label="Back"><svg class="ic"><use href="#j-back"/></svg></a>
+            <span class="av sm" id="th-av"></span>
+            <span class="who">
+                <b id="th-name"></b>
+                <span class="pres" id="th-pres"></span>
+            </span>
+            <form method="POST" action="{% url 'j6_block' chat.pk %}">{% csrf_token %}
+                <button class="rb" type="submit" id="th-block" aria-label="Block or unblock">
+                    <svg class="ic"><use href="#j-block"/></svg></button>
+            </form>
+        </header>
+
+        <div class="msgs" id="msgs" tabindex="0"></div>
+        <button class="jump" id="jump" type="button" hidden>↓ <span id="jump-n"></span></button>
+
+        <form class="composer" id="composer">
+            <textarea id="input" rows="1" placeholder="Message" aria-label="Message"
+                      maxlength="{{ config.max_chars }}"></textarea>
+            <button class="snd" type="submit" aria-label="Send"><svg class="ic"><use href="#j-send"/></svg></button>
+        </form>
+        <p class="hint" id="hint">Enter to send, Shift+Enter for a new line.</p>
+        {% else %}
+        <div class="empty big">
+            <b>Pick a chat</b>
+            <span>Or start one with an Account ID someone gave you.</span>
+            <a class="btn sm" href="{% url 'j6_new' %}"><svg class="ic sm"><use href="#j-plus"/></svg>New chat</a>
+        </div>
+        {% endif %}
+    </section>
+</div>
+
+<script id="boot" type="application/json">{"rows": {{ rows_json|safe }}, "thread": {{ thread_json|safe }}}</script>
+{% endblock %}

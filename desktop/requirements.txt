@@ -1,0 +1,7 @@
+# The Windows client. Never installed on the server — the project's own requirements.txt at the
+# repository root stays Django + python-dotenv, so PythonAnywhere installs exactly what it does
+# today and this folder costs it nothing but ~400 KB of .py it never runs.
+pywebview>=5.3          # the window: EdgeChromium (WebView2) on Windows, which ships with the OS
+pystray>=0.19           # the tray icon. Optional: without it the window still works, there is
+pillow>=10.4            #   simply no tray — core/tray.py guards both imports
+pyinstaller>=6.10       # the one-file build. Not needed to *run* anything, only to make the EXE

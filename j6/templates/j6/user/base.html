@@ -1,0 +1,50 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en"{% if account.theme and account.theme != 'system' %} data-theme="{{ account.theme }}"{% endif %}>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    {% comment %}
+    A saved choice, applied before first paint so there is no flash. Inside the SyncUp app the
+    phone's own dark setting never reaches the page, which is why the switch matters there.
+    {% endcomment %}
+    <script>try{var t=localStorage.getItem("j6-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    {% include "_theme_color.html" with light="#eef2f4" dark="#0b1114" %}
+    <title>{% block title %}J6{% endblock %} · J6</title>
+    <link rel="icon" href="{% static 'images/app-icon.svg' %}" type="image/svg+xml">
+    <link rel="stylesheet" href="{% static_v 'j6/user.css' %}">
+</head>
+<body{% if account %} data-poll="{% url 'j6_poll' %}" data-send="{% url 'j6_send' %}"
+     data-typing="{% url 'j6_typing' %}" data-token-url="{% url 'j6_token' %}"
+     data-media="{{ media.render|yesno:'1,0' }}" data-autoplay="{{ media.autoplay_seconds }}"
+     data-maxpx="{{ media.max_px }}" data-svg="{{ media.allow_svg|yesno:'1,0' }}"
+     data-chat="{% if chat %}{{ chat.pk }}{% endif %}"{% endif %}>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="j-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="j-back" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="j-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="j-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="j-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="j-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="j-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="j-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="j-checks" viewBox="0 0 24 24"><path d="m2 13 4 4 8-10"/><path d="m11 16 1 1 9-11"/></symbol>
+  <symbol id="j-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></symbol>
+  <symbol id="j-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="j-bell" viewBox="0 0 24 24"><path d="M10.3 21a2 2 0 0 0 3.4 0"/><path d="M3.3 15.3A1 1 0 0 0 4 17h16a1 1 0 0 0 .7-1.7C19.4 14 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.4 6-2.7 7.3"/></symbol>
+  <symbol id="j-out" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+  <symbol id="j-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="j-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></symbol>
+  <symbol id="j-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.8-1.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.4 14H3a2 2 0 1 1 0-4h.3a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.4V3a2 2 0 1 1 4 0v.4a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.4a1.7 1.7 0 0 0-1.2 1z"/></symbol>
+</svg>
+
+{% block layout %}
+<main class="plain">
+    <div class="sheet">{% block content %}{% endblock %}</div>
+</main>
+{% endblock %}
+
+<script src="{% static_v 'j6/user.js' %}"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

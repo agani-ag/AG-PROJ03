@@ -45,11 +45,12 @@ MODULES = [
         url_name='hibiscus_people',
     ),
     Module(
-        key='chat',
-        title='Chat',
-        icon='messages-square',
+        key='j6',
+        title='J6',
+        icon='messages-square',           # no mark of its own: the name is the mark
         group='Modules',
-        description='Conversations between the admin and app users.',
+        description='Chat with no sign-up — a name and two generated IDs.',
+        url_name='j6_accounts',
     ),
 ]
 

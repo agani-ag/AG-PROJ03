@@ -1,0 +1,29 @@
+{% extends "j6/user/base.html" %}
+{% block title %}Sign back in{% endblock %}
+
+{% block content %}
+<div class="hero sm">
+    <div class="wordmark sm">J6</div>
+    <h1>Sign back in</h1>
+</div>
+
+<form method="POST" class="card stack" novalidate>
+    {% csrf_token %}
+    <div>
+        <b>Your Self-ID</b>
+        <p class="sub">Paste it, or open the sign-in link you saved.</p>
+    </div>
+    <input class="input mono" type="text" name="self_id" placeholder="j6s-…" autofocus
+           autocapitalize="off" autocomplete="off" spellcheck="false">
+    {% if error %}<span class="err">{{ error }}</span>{% endif %}
+    <button class="btn" type="submit">Continue</button>
+</form>
+
+<div class="card dashed row">
+    <svg class="ic sm fade"><use href="#j-block"/></svg>
+    <p class="tiny">No Self-ID? There is nothing to recover — no email, no number, nothing that was ever asked of you.
+        Starting fresh gives you a new Account ID, so anyone who had the old one will need the new one.</p>
+</div>
+
+<p class="center"><a class="link" href="{% url 'j6_welcome' %}">Start a new account instead</a></p>
+{% endblock %}

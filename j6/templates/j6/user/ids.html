@@ -1,0 +1,45 @@
+{% extends "j6/user/base.html" %}
+{% block title %}{% if fresh %}You are in{% else %}Your IDs{% endif %}{% endblock %}
+
+{% block content %}
+<div class="head-sm">
+    {% if fresh %}<h1>You are in, {{ account.name }}</h1>
+    {% else %}<a class="back" href="{% url 'j6_profile' %}"><svg class="ic sm"><use href="#j-left"/></svg>Profile</a>
+    <h1>Your IDs</h1>{% endif %}
+</div>
+
+<div class="card stack">
+    <div>
+        <b>Your Account ID</b>
+        <p class="sub">Give this to the person you want to chat with. Anyone who has it can message you.</p>
+    </div>
+    <div class="idbox"><code>{{ account.account_id }}</code>
+        <button class="cp" type="button" data-copy="{{ account.account_id }}" aria-label="Copy">
+            <svg class="ic sm"><use href="#j-copy"/></svg></button>
+    </div>
+</div>
+
+<div class="card stack warm">
+    <div>
+        <b>Your Self-ID</b>
+        <p class="sub">This is how you get back in — on this device, another browser, a private window. Save it now.</p>
+    </div>
+    <div class="idbox"><code>{{ account.self_id }}</code>
+        <button class="cp" type="button" data-copy="{{ account.self_id }}" aria-label="Copy">
+            <svg class="ic sm"><use href="#j-copy"/></svg></button>
+    </div>
+    <div class="idbox small"><code>{{ link }}</code>
+        <button class="cp" type="button" data-copy="{{ link }}" aria-label="Copy the link">
+            <svg class="ic sm"><use href="#j-copy"/></svg></button>
+    </div>
+    <p class="tiny">The link signs you in with one tap — bookmark it, or send it to yourself.</p>
+</div>
+
+<div class="card dashed row">
+    <svg class="ic sm fade"><use href="#j-eye"/></svg>
+    <p class="tiny">You can read both IDs again any time from <b>Profile</b>. Lose the Self-ID and sign out, and the
+        account is gone — you would start a new one.</p>
+</div>
+
+<a class="btn" href="{% url 'j6_inbox' %}"><svg class="ic"><use href="#j-check"/></svg>{% if fresh %}I have saved them{% else %}Back to chats{% endif %}</a>
+{% endblock %}

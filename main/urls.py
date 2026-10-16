@@ -13,7 +13,7 @@ urlpatterns = [
     path('', include('core.urls')),           # sign-in, dashboard, profile, UI kit, cron
     # Feature modules, each one self-contained:
     path('hibiscus/', include('hibiscus.urls')),
-    # path('chat/', include('chat.urls')),
+    path('j6/', include('j6.urls')),
 ]
 
 if settings.DEBUG:

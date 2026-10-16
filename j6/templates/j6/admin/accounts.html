@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}J6{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>J6</h1>
+        <p class="page-sub">Chat with no sign-up · {{ total }} account{{ total|pluralize }}{% if suspended %} · {{ suspended }} suspended{% endif %}</p>
+    </div>
+    <div class="page-actions">
+        <a class="btn" href="https://github.com/agani-ag/AG-PROJ03/releases/latest/download/j6.exe"
+           rel="noreferrer">{% icon "download" %}Windows app</a>
+        <a class="btn" href="{% url 'j6_settings' %}">{% icon "settings" %}Module settings</a>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat">
+        <span class="stat-label">{% icon "users-round" %}Accounts</span>
+        <span class="stat-value">{{ total }}</span>
+        <span class="stat-meta">{{ new_week }} made this week</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "messages-square" %}Chats</span>
+        <span class="stat-value">{{ chats }}</span>
+        <span class="stat-meta">{{ chats_today }} with a message today</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "send" %}Messages · 7 days</span>
+        <span class="stat-value">{{ messages_week }}</span>
+        <span class="stat-meta">kept for {{ config.keep_days }} days</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "bell" %}Push-capable</span>
+        <span class="stat-value">{{ push_ready }}</span>
+        <span class="stat-meta">opened inside SyncUp</span>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px" data-table>
+    <div class="card-head">
+        {% icon "users-round" %}<h2>Accounts</h2>
+        <form class="table-tools ml-auto" method="GET">
+            <div class="input-icon">{% icon "search" "icon-sm" %}
+                <input class="input input-sm" type="search" name="q" value="{{ search }}"
+                       placeholder="Search a name or an ID">
+            </div>
+        </form>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Account</th><th>Account ID</th><th class="num">Chats</th>
+                <th class="num">Sent</th><th>Last seen</th><th>State</th><th></th></tr></thead>
+            <tbody>
+                {% for row in rows %}
+                <tr data-href="{% url 'j6_account' row.pk %}">
+                    <td class="t-primary" data-label="Account">
+                        <b>{{ row.name }}</b>
+                        <div class="small faint">made {{ row.created_at|date:"d M Y" }}</div>
+                    </td>
+                    <td data-label="Account ID"><code class="small">{{ row.account_id }}</code></td>
+                    <td data-label="Chats" class="num">{{ row.chat_count }}</td>
+                    <td data-label="Sent" class="num">{{ row.sent_count }}</td>
+                    <td data-label="Last seen">
+                        {{ row.last_seen_at|ago }}
+                        {% if row.is_online %}<span class="badge badge-success"><span class="dot"></span>Online</span>{% endif %}
+                    </td>
+                    <td data-label="State">
+                        {% if row.is_active %}<span class="badge badge-success">Active</span>
+                        {% else %}<span class="badge badge-danger"><span class="dot"></span>Suspended</span>{% endif %}
+                    </td>
+                    <td data-label=""><a class="btn btn-ghost btn-sm" href="{% url 'j6_account' row.pk %}">Open</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7"><div class="empty">{% icon "messages-square" %}<b>Nobody yet</b>
+                    <span>Accounts appear here the moment someone opens <code>/j6/me/</code>.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if rows.has_other_pages %}
+    <div class="card-foot bordered">
+        <div class="row">
+            {% if rows.has_previous %}
+            <a class="btn btn-sm" href="?page={{ rows.previous_page_number }}{% if search %}&q={{ search }}{% endif %}">{% icon "arrow-left" %}Newer</a>
+            {% endif %}
+            <span class="small muted">Page {{ rows.number }} of {{ rows.paginator.num_pages }}</span>
+            {% if rows.has_next %}
+            <a class="btn btn-sm ml-auto" href="?page={{ rows.next_page_number }}{% if search %}&q={{ search }}{% endif %}">Older{% icon "arrow-right" %}</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    <div class="card-foot bordered">
+        <span class="small muted">Suspending stops an account signing in and stops anything being delivered to it;
+            its chats stay readable here. Deleting takes the account, its half of every chat, and its messages.</span>
+    </div>
+</div>
+{% endblock %}

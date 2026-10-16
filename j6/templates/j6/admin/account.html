@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ person.name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'j6_accounts' %}">{% icon "arrow-left" %}J6</a>
+        <h1>{{ person.name }}</h1>
+        <p class="page-sub">
+            <code>{{ person.account_id }}</code> · made {{ person.created_at|date:"d M Y" }}
+            · last seen {{ person.last_seen_at|ago }}
+            {% if not person.is_active %}· <span class="text-danger">suspended</span>{% endif %}
+        </p>
+    </div>
+    <div class="page-actions">
+        {% if person.is_active %}
+        <form method="POST" action="{% url 'j6_account_state' person.pk 'suspend' %}"
+              data-confirm="Suspend {{ person.name }}?"
+              data-confirm-text="They cannot sign in and nothing is delivered to them. Their chats stay readable here.">{% csrf_token %}
+            <button class="btn" type="submit">{% icon "lock" %}Suspend</button>
+        </form>
+        {% else %}
+        <form method="POST" action="{% url 'j6_account_state' person.pk 'resume' %}">{% csrf_token %}
+            <button class="btn" type="submit">{% icon "circle-check" %}Let them back in</button>
+        </form>
+        {% endif %}
+        <form method="POST" action="{% url 'j6_account_delete' person.pk %}"
+              data-confirm="Delete {{ person.name }}?"
+              data-confirm-text="The account, its half of every chat and all of its messages are deleted. This cannot be undone."
+              data-confirm-button="Delete" data-danger>{% csrf_token %}
+            <button class="btn text-danger" type="submit">{% icon "trash" %}Delete account</button>
+        </form>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat">
+        <span class="stat-label">{% icon "messages-square" %}Chats</span>
+        <span class="stat-value">{{ rows|length }}</span>
+        <span class="stat-meta">as they have them</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "send" %}Messages sent</span>
+        <span class="stat-value">{{ messages_sent }}</span>
+        <span class="stat-meta">kept {{ config.keep_days }} days</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "bell" %}SyncUp push</span>
+        <span class="stat-value" style="font-size:17px">{% if person.syncup_token %}Ready{% else %}No token{% endif %}</span>
+        <span class="stat-meta">{% if person.syncup_token %}opened inside the app{% else %}they have not opened it in SyncUp{% endif %}</span>
+    </div>
+    <div class="stat">
+        <span class="stat-label">{% icon "eye" %}Media links</span>
+        <span class="stat-value" style="font-size:17px">{% if person.load_media %}Rendered{% else %}Links only{% endif %}</span>
+        <span class="stat-meta">their own switch</span>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "messages-square" %}<h2>{{ person.name }}'s chats</h2>
+        <span class="small muted ml-auto">As they see them · newest first</span></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>With</th><th>Last message</th><th class="num">Messages</th>
+                <th>Started</th><th>State</th><th></th></tr></thead>
+            <tbody>
+                {% for row in rows %}
+                <tr data-href="{% url 'j6_admin_chat' person.pk row.chat.pk %}">
+                    <td class="t-primary" data-label="With">
+                        <b>{{ row.other.name }}</b>
+                        <div class="small faint"><code>{{ row.other.account_id }}</code></div>
+                    </td>
+                    <td data-label="Last message">
+                        {% if row.last %}<span class="small muted">{{ row.last.sender.name }}:</span>
+                            {{ row.last.body|truncatechars:60 }}
+                            <div class="small faint">{{ row.last.created_at|date:"d M Y, H:i" }}</div>
+                        {% else %}<span class="faint">No messages</span>{% endif %}
+                    </td>
+                    <td data-label="Messages" class="num">{{ row.count }}</td>
+                    <td data-label="Started">{{ row.chat.created_at|date:"d M Y" }}</td>
+                    <td data-label="State">
+                        {% if row.blocked_by_them %}<span class="badge badge-danger"><span class="dot"></span>Blocked by {{ person.name }}</span>
+                        {% elif row.blocked_by_other %}<span class="badge badge-warning"><span class="dot"></span>Blocked by {{ row.other.name }}</span>
+                        {% else %}<span class="badge badge-success">Open</span>{% endif %}
+                    </td>
+                    <td data-label=""><a class="btn btn-ghost btn-sm" href="{% url 'j6_admin_chat' person.pk row.chat.pk %}">Read</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6"><div class="empty">{% icon "messages-square" %}<b>No chats yet</b>
+                    <span>They have an account but nobody has written to them.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

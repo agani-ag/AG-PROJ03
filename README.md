@@ -170,6 +170,7 @@ recorded and shown on **System → Cron**, which also has "Run now" buttons.
 | Module | What it is |
 |---|---|
 | **Hibiscus** (`/hibiscus/`) | A cycle diary. Admin side inside SyncHub; the diary itself at `/hibiscus/me/` with its own sign-up, session and theme. Was a separate Flask app called Red Hibiscus. |
+| **J6** (`/j6/`) | Chat with no sign-up. Console side inside SyncHub; the chat itself at `/j6/me/`, plus a portable Windows client in [desktop/](desktop/). |
 
 Hibiscus in short: flow is recorded **per day**, and a period is a *run* of days worked out by
 `hibiscus/cycle.py` — no start or end dates are stored. Spotting shows on the calendar but is not
@@ -196,6 +197,19 @@ one retires the old link immediately), an off switch, a refusal for suspended or
 accounts, and an audit row for every use. The key never stays in the address bar: the view signs
 them in and redirects.
 
+J6 in short: you give a **name** and get two permanent IDs — an **Account ID** to hand out and a
+**Self-ID** to come back with. No email, no password, no recovery: lose the Self-ID and you make
+a new account. Chats are one-to-one, text only, and any **public media link plays in the bubble**
+— the browser probes the URL and draws a picture, a clip or an audio player, or leaves it a link.
+Nothing is ever uploaded; a message with a picture in it is a message with a URL in its body.
+Delivery is polling (3s focused, 8s for the list, 20s hidden, `304` when nothing changed), because
+the host cannot do WebSockets. The console reads **by account**: pick a person, see their chats,
+open one as they see it. Messages are kept 90 days and idle accounts 180, both by SyncHub's
+nightly cron.
+
+The same server also answers `/j6/api/` for non-browser clients, authenticated by the Self-ID in
+an `X-J6-Self` header — that is what the Windows app and the terminal client speak.
+
 ## Pages
 
 | URL | Page |
@@ -210,6 +224,10 @@ them in and redirects.
 | `/hibiscus/` | Hibiscus admin: people, periods, stocks, notifications, settings |
 | `/hibiscus/me/` | The diary, for the people who keep it (their own sign-in) |
 | `/hibiscus/me/k/<key>` | Magic link: signs that person in and redirects, no password, no expiry |
+| `/j6/` | J6 console: accounts → one account's chats → one conversation, read only |
+| `/j6/me/` | The chat itself (its own session) |
+| `/j6/s/<self-id>` | One-tap sign-in link, also how the Windows app hands its account to the page |
+| `/j6/api/…` | `start · hello · poll · send · new · read · version` for desktop and terminal clients |
 | `/m/<key>/` | Placeholder for a module that isn't built yet |
 | `/django-admin/` | Django's own admin |
 
@@ -228,6 +246,8 @@ core/            the shell
                    auth/login.html, core/*.html, 404.html, 500.html
 static/          app.css, app.js, icons.svg, images/app-icon.svg  (copied from AG-PROJ01)
   hibiscus/        user.css, user.js, flower.svg — the diary's own assets
+  j6/              user.css, user.js — the chat's own
+desktop/         the Windows client: one portable j6.exe that is a window and a terminal
 ```
 
 **Every asset lives in this one `static/` folder, including a module's own** — not in

@@ -1,0 +1,98 @@
+{% extends "j6/user/base.html" %}
+{% block title %}Profile{% endblock %}
+
+{% block content %}
+<div class="head-sm">
+    <a class="back" href="{% url 'j6_inbox' %}"><svg class="ic sm"><use href="#j-left"/></svg>Chats</a>
+    <h1>Profile</h1>
+</div>
+
+{% if saved %}<div class="note">{{ saved }}</div>{% endif %}
+
+<form method="POST" class="card row" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="what" value="name">
+    <span class="av lg" style="background:{{ account.colour }}">{{ account.initials }}</span>
+    <div class="grow">
+        <input class="input" type="text" name="name" value="{{ account.name }}" maxlength="24"
+               aria-label="Your name">
+        <p class="tiny">The name people see. Change it any time.</p>
+    </div>
+    <button class="btn sm ghost" type="submit">Save</button>
+</form>
+
+<div class="card stack">
+    <div><b>Account ID</b><p class="sub">Share this to be reachable.</p></div>
+    <div class="idbox"><code>{{ account.account_id }}</code>
+        <button class="cp" type="button" data-copy="{{ account.account_id }}" aria-label="Copy">
+            <svg class="ic sm"><use href="#j-copy"/></svg></button>
+    </div>
+</div>
+
+<div class="card stack">
+    <div><b>Self-ID</b><p class="sub">Your way back in. Never share it.</p></div>
+    <div class="idbox" data-secret>
+        <code data-mask="{{ account.self_id }}">•••• •••• •••• •••• •••• ••••</code>
+        <button class="cp" type="button" data-reveal aria-label="Show"><svg class="ic sm"><use href="#j-eye"/></svg></button>
+        <button class="cp" type="button" data-copy="{{ account.self_id }}" aria-label="Copy">
+            <svg class="ic sm"><use href="#j-copy"/></svg></button>
+    </div>
+    <div class="idbox small"><code>{{ link }}</code>
+        <button class="cp" type="button" data-copy="{{ link }}" aria-label="Copy the link">
+            <svg class="ic sm"><use href="#j-copy"/></svg></button>
+    </div>
+</div>
+
+<div class="card pad0">
+    <div class="line" data-notif hidden>
+        <span class="ico"><svg class="ic"><use href="#j-bell"/></svg></span>
+        <span class="grow"><b>Notifications on this device</b><span class="tiny" data-notif-state>Checking…</span></span>
+        <button class="btn sm ghost" type="button" data-notif-ask hidden>Turn on</button>
+    </div>
+    <form method="POST" class="line">
+        {% csrf_token %}
+        <input type="hidden" name="what" value="media">
+        <span class="ico"><svg class="ic"><use href="#j-eye"/></svg></span>
+        <span class="grow"><b>Load media from links</b><span class="tiny">Pictures and clips play in the chat. Off means links stay links.</span></span>
+        <input type="hidden" name="load_media" value="{% if account.load_media %}off{% else %}on{% endif %}">
+        <button class="btn sm {% if account.load_media %}mint{% else %}ghost{% endif %}" type="submit">
+            {% if account.load_media %}On{% else %}Off{% endif %}</button>
+    </form>
+    <form method="POST" class="line">
+        {% csrf_token %}
+        <input type="hidden" name="what" value="theme">
+        <span class="ico"><svg class="ic"><use href="#j-gear"/></svg></span>
+        <span class="grow"><b>Theme</b><span class="tiny">{{ account.get_theme_display }}</span></span>
+        <input type="hidden" name="theme" value="{% if account.theme == 'system' %}light{% elif account.theme == 'light' %}dark{% else %}system{% endif %}">
+        <button class="btn sm ghost" type="submit">Change</button>
+    </form>
+</div>
+
+<div class="card pad0">
+    <a class="line" href="https://github.com/agani-ag/AG-PROJ03/releases/latest/download/j6.exe"
+       rel="noreferrer">
+        <span class="ico"><svg class="ic"><use href="#j-send"/></svg></span>
+        <span class="grow"><b>Get the Windows app</b><span class="tiny">One portable file — a window, or a terminal client. Same account, same chats.</span></span>
+        <span class="btn sm ghost">Download</span>
+    </a>
+</div>
+
+{% if blocked %}
+<div class="card pad0">
+    <div class="line"><span class="grow"><b>Blocked</b><span class="tiny">{{ blocked|length }} account{{ blocked|length|pluralize }} — you see nothing from them</span></span></div>
+    {% for b in blocked %}
+    <form method="POST" action="{% url 'j6_block' b.chat.pk %}" class="line">{% csrf_token %}
+        <span class="av sm" style="background:{{ b.other.colour }}">{{ b.other.initials }}</span>
+        <span class="grow"><b>{{ b.other.name }}</b><span class="tiny mono">{{ b.other.account_id }}</span></span>
+        <button class="btn sm ghost" type="submit">Unblock</button>
+    </form>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="card stack danger">
+    <div><b>Sign out</b>
+        <p class="sub">You will need the Self-ID above to get back in. Copy it first — there is no other way back.</p></div>
+    <a class="btn sm ghost danger" href="{% url 'j6_logout' %}"><svg class="ic sm"><use href="#j-out"/></svg>Sign out</a>
+</div>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}J6 settings{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'j6_accounts' %}">{% icon "arrow-left" %}J6</a>
+        <h1>Module settings</h1>
+        <p class="page-sub">Caps, retention, media and the switch that stops new accounts</p>
+    </div>
+</div>
+
+<form method="POST" novalidate>
+    {% csrf_token %}
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-head">{% icon "users-round" %}<h2>Who may use it</h2></div>
+            <div class="card-body form">
+                {% for f in form %}{% if f.name == 'signup_open' or f.name == 'new_chats_per_hour' or f.name == 'msgs_per_minute' or f.name == 'max_chars' %}
+                <div class="field{% if f.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
+                    {{ f }}
+                    {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+                    {% for e in f.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                </div>
+                {% endif %}{% endfor %}
+                <span class="help">The caps are per account. They exist because anyone holding an Account ID can
+                    write to its owner — they make abuse boring rather than impossible.</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "clock" %}<h2>Keeping and deleting</h2></div>
+            <div class="card-body form">
+                {% for f in form %}{% if f.name == 'keep_days' or f.name == 'idle_account_days' %}
+                <div class="field{% if f.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
+                    {{ f }}
+                    {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+                </div>
+                {% endif %}{% endfor %}
+                <dl class="kv">
+                    <dt>Holding now</dt><dd>{{ messages_held }} message{{ messages_held|pluralize }} · {{ accounts }} account{{ accounts|pluralize }}</dd>
+                    <dt>Oldest</dt><dd>{% if oldest %}{{ oldest|date:"d M Y" }}{% else %}—{% endif %}</dd>
+                </dl>
+                <span class="help">Both clocks are run by SyncHub's nightly cleanup. J6 has no cron URL of its own.</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "eye" %}<h2>Media in messages</h2>
+                <span class="small muted ml-auto">links only — nothing is uploaded</span></div>
+            <div class="card-body form">
+                {% for f in form %}{% if f.name == 'render_media' or f.name == 'autoplay_seconds' or f.name == 'max_media_px' or f.name == 'allow_svg' %}
+                <div class="field{% if f.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
+                    {{ f }}
+                    {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+                </div>
+                {% endif %}{% endfor %}
+                <div class="alert">
+                    {% icon "info" %}
+                    <div class="alert-body"><b>The console never loads media on its own</b>Whatever these say, a
+                        conversation read here shows the URL with a <b>Show media</b> button. That is a rule, not a setting:
+                        reading someone else's chat should not hand your address to a stranger's server.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "bell" %}<h2>Notifications</h2></div>
+            <div class="card-body form">
+                {% for f in form %}{% if f.name == 'site_base' or f.name == 'syncup_base' or f.name == 'syncup_notify_key' or f.name == 'push_enabled' %}
+                <div class="field{% if f.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
+                    {{ f }}
+                    {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+                </div>
+                {% endif %}{% endfor %}
+                <span class="help">Unread messages are pushed on the hub's 15-minute tick, one summary per account —
+                    never one buzz per message, and never to somebody whose page is open. The SyncUp address is kept
+                    here rather than shared with Hibiscus so the two modules stay independent of each other.</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="savebar" style="margin-top:16px">
+        <span>{% if config.updated_at %}Last saved {{ config.updated_at|ago }}{% if config.updated_by %} by {{ config.updated_by.first_name|default:config.updated_by.username }}{% endif %}{% else %}Not saved yet{% endif %}</span>
+        <a class="btn btn-sm" href="{% url 'j6_accounts' %}">Discard</a>
+        <button class="btn btn-sm btn-primary" type="submit">{% icon "check" %}Save</button>
+    </div>
+</form>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "triangle-alert" %}<h2>What the admin can see</h2>
+        <span class="small muted ml-auto">stated here so it is not a surprise</span></div>
+    <div class="card-body">
+        <p class="muted">Every message of every chat is readable from this console, and the <b>Self-ID</b> of every
+            account is stored in a form its owner can read back — which means it is readable here too, and inside any
+            database backup you download. J6 is not private from its own admin and does not claim to be: the welcome
+            screen says so in one line before anyone starts.</p>
+    </div>
+</div>
+{% endblock %}

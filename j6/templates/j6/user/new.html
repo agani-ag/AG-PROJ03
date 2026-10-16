@@ -1,0 +1,39 @@
+{% extends "j6/user/base.html" %}
+{% block title %}New chat{% endblock %}
+
+{% block content %}
+<div class="head-sm">
+    <a class="back" href="{% url 'j6_inbox' %}"><svg class="ic sm"><use href="#j-left"/></svg>Chats</a>
+    <h1>New chat</h1>
+</div>
+
+<form method="POST" class="card stack" novalidate>
+    {% csrf_token %}
+    <div>
+        <b>Paste their Account ID</b>
+        <p class="sub">They will have sent it to you — it starts with <code>j6-</code>.</p>
+    </div>
+    <input class="input mono" type="text" name="account_id" placeholder="j6-…" autofocus
+           autocapitalize="off" autocomplete="off" spellcheck="false">
+    {% if error %}<span class="err">{{ error }}</span>{% endif %}
+    <button class="btn" type="submit"><svg class="ic"><use href="#j-plus"/></svg>Start the chat</button>
+</form>
+
+<div class="card stack">
+    <div>
+        <b>Or give them yours</b>
+        <p class="sub">Paste it into any app — a message, an email, a sticky note.</p>
+    </div>
+    <div class="idbox"><code>{{ account.account_id }}</code>
+        <button class="cp" type="button" data-copy="{{ account.account_id }}" aria-label="Copy">
+            <svg class="ic sm"><use href="#j-copy"/></svg></button>
+    </div>
+    <p class="tiny">Whoever has it can write to you, and only them.</p>
+</div>
+
+<div class="card dashed row">
+    <svg class="ic sm fade"><use href="#j-search"/></svg>
+    <p class="tiny">There is no search and no directory. Nobody finds you here — they can only reach you with the ID
+        you handed over.</p>
+</div>
+{% endblock %}

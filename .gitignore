@@ -87,5 +87,12 @@ media/
 **/migrations/*
 !**/migrations/__init__.py
 
+# The Windows client's build output. The spec and the source are committed; the EXE is not —
+# release assets live outside git history, so the repo stays small however many builds exist.
+desktop/build/
+desktop/dist/
+desktop/*.exe
+desktop/**/__pycache__/
+
 # Local database backups
 backups/
