@@ -691,3 +691,59 @@ class FactoryResetTests(TestCase):
         fresh = make('Riya')
         self.assertEqual(Account.objects.count(), 1)
         self.assertEqual(service.chat_rows(fresh), [])
+
+
+class SettingsFormRenderingTests(TestCase):
+    """A checkbox is not a text box with a tick in it.
+
+    Rendered as an ordinary field, a boolean ends up as a bare checkbox floating under its own
+    label — which is exactly what the console looked like before. Booleans go through the shared
+    `_field.html` include and come out as switch rows: the label and its explanation on the left,
+    a toggle on the right.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+
+    def _body(self, name='j6_settings'):
+        return self.client.get(reverse(name)).content.decode()
+
+    def test_every_boolean_is_a_switch_row(self):
+        import re
+        body = self._body()
+        for field in ('signup_open', 'render_media', 'allow_svg', 'push_enabled'):
+            pattern = r'<div class="switch-row[^"]*">.{0,500}?name="' + field + '"'
+            self.assertRegex(body, re.compile(pattern, re.S), f'{field} is not a switch row')
+
+    def test_no_checkbox_is_left_floating_in_a_field(self):
+        import re
+        body = self._body()
+        stray = re.findall(r'<div class="field[^"]*">\s*<label class="label"[^>]*>[^<]*</label>'
+                           r'\s*<input type="checkbox"', body)
+        self.assertEqual(stray, [])
+
+    def test_a_toggle_carries_its_track(self):
+        """Without the track span the switch has nothing to draw."""
+        body = self._body()
+        self.assertIn('<span class="track"></span>', body)
+
+    def test_the_help_text_sits_with_the_label_not_under_the_toggle(self):
+        import re
+        body = self._body()
+        m = re.search(r'<div class="text">\s*<b>Render media links</b>\s*'
+                      r'<span class="help">([^<]+)</span>', body)
+        self.assertIsNotNone(m)
+        self.assertIn('every link stays a link', m.group(1))
+
+    def test_a_text_field_still_looks_like_one(self):
+        body = self._body()
+        self.assertIn('<label class="label" for="id_keep_days">', body)
+        self.assertIn('name="keep_days"', body)
+
+    def test_the_diary_uses_the_same_include(self):
+        """One shape for every module's settings, which is why it lives in core."""
+        import re
+        body = self._body('hibiscus_settings')
+        self.assertRegex(body, re.compile(r'<div class="switch-row[^"]*">.{0,500}?'
+                                          r'name="week_starts_sunday"', re.S))

@@ -14,7 +14,7 @@ def _style(form):
     for field in form.fields.values():
         widget = field.widget
         if isinstance(widget, forms.CheckboxInput):
-            widget.attrs.setdefault('class', 'check')
+            pass                      # the template wraps it; `.check` is a label's class
         elif isinstance(widget, forms.Select):
             widget.attrs.setdefault('class', 'input select')
         else:

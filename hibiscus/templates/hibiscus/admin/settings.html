@@ -18,12 +18,7 @@
             <div class="card-body form">
                 <div class="form-grid">
                     {% for f in form %}{% if f.name == 'default_cycle' or f.name == 'default_period' or f.name == 'luteal_days' or f.name == 'bridge_days' %}
-                    <div class="field{% if f.errors %} invalid{% endif %}">
-                        <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
-                        {{ f }}
-                        {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
-                        {% for e in f.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
-                    </div>
+                    {% include "_field.html" %}
                     {% endif %}{% endfor %}
                 </div>
                 <div class="alert">
@@ -38,12 +33,7 @@
             <div class="card-body form">
                 <div class="form-grid">
                     {% for f in form %}{% if f.name == 'display_name' or f.name == 'time_zone' or f.name == 'keep_audit_days' %}
-                    <div class="field{% if f.errors %} invalid{% endif %}">
-                        <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
-                        {{ f }}
-                        {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
-                        {% for e in f.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
-                    </div>
+                    {% include "_field.html" %}
                     {% endif %}{% endfor %}
                 </div>
                 <div class="switch-row">
@@ -75,11 +65,7 @@
                 <p class="muted">How many messages a day, at what times, and the words for each time of day. Sent through SyncUp and delivered by SyncHub's 15-minute cron — this module gets no cron URL of its own.</p>
                 <div class="form-grid">
                     {% for f in form %}{% if f.name == 'notify_late_hours' %}
-                    <div class="field{% if f.errors %} invalid{% endif %}">
-                        <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
-                        {{ f }}
-                        {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
-                    </div>
+                    {% include "_field.html" %}
                     {% endif %}{% endfor %}
                 </div>
                 <div class="alert">

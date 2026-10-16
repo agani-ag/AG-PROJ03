@@ -1,0 +1,26 @@
+{% comment %}
+One form field, rendered the way the design system expects. Shared by every module's
+settings page, which is why it lives in core beside _sidebar.html rather than inside a module.
+
+A checkbox is not a text box with a tick in it: dropping a bare <input type="checkbox"> into a
+`.field` column leaves it floating under its own label, which is what this include exists to
+stop. Booleans become `.switch-row` — the label and its explanation on the left, a toggle on the
+right — and everything else keeps the ordinary label-above-input shape.
+{% endcomment %}
+{% if f.field.widget.input_type == 'checkbox' %}
+<div class="switch-row{% if f.errors %} invalid{% endif %}">
+    <div class="text">
+        <b>{{ f.label }}</b>
+        {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+        {% for e in f.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+    </div>
+    <label class="switch" for="{{ f.id_for_label }}">{{ f }}<span class="track"></span></label>
+</div>
+{% else %}
+<div class="field{% if f.errors %} invalid{% endif %}">
+    <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
+    {{ f }}
+    {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
+    {% for e in f.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+</div>
+{% endif %}

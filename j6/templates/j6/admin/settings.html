@@ -17,12 +17,7 @@
             <div class="card-head">{% icon "users-round" %}<h2>Who may use it</h2></div>
             <div class="card-body form">
                 {% for f in form %}{% if f.name == 'signup_open' or f.name == 'new_chats_per_hour' or f.name == 'msgs_per_minute' or f.name == 'max_chars' %}
-                <div class="field{% if f.errors %} invalid{% endif %}">
-                    <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
-                    {{ f }}
-                    {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
-                    {% for e in f.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
-                </div>
+                {% include "_field.html" %}
                 {% endif %}{% endfor %}
                 <span class="help">The caps are per account. They exist because anyone holding an Account ID can
                     write to its owner — they make abuse boring rather than impossible.</span>
@@ -33,11 +28,7 @@
             <div class="card-head">{% icon "clock" %}<h2>Keeping and deleting</h2></div>
             <div class="card-body form">
                 {% for f in form %}{% if f.name == 'keep_days' or f.name == 'idle_account_days' %}
-                <div class="field{% if f.errors %} invalid{% endif %}">
-                    <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
-                    {{ f }}
-                    {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
-                </div>
+                {% include "_field.html" %}
                 {% endif %}{% endfor %}
                 <dl class="kv">
                     <dt>Holding now</dt><dd>{{ messages_held }} message{{ messages_held|pluralize }} · {{ accounts }} account{{ accounts|pluralize }}</dd>
@@ -52,11 +43,7 @@
                 <span class="small muted ml-auto">links only — nothing is uploaded</span></div>
             <div class="card-body form">
                 {% for f in form %}{% if f.name == 'render_media' or f.name == 'autoplay_seconds' or f.name == 'max_media_px' or f.name == 'allow_svg' %}
-                <div class="field{% if f.errors %} invalid{% endif %}">
-                    <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
-                    {{ f }}
-                    {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
-                </div>
+                {% include "_field.html" %}
                 {% endif %}{% endfor %}
                 <div class="alert">
                     {% icon "info" %}
@@ -71,11 +58,7 @@
             <div class="card-head">{% icon "bell" %}<h2>Notifications</h2></div>
             <div class="card-body form">
                 {% for f in form %}{% if f.name == 'push_enabled' %}
-                <div class="field{% if f.errors %} invalid{% endif %}">
-                    <label class="label" for="{{ f.id_for_label }}">{{ f.label }}</label>
-                    {{ f }}
-                    {% if f.help_text %}<span class="help">{{ f.help_text }}</span>{% endif %}
-                </div>
+                {% include "_field.html" %}
                 {% endif %}{% endfor %}
                 <span class="help">Unread messages are pushed on the hub's 15-minute tick, one summary per account —
                     never one buzz per message, and never to somebody whose page is open.</span>
