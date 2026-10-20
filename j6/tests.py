@@ -101,7 +101,7 @@ class NameTests(TestCase):
     """A name is required, so no screen ever has to show an ID where a person should be."""
 
     def test_two_letters_is_enough(self):
-        self.assertEqual(make('Mi').name, 'Mi')
+        self.assertEqual(make('Mi').name, 'MI')
 
     def test_one_letter_is_not(self):
         with self.assertRaises(ValidationError):
@@ -117,7 +117,7 @@ class NameTests(TestCase):
 
     def test_initials_come_from_the_name(self):
         self.assertEqual(make('Anand Kumar').initials, 'AK')
-        self.assertEqual(make('Mani').initials, 'Ma')
+        self.assertEqual(make('Mani').initials, 'MA')
 
     def test_colour_is_stable_for_an_account(self):
         account = make()
@@ -373,12 +373,12 @@ class ClientApiTests(TestCase):
         body = r.json()
         self.assertTrue(body['account_id'].startswith('j6-'))
         self.assertTrue(body['self_id'].startswith('j6s-'))
-        self.assertTrue(Account.objects.filter(name='Riya').exists())
+        self.assertTrue(Account.objects.filter(name='RIYA').exists())
 
     def test_hello_says_who_you_are_and_what_you_have(self):
         body = self._post('j6_api_hello').json()
-        self.assertEqual(body['name'], 'Anand')
-        self.assertEqual(body['chats'][0]['name'], 'Mani')
+        self.assertEqual(body['name'], 'ANAND')
+        self.assertEqual(body['chats'][0]['name'], 'MANI')
         self.assertIn('media', body)
 
     def test_no_token_means_401(self):
@@ -395,7 +395,7 @@ class ClientApiTests(TestCase):
         riya = make('Riya')
         r = self._post('j6_api_new', {'account_id': riya.account_id})
         self.assertEqual(r.status_code, 201)
-        self.assertEqual(r.json()['name'], 'Riya')
+        self.assertEqual(r.json()['name'], 'RIYA')
 
     def test_a_client_can_move_its_read_mark(self):
         service.send(self.mani, self.chat, 'hello')
@@ -444,23 +444,23 @@ class ConsoleTests(TestCase):
 
     def test_the_landing_page_lists_accounts_with_their_names(self):
         r = self.client.get(reverse('j6_accounts'))
-        self.assertContains(r, 'Anand')
+        self.assertContains(r, 'ANAND')
         self.assertContains(r, self.anand.account_id)
 
     def test_search_matches_a_name_or_an_id(self):
-        self.assertContains(self.client.get(reverse('j6_accounts') + '?q=Mani'), 'Mani')
+        self.assertContains(self.client.get(reverse('j6_accounts') + '?q=Mani'), 'MANI')
         r = self.client.get(reverse('j6_accounts') + f'?q={self.anand.account_id[:9]}')
-        self.assertContains(r, 'Anand')
+        self.assertContains(r, 'ANAND')
 
     def test_an_account_page_shows_their_chats_not_pair_titles(self):
         r = self.client.get(reverse('j6_account', args=[self.anand.pk]))
-        self.assertContains(r, "Anand's chats")
-        self.assertContains(r, 'Mani')
-        self.assertNotContains(r, 'Anand ↔ Mani')
+        self.assertContains(r, "ANAND's chats")
+        self.assertContains(r, 'MANI')
+        self.assertNotContains(r, 'ANAND ↔ MANI')
 
     def test_a_conversation_is_shown_from_that_account_side(self):
         r = self.client.get(reverse('j6_admin_chat', args=[self.anand.pk, self.chat.pk]))
-        self.assertContains(r, 'Shown as <b>Anand</b> sees it')
+        self.assertContains(r, 'Shown as <b>ANAND</b> sees it')
         body = r.content.decode()
         self.assertIn('j6-msg right', body)                   # their own messages, right-aligned
 
@@ -921,7 +921,7 @@ class PushAtSendTests(TestCase):
     def test_an_away_recipient_is_pushed_at_once(self):
         fake, message = self._send()
         self.assertEqual(fake.url, 'https://syncup.example.com/app/v1/partner/notify')
-        self.assertEqual(fake.payload['title'], 'Anand')
+        self.assertEqual(fake.payload['title'], 'ANAND')
         self.assertEqual(fake.payload['body'], 'are you there?')
         self.assertTrue(fake.payload['url'].endswith(reverse('j6_inbox')))
         self.assertEqual(fake.payload['token'], 'tok-123')
@@ -1080,7 +1080,7 @@ class ConsoleAccountTests(TestCase):
         r = self.client.post(reverse('j6_account_rename', args=[self.account.pk]),
                              {'name': 'Mani K'}, follow=True)
         self.account.refresh_from_db()
-        self.assertEqual(self.account.name, 'Mani K')
+        self.assertEqual(self.account.name, 'MANI K')
         self.assertContains(r, 'Account ID and Self-ID are unchanged')
 
     def test_renaming_leaves_both_ids_alone(self):
@@ -1093,7 +1093,7 @@ class ConsoleAccountTests(TestCase):
         r = self.client.post(reverse('j6_account_rename', args=[self.account.pk]),
                              {'name': 'M'}, follow=True)
         self.account.refresh_from_db()
-        self.assertEqual(self.account.name, 'Mani')
+        self.assertEqual(self.account.name, 'MANI')
         self.assertContains(r, 'at least 2 characters')
 
     def test_renaming_is_post_only_and_admin_only(self):
@@ -1102,7 +1102,7 @@ class ConsoleAccountTests(TestCase):
         self.client.logout()
         self.assertEqual(self.client.post(url, {'name': 'Hacked'}).status_code, 302)
         self.account.refresh_from_db()
-        self.assertEqual(self.account.name, 'Mani')
+        self.assertEqual(self.account.name, 'MANI')
 
 
 class ConsoleThreadTests(TestCase):
@@ -1159,3 +1159,95 @@ class ConsoleThreadTests(TestCase):
         body = self.client.get(self.url).content.decode()
         self.assertIn('have a look at', body)
         self.assertNotIn('<img src="https://example.com/notes"', body)
+
+
+class UppercaseNameTests(TestCase):
+    """Names are stored in capitals, whichever door they come in through."""
+
+    def test_the_welcome_screen_stores_capitals(self):
+        self.client.post(reverse('j6_welcome'), {'name': 'Anand'})
+        self.assertEqual(Account.objects.get().name, 'ANAND')
+
+    def test_the_client_api_does_too(self):
+        r = self.client.post(reverse('j6_api_start'), data=json.dumps({'name': 'riya k'}),
+                             content_type='application/json')
+        self.assertEqual(r.json()['name'], 'RIYA K')
+        self.assertEqual(Account.objects.get().name, 'RIYA K')
+
+    def test_so_does_a_rename_by_its_owner(self):
+        account = make('Mani')
+        self.client.post(reverse('j6_login'), {'self_id': account.self_id})
+        self.client.post(reverse('j6_profile'), {'what': 'name', 'name': 'mani k'})
+        account.refresh_from_db()
+        self.assertEqual(account.name, 'MANI K')
+
+    def test_and_a_rename_by_the_admin(self):
+        admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(admin)
+        account = make('Mani')
+        self.client.post(reverse('j6_account_rename', args=[account.pk]), {'name': 'karthik'})
+        account.refresh_from_db()
+        self.assertEqual(account.name, 'KARTHIK')
+
+    def test_the_length_rule_still_counts_what_was_typed(self):
+        with self.assertRaises(ValidationError):
+            make('m')
+        self.assertEqual(make('mi').name, 'MI')
+
+    def test_initials_follow(self):
+        self.assertEqual(make('anand kumar').initials, 'AK')
+        self.assertEqual(make('mani').initials, 'MA')
+
+    def test_a_notification_carries_the_name_as_stored(self):
+        anand, mani = make('anand'), make('mani')
+        chat, _ = service.start_chat(anand, mani.account_id)
+        Account.objects.filter(pk=mani.pk).update(
+            syncup_token='tok', last_seen_at=timezone.now() - timedelta(minutes=5))
+        from core.models import HubSettings
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://syncup.example.com'
+        hub.save()
+        fake = FakeSyncUp()
+        with patch('j6.push.threading.Thread', RunInline), \
+             patch('j6.push.urllib.request.urlopen', fake):
+            service.send(anand, chat, 'hello')
+        self.assertEqual(fake.payload['title'], 'ANAND')
+
+    def test_search_in_the_console_is_still_case_insensitive(self):
+        admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(admin)
+        make('anand')
+        self.assertContains(self.client.get(reverse('j6_accounts') + '?q=anand'), 'ANAND')
+        self.assertContains(self.client.get(reverse('j6_accounts') + '?q=ANAND'), 'ANAND')
+
+    def test_the_command_brings_older_rows_into_line(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        account = make('Mani')
+        Account.objects.filter(pk=account.pk).update(name='Mani Kumar')   # as an old row would be
+        out = StringIO()
+        call_command('uppercase_names', stdout=out)
+        account.refresh_from_db()
+        self.assertEqual(account.name, 'MANI KUMAR')
+        self.assertIn('1 name updated', out.getvalue())
+
+    def test_the_command_is_safe_to_run_twice(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        make('Riya')
+        call_command('uppercase_names', stdout=StringIO())
+        out = StringIO()
+        call_command('uppercase_names', stdout=out)
+        self.assertIn('already in capitals', out.getvalue())
+
+    def test_a_dry_run_changes_nothing(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        account = make('Mani')
+        Account.objects.filter(pk=account.pk).update(name='Mani')
+        call_command('uppercase_names', '--dry-run', stdout=StringIO())
+        account.refresh_from_db()
+        self.assertEqual(account.name, 'Mani')

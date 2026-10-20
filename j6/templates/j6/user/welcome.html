@@ -12,10 +12,12 @@
     {% csrf_token %}
     <div>
         <b>What should people call you?</b>
-        <p class="sub">Shown to whoever you chat with. Two letters is enough, and you can change it later.</p>
+        <p class="sub">Shown to whoever you chat with, in capitals. Two letters is enough, and you can change
+            it later.</p>
     </div>
-    <input class="input" type="text" name="name" maxlength="24" placeholder="Your name" autofocus
-           autocomplete="nickname" value="{{ request.POST.name|default:'' }}">
+    <input class="input" type="text" name="name" maxlength="24" placeholder="YOUR NAME" autofocus
+           autocomplete="nickname" style="text-transform:uppercase"
+           value="{{ request.POST.name|default:'' }}">
     {% if error %}<span class="err">{{ error }}</span>{% endif %}
     <p class="tiny">That is the only thing asked of you — no email, no number, no password.</p>
     <button class="btn" type="submit"><svg class="ic"><use href="#j-send"/></svg>Start chatting</button>

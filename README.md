@@ -197,7 +197,7 @@ one retires the old link immediately), an off switch, a refusal for suspended or
 accounts, and an audit row for every use. The key never stays in the address bar: the view signs
 them in and redirects.
 
-J6 in short: you give a **name** and get two permanent IDs — an **Account ID** to hand out and a
+J6 in short: you give a **name** (2–24 characters, stored in capitals) and get two permanent IDs — an **Account ID** to hand out and a
 **Self-ID** to come back with. No email, no password, no recovery: lose the Self-ID and you make
 a new account. Chats are one-to-one, text only, and any **public media link plays in the bubble**
 — the browser probes the URL and draws a picture, a clip or an audio player, or leaves it a link.

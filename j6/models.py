@@ -44,12 +44,17 @@ def new_self_id():
 
 
 def validate_name(value):
+    """The one place a name is cleaned, so every door into the app agrees.
+
+    Names are stored in capitals — the welcome screen, the profile, the console's rename and the
+    client API all come through here, so there is no route in that stores anything else.
+    """
     name = (value or '').strip()
     if len(name) < NAME_MIN:
         raise ValidationError(f'A name needs at least {NAME_MIN} characters.')
     if len(name) > NAME_MAX:
         raise ValidationError(f'A name can be at most {NAME_MAX} characters.')
-    return name
+    return name.upper()
 
 
 class Settings(models.Model):
@@ -135,7 +140,7 @@ class Account(models.Model):
         parts = (self.name or '').split()
         if len(parts) > 1:
             return (parts[0][:1] + parts[1][:1]).upper()
-        return (self.name or '?')[:2].title()
+        return (self.name or '?')[:2].upper()
 
     @property
     def colour(self):

@@ -32,7 +32,7 @@ class PageTests(TestCase):
     def test_the_list_renders_names_never_ids(self):
         body = self.client.get(reverse('j6_inbox')).content.decode()
         visible = body.split('id="rows"', 1)[1].split('<footer', 1)[0]
-        self.assertIn('Mani', visible)
+        self.assertIn('MANI', visible)
         # the ID travels in the boot payload, but no row is ever *headed* by one
         self.assertNotIn(self.mani.account_id, visible)
 
@@ -72,7 +72,7 @@ class PageTests(TestCase):
         before = (self.anand.account_id, self.anand.self_id)
         self.client.post(reverse('j6_profile'), {'what': 'name', 'name': 'Anand K'})
         self.anand.refresh_from_db()
-        self.assertEqual(self.anand.name, 'Anand K')
+        self.assertEqual(self.anand.name, 'ANAND K')
         self.assertEqual((self.anand.account_id, self.anand.self_id), before)
 
     def test_the_profile_carries_the_sign_in_link(self):

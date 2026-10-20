@@ -41,8 +41,10 @@
             {% csrf_token %}
             <div class="field grow">
                 <label class="label" for="rename">Name</label>
-                <input class="input" id="rename" name="name" value="{{ person.name }}" maxlength="24">
-                <span class="help">What the people they chat with see. Changing it leaves both IDs alone.</span>
+                <input class="input" id="rename" name="name" value="{{ person.name }}" maxlength="24"
+                       style="text-transform:uppercase">
+                <span class="help">What the people they chat with see, stored in capitals. Changing it leaves both
+                    IDs alone.</span>
             </div>
             <button class="btn" type="submit">{% icon "check" %}Save</button>
         </form>
