@@ -14,6 +14,7 @@
   var SEND = body.getAttribute("data-send");
   var TYPING = body.getAttribute("data-typing");
   var CHAT = body.getAttribute("data-chat") || "";
+  var EARLIER = body.getAttribute("data-earlier");
   var MEDIA = {
     on: body.getAttribute("data-media") === "1",
     autoplay: parseInt(body.getAttribute("data-autoplay") || "15", 10),
@@ -253,7 +254,9 @@
   var jump = document.getElementById("jump");
   var jumpN = document.getElementById("jump-n");
   var state = { seq: 0, lastDay: null, lastSender: null, readUpto: 0, news: 0, etag: null,
-                typing: false, title: document.title };
+                typing: false, title: document.title, oldest: 0, more: false, loading: false };
+  var TICK_ONE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  var TICK_TWO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m2 13 4 4 8-10"/><path d="m11 16 1 1 9-11"/></svg>';
 
   function atBottom() {
     return !msgs || msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 90;
@@ -263,6 +266,47 @@
     if (!jump) return;
     if (atBottom() || !state.news) { jump.hidden = true; jumpN.textContent = ""; }
     else { jump.hidden = false; jumpN.textContent = state.news; }
+  }
+
+  function rowFor(m, grouped) {
+    var row = el("div", "msg " + (m.mine ? "me" : "them") + (grouped ? " grp" : ""));
+    row.setAttribute("data-seq", m.seq);
+    var col = el("div", "col");
+    var bub = el("div", "bub");
+    bub.appendChild(withLinks(m.body));
+    var meta = el("div", "mta");
+    meta.appendChild(el("span", null, timeOf(m.at)));
+    if (m.mine) {
+      var tick = el("span", "tick");
+      tick.innerHTML = TICK_ONE;
+      meta.appendChild(tick);
+    }
+    col.append(bub, meta);
+    row.appendChild(col);
+    return row;
+  }
+
+  /* Older messages, prepended as a block above what is already there. The scroll position is
+     restored by height difference — otherwise the thread jumps and you lose your place, which
+     is the one thing that makes "load earlier" unusable. */
+  function prepend(messages) {
+    if (!messages.length) return;
+    var before = msgs.scrollHeight, atTop = msgs.scrollTop;
+    var frag = document.createDocumentFragment();
+    var lastDay = null, lastSender = null;
+    messages.forEach(function (m) {
+      var day = new Date(m.at).toDateString();
+      if (day !== lastDay) {
+        frag.appendChild(el("div", "dsep", dayLabel(m.at)));
+        lastDay = day;
+        lastSender = null;
+      }
+      frag.appendChild(rowFor(m, lastSender === (m.mine ? "me" : "them")));
+      lastSender = m.mine ? "me" : "them";
+    });
+    var anchor = msgs.querySelector(".pad");
+    msgs.insertBefore(frag, anchor ? anchor.nextSibling : msgs.firstChild);
+    msgs.scrollTop = atTop + (msgs.scrollHeight - before);
   }
 
   function addMessage(m) {
@@ -284,7 +328,7 @@
     meta.appendChild(el("span", null, timeOf(m.at)));
     if (m.mine) {
       var tick = el("span", "tick");
-      tick.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+      tick.innerHTML = TICK_ONE;
       meta.appendChild(tick);
     }
     col.append(bub, meta);
@@ -303,9 +347,7 @@
       tick.style.display = "";
       var read = parseInt(mine[i].getAttribute("data-seq"), 10) <= state.readUpto;
       tick.className = read ? "tick read" : "tick";
-      tick.innerHTML = read
-        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m2 13 4 4 8-10"/><path d="m11 16 1 1 9-11"/></svg>'
-        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+      tick.innerHTML = read ? TICK_TWO : TICK_ONE;
     }
   }
 
@@ -344,7 +386,14 @@
     if (!rowsBox) return;
     rows.forEach(function (r) {
       var node = rowsBox.querySelector('[data-row="' + r.id + '"]');
-      if (!node) { window.setTimeout(function () { location.reload(); }, 400); return; }
+      if (!node) {
+        /* A chat that did not exist when this page was rendered — somebody has written to us for
+           the first time. That is the most worth telling about, so it is announced *before* the
+           reload that fetches its row; reloading first would throw the notification away. */
+        if (r.unread) notify(r.name, r.last || "New message");
+        window.setTimeout(function () { location.reload(); }, 400);
+        return;
+      }
       node.classList.toggle("unread", !!r.unread);
       var txt = node.querySelector(".txt");
       if (txt) txt.textContent = (r.last_mine ? "You: " : "") + (r.last || "No messages yet");
@@ -364,13 +413,20 @@
   function notify(title, text) {
     if (document.visibilityState === "visible") return;
     if (!("Notification" in window) || Notification.permission !== "granted") return;
-    try { new Notification(title, { body: text, tag: "j6", renotify: true }); } catch (e) {}
+    /* One per sender rather than one per message: a tag replaces the previous notification from
+       the same person instead of stacking five of them while somebody types. */
+    try {
+      new Notification(title, { body: text, tag: "j6-" + title, renotify: true,
+                                icon: "/static/images/app-icon.svg" });
+    } catch (e) {}
   }
 
   function apply(data) {
     if (data.chats) paintRows(data.chats);
     var t = data.thread;
     if (!t || !msgs) return;
+    if (t.from_seq && (!state.oldest || t.from_seq < state.oldest)) state.oldest = t.from_seq;
+    if (typeof t.has_more === "boolean") { state.more = t.has_more; paintEarlier(); }
     paintHeader(t["with"], t.typing, t.blocked);
     state.readUpto = t.read_upto || state.readUpto;
     var before = state.seq, added = 0;
@@ -408,7 +464,9 @@
   }
 
   function cadence() {
-    if (document.visibilityState !== "visible") return 20000;
+    /* Hidden, but still open: this is the only clock a notification has, so 20 seconds was too
+       slow to feel like a chat. Ten is still cheap — the answer is a 304 with no body. */
+    if (document.visibilityState !== "visible") return 10000;
     return CHAT ? 3000 : 8000;
   }
   var timer = null;
@@ -453,6 +511,33 @@
       }
     });
   }
+  /* "Load earlier" — the thread arrives newest-first a page at a time, so a conversation with
+     two thousand messages opens as fast as one with ten, and the media in the older ones is
+     never fetched until somebody comes back for it. */
+  var earlierBtn = document.getElementById("earlier");
+  function paintEarlier() {
+    if (!earlierBtn) return;
+    earlierBtn.hidden = !state.more;
+    earlierBtn.textContent = state.loading ? "Loading…" : "Load earlier messages";
+  }
+  if (earlierBtn && EARLIER) {
+    earlierBtn.addEventListener("click", function () {
+      if (state.loading || !state.oldest) return;
+      state.loading = true;
+      paintEarlier();
+      fetch(EARLIER + "?chat=" + CHAT + "&before=" + state.oldest,
+            { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          prepend(d.messages || []);
+          if (d.from_seq) state.oldest = d.from_seq;
+          state.more = !!d.has_more;
+        })
+        .catch(function () {})
+        .then(function () { state.loading = false; paintEarlier(); });
+    });
+  }
+
   if (jump) jump.addEventListener("click", toBottom);
   if (msgs) msgs.addEventListener("scroll", paintJump);
 
@@ -463,6 +548,14 @@
       var stateEl = row.querySelector("[data-notif-state]");
       var ask = row.querySelector("[data-notif-ask]");
       var paint = function () {
+        /* Browsers only hand out notifications on a secure origin. Opened over plain http the
+           API is simply absent, which looked like "this browser cannot" — a wrong and
+           unhelpful answer when the fix is one letter in the address bar. */
+        if (window.isSecureContext === false) {
+          stateEl.textContent = "Open this site over https to use notifications — http cannot.";
+          ask.hidden = true;
+          return;
+        }
         var p = ("Notification" in window) ? Notification.permission : "unsupported";
         stateEl.textContent = p === "granted" ? "On — new messages show on this device"
           : p === "denied" ? "Blocked in this browser's site settings"

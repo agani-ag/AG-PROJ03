@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="{% static_v 'j6/user.css' %}">
 </head>
 <body{% if account %} data-poll="{% url 'j6_poll' %}" data-send="{% url 'j6_send' %}"
+     data-earlier="{% url 'j6_earlier' %}"
      data-typing="{% url 'j6_typing' %}" data-token-url="{% url 'j6_token' %}"
      data-media="{{ media.render|yesno:'1,0' }}" data-autoplay="{{ media.autoplay_seconds }}"
      data-maxpx="{{ media.max_px }}" data-svg="{{ media.allow_svg|yesno:'1,0' }}"

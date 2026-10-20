@@ -29,6 +29,35 @@ def make(name='Anand'):
     return service.create_account(name)
 
 
+class FakeSyncUp:
+    """Stands in for SyncUp's partner endpoint and keeps what was posted to it."""
+
+    def __init__(self, delivered=1, raises=None):
+        self.delivered = delivered
+        self.raises = raises
+        self.url = None
+        self.payload = None
+
+    def __call__(self, request, timeout=None):
+        self.url = request.full_url
+        self.payload = json.loads(request.data)
+        if self.raises:
+            raise self.raises
+        fake = self
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return json.dumps({'delivered': fake.delivered}).encode()
+
+        return Response()
+
+
 def _ctx(kind, seconds=8):
     """A hook context with a real deadline.
 
@@ -435,13 +464,19 @@ class ConsoleTests(TestCase):
         body = r.content.decode()
         self.assertIn('j6-msg right', body)                   # their own messages, right-aligned
 
-    def test_media_is_not_loaded_for_the_admin(self):
-        r = self.client.get(reverse('j6_admin_chat', args=[self.anand.pk, self.chat.pk]))
-        body = r.content.decode()
-        self.assertIn('Show media', body)
-        # the URL appears as text and as a link to click — never inside an img or a video
-        self.assertNotIn('<img src="https://media.example.com', body)
-        self.assertNotIn('<video', body)
+    def test_media_in_the_console_is_lazy_and_sends_no_referrer(self):
+        """It is shown now — asked for — but on the gentlest terms available.
+
+        A picture in somebody's chat is a link to whatever host they pasted, so loading it here
+        tells that host the admin's address. It is lazy, referrer-free, and one switch away from
+        going back behind a button (see ConsoleThreadTests).
+        """
+        body = self.client.get(
+            reverse('j6_admin_chat', args=[self.anand.pk, self.chat.pk])).content.decode()
+        self.assertIn('<img src="https://media.example.com', body)
+        picture = body.split('<img src="https://media.example.com', 1)[1][:200]
+        self.assertIn('loading="lazy"', picture)
+        self.assertIn('referrerpolicy="no-referrer"', picture)
 
     def test_a_chat_that_is_not_theirs_is_a_404(self):
         riya = make('Riya')
@@ -507,14 +542,19 @@ class CronTests(TestCase):
         self.assertIn('note', push(_ctx('tick')))
 
     def test_push_sends_one_summary_and_does_not_repeat_it(self):
+        """The backstop's job: two messages nobody managed to push become one summary.
+
+        The token is set *after* the messages, so the send-time push had nothing to work with —
+        which is exactly the case this hook exists for (a failed send, a restart mid-flight).
+        """
         hub = HubSettings.load()
         hub.syncup_base = 'https://syncup.example.com'
         hub.site_base = 'https://synchub.example.com'
         hub.save()
-        Account.objects.filter(pk=self.mani.pk).update(
-            syncup_token='tok', last_seen_at=timezone.now() - timedelta(minutes=10))
         service.send(self.anand, self.chat, 'one')
         service.send(self.anand, self.chat, 'two')
+        Account.objects.filter(pk=self.mani.pk).update(
+            syncup_token='tok', last_seen_at=timezone.now() - timedelta(minutes=10))
 
         sent = []
 
@@ -527,7 +567,7 @@ class CronTests(TestCase):
             sent.append(json.loads(request.data))
             return Fake()
 
-        with patch('j6.cron.urllib.request.urlopen', fake_open):
+        with patch('j6.push.urllib.request.urlopen', fake_open):
             first = push(_ctx('tick'))
             second = push(_ctx('tick'))
 
@@ -541,10 +581,10 @@ class CronTests(TestCase):
         hub = HubSettings.load()
         hub.syncup_base = 'https://syncup.example.com'
         hub.save()
+        service.send(self.anand, self.chat, 'hello')
         Account.objects.filter(pk=self.mani.pk).update(syncup_token='tok',
                                                        last_seen_at=timezone.now())
-        service.send(self.anand, self.chat, 'hello')
-        with patch('j6.cron.urllib.request.urlopen', side_effect=AssertionError('sent anyway')):
+        with patch('j6.push.urllib.request.urlopen', side_effect=AssertionError('sent anyway')):
             result = push(_ctx('tick'))
         self.assertEqual(result['items'], 0)
 
@@ -747,3 +787,375 @@ class SettingsFormRenderingTests(TestCase):
         body = self._body('hibiscus_settings')
         self.assertRegex(body, re.compile(r'<div class="switch-row[^"]*">.{0,500}?'
                                           r'name="week_starts_sunday"', re.S))
+
+
+class AccountTestPushTests(TestCase):
+    """The button that turns "push is not working" into a sentence.
+
+    Four things can be wrong — no address, no token, a refusal, or an address pointing at this
+    very server — and from the outside they look identical. This says which.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.account = make('Riya')
+        Account.objects.filter(pk=self.account.pk).update(syncup_token='tok-123')
+        self.url = reverse('j6_account_test_push', args=[self.account.pk])
+        from core.models import HubSettings
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://syncup.example.com'
+        hub.syncup_notify_key = 'k'
+        hub.site_base = 'https://synchub.example.com'
+        hub.save()
+
+    def _send(self, fake):
+        with patch('j6.push.urllib.request.urlopen', fake):
+            return self.client.post(self.url, follow=True)
+
+    def test_the_button_is_on_the_account_page_when_there_is_a_token(self):
+        r = self.client.get(reverse('j6_account', args=[self.account.pk]))
+        self.assertContains(r, self.url)
+
+    def test_no_button_without_a_token_but_an_explanation(self):
+        Account.objects.filter(pk=self.account.pk).update(syncup_token='')
+        r = self.client.get(reverse('j6_account', args=[self.account.pk]))
+        self.assertNotContains(r, self.url)
+        self.assertContains(r, 'have not opened J6 inside SyncUp')
+
+    def test_a_delivery_is_reported_with_its_count(self):
+        fake = FakeSyncUp(delivered=2)
+        r = self._send(fake)
+        self.assertEqual(fake.url, 'https://syncup.example.com/app/v1/partner/notify')
+        self.assertEqual(fake.payload['token'], 'tok-123')
+        self.assertIn('test message', fake.payload['title'])
+        self.assertTrue(fake.payload['url'].endswith(reverse('j6_inbox')))
+        self.assertContains(r, 'delivered it to 2 devices')
+
+    def test_a_browser_only_account_is_told_what_it_would_take(self):
+        Account.objects.filter(pk=self.account.pk).update(syncup_token='')
+        fake = FakeSyncUp()
+        r = self._send(fake)
+        self.assertIsNone(fake.url)
+        self.assertContains(r, 'no device token')
+        self.assertContains(r, 'only notified while a tab is open')
+
+    def test_no_syncup_address(self):
+        from core.models import HubSettings
+        hub = HubSettings.load()
+        hub.syncup_base = ''
+        hub.save()
+        r = self._send(FakeSyncUp())
+        self.assertContains(r, 'System → Settings')
+
+    def test_an_address_pointing_at_this_server(self):
+        from core.models import HubSettings
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://testserver'
+        hub.save()
+        fake = FakeSyncUp()
+        r = self._send(fake)
+        self.assertIsNone(fake.url, 'it tried to call itself')
+        self.assertContains(r, 'this same site')
+
+    def test_a_timeout_names_the_whitelist(self):
+        r = self._send(FakeSyncUp(raises=TimeoutError('The read operation timed out')))
+        self.assertContains(r, 'whitelist')
+
+    def test_delivered_to_nothing_means_a_stale_token(self):
+        r = self._send(FakeSyncUp(delivered=0))
+        self.assertContains(r, 'stale')
+
+    def test_post_only_and_admin_only(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+        self.client.logout()
+        fake = FakeSyncUp()
+        with patch('j6.push.urllib.request.urlopen', fake):
+            self.assertEqual(self.client.post(self.url).status_code, 302)
+        self.assertIsNone(fake.url)
+
+
+class RunInline:
+    """A Thread stand-in that runs the target at once, so a push can be asserted on."""
+
+    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+        self.target, self.args = target, args
+        self.kwargs = kwargs or {}
+        self.daemon = daemon
+        self.started = False
+
+    def start(self):
+        self.started = True
+        self.target(*self.args, **self.kwargs)
+
+
+class PushAtSendTests(TestCase):
+    """A message to somebody who is not looking goes out now, not on the next quarter hour.
+
+    This is the difference between a diary and a chat. Hibiscus nudges on a schedule, so the
+    hub's 15-minute tick is exactly right for it; a chat message that takes up to seventeen
+    minutes to reach a phone is simply broken, which is what J6 looked like.
+    """
+
+    def setUp(self):
+        from core.models import HubSettings
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://syncup.example.com'
+        hub.site_base = 'https://synchub.example.com'
+        hub.save()
+        self.anand, self.mani = make('Anand'), make('Mani')
+        self.chat, _ = service.start_chat(self.anand, self.mani.account_id)
+        self._away(self.mani)
+
+    def _away(self, account, minutes=5):
+        Account.objects.filter(pk=account.pk).update(
+            syncup_token='tok-123', last_seen_at=timezone.now() - timedelta(minutes=minutes))
+
+    def _send(self, body='are you there?'):
+        fake = FakeSyncUp()
+        with patch('j6.push.threading.Thread', RunInline), \
+             patch('j6.push.urllib.request.urlopen', fake):
+            message = service.send(self.anand, self.chat, body)
+        return fake, message
+
+    def test_an_away_recipient_is_pushed_at_once(self):
+        fake, message = self._send()
+        self.assertEqual(fake.url, 'https://syncup.example.com/app/v1/partner/notify')
+        self.assertEqual(fake.payload['title'], 'Anand')
+        self.assertEqual(fake.payload['body'], 'are you there?')
+        self.assertTrue(fake.payload['url'].endswith(reverse('j6_inbox')))
+        self.assertEqual(fake.payload['token'], 'tok-123')
+
+    def test_somebody_reading_right_now_is_not_buzzed(self):
+        Account.objects.filter(pk=self.mani.pk).update(last_seen_at=timezone.now())
+        fake, _ = self._send()
+        self.assertIsNone(fake.url)
+
+    def test_no_device_token_means_nothing_is_attempted(self):
+        Account.objects.filter(pk=self.mani.pk).update(syncup_token='')
+        fake, _ = self._send()
+        self.assertIsNone(fake.url)
+
+    def test_a_blocked_sender_cannot_buzz_them(self):
+        service.set_blocked(self.mani, self.chat, True)
+        fake, _ = self._send()
+        self.assertIsNone(fake.url)
+
+    def test_switching_push_off_switches_this_off_too(self):
+        config = Settings.load()
+        config.push_enabled = False
+        config.save()
+        fake, _ = self._send()
+        self.assertIsNone(fake.url)
+
+    def test_the_message_is_claimed_before_the_thread_runs(self):
+        """Two quick messages must not race into two buzzes for the same seq."""
+        _, message = self._send()
+        theirs = Member.objects.get(chat=self.chat, account=self.mani)
+        self.assertEqual(theirs.last_push_seq, message.seq)
+
+    def test_the_tick_does_not_repeat_what_was_already_pushed(self):
+        self._send()
+        fake = FakeSyncUp()
+        with patch('j6.push.urllib.request.urlopen', fake):
+            result = push(_ctx('tick'))
+        self.assertIsNone(fake.url, 'the backstop buzzed again for the same message')
+        self.assertEqual(result['sent'], 0)
+
+    def test_the_tick_still_catches_what_the_send_missed(self):
+        """A send that failed leaves the message unread, so the next tick tries again."""
+        with patch('j6.push.threading.Thread', RunInline), \
+             patch('j6.push.urllib.request.urlopen',
+                   FakeSyncUp(raises=TimeoutError('timed out'))):
+            service.send(self.anand, self.chat, 'first try fails')
+        Member.objects.filter(chat=self.chat, account=self.mani).update(last_push_seq=0)
+        fake = FakeSyncUp()
+        with patch('j6.push.urllib.request.urlopen', fake):
+            result = push(_ctx('tick'))
+        self.assertIsNotNone(fake.url)
+        self.assertEqual(result['sent'], 1)
+
+    def test_the_sender_never_waits_for_syncup(self):
+        """The decision is synchronous; only the delivery gets a thread."""
+        with patch('j6.push.threading.Thread') as thread:
+            service.send(self.anand, self.chat, 'off you go')
+        self.assertTrue(thread.called)
+        self.assertTrue(thread.call_args.kwargs['daemon'])
+        thread.return_value.start.assert_called_once()
+
+    def test_nothing_is_spawned_when_there_is_nothing_to_do(self):
+        Account.objects.filter(pk=self.mani.pk).update(syncup_token='')
+        with patch('j6.push.threading.Thread') as thread:
+            service.send(self.anand, self.chat, 'nobody to tell')
+        self.assertFalse(thread.called)
+
+    def test_the_hook_says_when_no_account_can_be_pushed_to(self):
+        Account.objects.all().update(syncup_token='')
+        self.assertIn('device token', push(_ctx('tick'))['note'])
+
+
+class LazyHistoryTests(TestCase):
+    """A long conversation must not arrive all at once — nor fetch its media on open."""
+
+    def setUp(self):
+        self.anand, self.mani = make('Anand'), make('Mani')
+        self.chat, _ = service.start_chat(self.anand, self.mani.account_id)
+        # Backdated: a hundred messages in the last minute is a flood, and the rate limit would
+        # quite rightly refuse the next one. History is what this is about.
+        old = timezone.now() - timedelta(days=3)
+        Message.objects.bulk_create(
+            [Message(chat=self.chat, seq=n, sender=self.anand if n % 2 else self.mani,
+                     body=f'message {n}', created_at=old + timedelta(minutes=n))
+             for n in range(1, 101)])
+        Chat.objects.filter(pk=self.chat.pk).update(next_seq=101)
+
+    def test_a_first_load_is_one_page_of_the_newest(self):
+        thread = service.thread(self.anand, self.chat)
+        self.assertEqual(len(thread['messages']), service.PAGE)
+        self.assertTrue(thread['has_more'])
+        self.assertEqual(thread['messages'][-1]['body'], 'message 100')     # newest last
+
+    def test_earlier_walks_backwards_a_page_at_a_time(self):
+        first = service.thread(self.anand, self.chat)
+        second = service.earlier(self.anand, self.chat, first['from_seq'])
+        self.assertEqual(len(second['messages']), service.PAGE)
+        self.assertTrue(second['has_more'])
+        self.assertLess(second['messages'][-1]['seq'], first['from_seq'])
+        third = service.earlier(self.anand, self.chat, second['from_seq'])
+        self.assertFalse(third['has_more'], 'that is the start of the conversation')
+
+    def test_a_short_conversation_says_there_is_nothing_above(self):
+        chat, _ = service.start_chat(self.anand, make('Riya').account_id)
+        service.send(self.anand, chat, 'hello')
+        self.assertFalse(service.thread(self.anand, chat)['has_more'])
+
+    def test_a_poll_is_unaffected_because_it_is_already_incremental(self):
+        thread = service.thread(self.anand, self.chat, since=98)
+        self.assertEqual([m['seq'] for m in thread['messages']], [99, 100])
+
+    def test_blocking_still_hides_their_half_of_the_history(self):
+        service.set_blocked(self.anand, self.chat, True)
+        thread = service.thread(self.anand, self.chat)
+        self.assertTrue(all(m['mine'] for m in thread['messages']))
+        earlier = service.earlier(self.anand, self.chat, thread['from_seq'])
+        self.assertTrue(all(m['mine'] for m in earlier['messages']))
+
+    def test_the_page_carries_a_page_not_a_history(self):
+        self.client.post(reverse('j6_login'), {'self_id': self.anand.self_id})
+        body = self.client.get(reverse('j6_chat', args=[self.chat.pk])).content.decode()
+        self.assertIn('id="earlier"', body)
+        self.assertNotIn('message 1<', body)                 # the oldest is not in the page
+        self.assertIn('message 100', body)
+
+    def test_the_endpoint_refuses_somebody_elses_chat(self):
+        self.client.post(reverse('j6_login'), {'self_id': self.anand.self_id})
+        theirs, _ = service.start_chat(make('Riya'), make('Karthik').account_id)
+        r = self.client.get(reverse('j6_earlier') + f'?chat={theirs.pk}&before=10')
+        self.assertEqual(r.status_code, 404)
+
+
+class ConsoleAccountTests(TestCase):
+    """What the console can see and change about an account."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.account = make('Mani')
+        self.url = reverse('j6_account', args=[self.account.pk])
+
+    def test_both_ids_are_on_the_page(self):
+        body = self.client.get(self.url).content.decode()
+        self.assertIn(self.account.account_id, body)
+        self.assertIn(self.account.self_id, body)
+
+    def test_the_self_id_is_masked_until_asked_for(self):
+        body = self.client.get(self.url).content.decode()
+        field = body.split(f'id="self-{self.account.pk}"', 1)[1][:200]
+        self.assertIn('type="password"', field)
+
+    def test_the_page_says_what_the_self_id_is(self):
+        self.assertContains(self.client.get(self.url), 'signs you in <b>as them</b>')
+
+    def test_the_admin_can_rename_somebody(self):
+        r = self.client.post(reverse('j6_account_rename', args=[self.account.pk]),
+                             {'name': 'Mani K'}, follow=True)
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.name, 'Mani K')
+        self.assertContains(r, 'Account ID and Self-ID are unchanged')
+
+    def test_renaming_leaves_both_ids_alone(self):
+        before = (self.account.account_id, self.account.self_id)
+        self.client.post(reverse('j6_account_rename', args=[self.account.pk]), {'name': 'Zed'})
+        self.account.refresh_from_db()
+        self.assertEqual((self.account.account_id, self.account.self_id), before)
+
+    def test_a_name_that_is_too_short_is_refused(self):
+        r = self.client.post(reverse('j6_account_rename', args=[self.account.pk]),
+                             {'name': 'M'}, follow=True)
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.name, 'Mani')
+        self.assertContains(r, 'at least 2 characters')
+
+    def test_renaming_is_post_only_and_admin_only(self):
+        url = reverse('j6_account_rename', args=[self.account.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+        self.client.logout()
+        self.assertEqual(self.client.post(url, {'name': 'Hacked'}).status_code, 302)
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.name, 'Mani')
+
+
+class ConsoleThreadTests(TestCase):
+    """The console's own window on a conversation, and what it loads."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.anand, self.mani = make('Anand'), make('Mani')
+        self.chat, _ = service.start_chat(self.anand, self.mani.account_id)
+        old = timezone.now() - timedelta(days=3)
+        Message.objects.bulk_create(
+            [Message(chat=self.chat, seq=n, sender=self.anand if n % 2 else self.mani,
+                     body=f'message {n}', created_at=old + timedelta(minutes=n))
+             for n in range(1, 91)])
+        Message.objects.create(chat=self.chat, seq=91, sender=self.mani,
+                               body='https://media.example.com/party.gif')
+        Chat.objects.filter(pk=self.chat.pk).update(next_seq=92)
+        self.url = reverse('j6_admin_chat', args=[self.anand.pk, self.chat.pk])
+
+    def test_it_shows_a_window_not_the_whole_conversation(self):
+        from j6.views_admin import ADMIN_PAGE
+        body = self.client.get(self.url).content.decode()
+        self.assertEqual(body.count('class="j6-msg'), ADMIN_PAGE)
+        self.assertIn('91 messages', body)
+        self.assertIn('showing 60', body)
+
+    def test_there_is_a_way_back_through_the_history(self):
+        import re
+        body = self.client.get(self.url).content.decode()
+        self.assertIn('?before=', body)
+        before = re.search(r'\?before=(\d+)', body).group(1)
+        older = self.client.get(self.url + f'?before={before}').content.decode()
+        self.assertIn('message 1<', older)
+        self.assertIn('Jump to latest', older)
+
+    def test_media_is_shown_when_the_setting_says_so(self):
+        body = self.client.get(self.url).content.decode()
+        self.assertIn('<img src="https://media.example.com/party.gif"', body)
+        self.assertIn('loading="lazy"', body)
+        self.assertIn('referrerpolicy="no-referrer"', body)
+
+    def test_turning_it_off_puts_it_back_behind_a_button(self):
+        config = Settings.load()
+        config.admin_render_media = False
+        config.save()
+        body = self.client.get(self.url).content.decode()
+        self.assertNotIn('<img src="https://media', body)
+        self.assertIn('Show media', body)
+
+    def test_something_that_is_not_media_stays_text(self):
+        Message.objects.create(chat=self.chat, seq=92, sender=self.mani,
+                               body='have a look at https://example.com/notes and tell me')
+        body = self.client.get(self.url).content.decode()
+        self.assertIn('have a look at', body)
+        self.assertNotIn('<img src="https://example.com/notes"', body)

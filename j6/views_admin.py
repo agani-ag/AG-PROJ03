@@ -11,6 +11,7 @@ the admin reads rather than writes.
 import logging
 
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Count, Max, Q
 from django.http import Http404
@@ -18,8 +19,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from core.models import HubSettings
 from core.views import admin_required
 
+from . import push as pusher
 from . import service
 from .forms import SettingsForm
 from .models import Account, Chat, Member, Message, Settings
@@ -93,25 +96,117 @@ def chat(request, pk, chat_pk):
 
     # The admin sees everything, including what a block hides from the person themselves —
     # otherwise "why has this conversation stopped" would be unanswerable.
-    found = list(conversation.messages.select_related('sender').order_by('seq'))
-    rows = [{'m': m, 'mine': m.sender_id == person.pk, 'is_url': _is_bare_url(m.body)}
+    # Windowed, newest first: a conversation with thousands of messages in it must not become
+    # a page with thousands of messages in it — nor fetch that much media from other people's
+    # servers the moment it is opened.
+    config = Settings.load()
+    everything = conversation.messages.select_related('sender')
+    total = everything.count()
+    before = int(request.GET.get('before') or 0)
+    window = everything.filter(seq__lt=before) if before else everything
+    found = list(window.order_by('-seq')[:ADMIN_PAGE][::-1])
+    older = bool(found) and everything.filter(seq__lt=found[0].seq).exists()
+
+    rows = [{'m': m, 'mine': m.sender_id == person.pk, 'media': _media_kind(m.body)}
             for m in found]
     return render(request, 'j6/admin/chat.html', {
-        'config': Settings.load(), 'person': person, 'chat': conversation,
+        'config': config, 'person': person, 'chat': conversation,
         'other': conversation.other(person), 'rows': rows, 'others': others,
-        'count': len(found),
-        'oldest': found[0].created_at if found else None,
+        'count': total,
+        'showing': len(found),
+        'older_than': found[0].seq if found and older else 0,
+        'is_window': bool(before),
+        'show_media': config.admin_render_media,
+        'oldest': everything.order_by('seq').values_list('created_at', flat=True).first(),
     })
 
 
-def _is_bare_url(body):
-    """A message that is nothing but a link — the shape the console refuses to load for you.
+ADMIN_PAGE = 60        # messages shown at once in the console
 
-    Worked out here rather than in the template, so the rule is one expression in one place and
-    the page stays readable.
+
+def _media_kind(body):
+    """'image', 'video' or '' for a message that is nothing but a link.
+
+    Worked out here rather than in the template so the rule is one expression in one place. The
+    guess is by extension, which is only a guess — the page falls back to a plain link when the
+    thing does not load, so being wrong costs nothing.
     """
     text = (body or '').strip()
-    return text.startswith('https://') and ' ' not in text and len(text) < 300
+    if not text.startswith('https://') or ' ' in text or len(text) >= 300:
+        return ''
+    path = text.split('?', 1)[0].split('#', 1)[0].lower()
+    if path.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.svg')):
+        return 'image'
+    if path.endswith(('.mp4', '.webm', '.ogv', '.mov')):
+        return 'video'
+    return 'link'
+
+
+@admin_required
+@require_POST
+def account_rename(request, pk):
+    """Change somebody's display name.
+
+    A name is a label, not an identity — the IDs it hangs off never move — so this is support
+    work: fixing a typo, or taking down something that should not be on somebody's screen.
+    """
+    account = get_object_or_404(Account, pk=pk)
+    was = account.name
+    try:
+        service.rename(account, request.POST.get('name'))
+    except ValidationError as exc:
+        messages.error(request, exc.messages[0])
+    else:
+        messages.success(request, f'Renamed {was} to {account.name}. Their Account ID and '
+                                  f'Self-ID are unchanged.')
+    return redirect('j6_account', pk=account.pk)
+
+
+@admin_required
+@require_POST
+def account_test_push(request, pk):
+    """Send one real notification to this account and say exactly what came back.
+
+    The same tool the diary has, for the same reason: the SyncUp address, the notify key and the
+    device token are each only proved by a delivery. Without it, "push is not working" has four
+    possible causes and no way to tell them apart.
+    """
+    account = get_object_or_404(Account, pk=pk)
+    hub = HubSettings.load()
+
+    if hub.points_at(request.get_host()):
+        messages.error(request, 'The SyncUp address is this same site, so the message would be '
+                                'sent to SyncHub rather than to SyncUp — which just times out. '
+                                'Put the SyncUp server address in System → Settings instead.')
+        return redirect('j6_account', pk=account.pk)
+
+    when = timezone.localtime(timezone.now())
+    delivered, error = pusher.send_via_syncup(
+        account, 'J6 · test message',
+        f'Sent from the console at {when:%H:%M}. If this reached you, notifications are working.',
+        pusher.chat_url())
+
+    if 'timed out' in error or error.startswith('TimeoutError'):
+        messages.error(request, f'No answer from {hub.syncup_base}. Either the address is wrong, '
+                                f'or this server is not allowed to reach it — a PythonAnywhere '
+                                f'free account can only call sites on its own whitelist.')
+    elif error == 'syncup not configured':
+        messages.error(request, 'No SyncUp address yet — set it at System → Settings, then try '
+                                'again.')
+    elif error == 'no syncup token':
+        messages.error(request, f'{account.name} has no device token. One arrives the first time '
+                                f'they open J6 inside the SyncUp app — a browser on its own '
+                                f'cannot be pushed to, only notified while a tab is open.')
+    elif error:
+        messages.error(request, f'SyncUp refused it: {error}')
+    elif delivered:
+        messages.success(request, f'Sent. SyncUp delivered it to {delivered} '
+                                  f'device{"" if delivered == 1 else "s"}.')
+    else:
+        messages.warning(request, 'SyncUp accepted it but delivered it to no device. The token is '
+                                  'probably stale — it is replaced the next time they open J6 in '
+                                  'the app.')
+    return redirect('j6_account', pk=account.pk)
 
 
 @admin_required

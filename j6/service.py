@@ -127,13 +127,25 @@ def visible_messages(account, chat):
     return qs
 
 
-def thread(account, chat, since=0):
-    """Messages after `since`, plus everything the header needs."""
+PAGE = 40          # how much of a conversation a page or a poll hands over at once
+
+
+def thread(account, chat, since=0, limit=PAGE):
+    """Messages after `since`, plus everything the header needs.
+
+    `limit` is what keeps a long conversation from arriving all at once: on a first load it is
+    the *newest* `limit` messages, and `has_more` tells the page there is history above to fetch
+    when somebody scrolls for it. A poll (`since` set) is already incremental, so the limit only
+    bites if somebody has been away long enough for that many to pile up.
+    """
     mine = chat.member_for(account)
     theirs = chat.members.exclude(account=account).first()
     other = chat.other(account)
 
-    rows = list(visible_messages(account, chat).filter(seq__gt=since or 0))
+    visible = visible_messages(account, chat).filter(seq__gt=since or 0)
+    total = visible.count()
+    rows = list(visible.order_by('-seq')[:limit][::-1]) if limit else list(visible)
+    has_more = bool(limit and total > len(rows))
     now = timezone.now()
     # Anything of theirs we are handing over has reached a device: that is the second tick.
     arriving = [m for m in rows if m.sender_id != account.pk and m.delivered_at is None]
@@ -152,6 +164,8 @@ def thread(account, chat, since=0):
         'blocked': bool(mine and mine.is_blocked),
         'typing': bool(theirs and theirs.is_typing and not (mine and mine.is_blocked)),
         'read_upto': theirs.last_read_seq if theirs else 0,
+        'has_more': has_more,
+        'from_seq': rows[0].seq if rows else 0,
         'messages': [{
             'seq': m.seq,
             'mine': m.sender_id == account.pk,
@@ -160,6 +174,29 @@ def thread(account, chat, since=0):
             'at': _ms(m.created_at),
             'delivered': bool(m.delivered_at),
         } for m in rows],
+    }
+
+
+def earlier(account, chat, before_seq, limit=PAGE):
+    """The messages immediately before `before_seq` — what "load earlier" asks for.
+
+    Returned oldest-first so the client can prepend them as a block, with `has_more` so the
+    button knows whether to stay.
+    """
+    visible = visible_messages(account, chat).filter(seq__lt=before_seq or 0)
+    rows = list(visible.order_by('-seq')[:limit][::-1])
+    has_more = rows and visible.filter(seq__lt=rows[0].seq).exists()
+    return {
+        'messages': [{
+            'seq': m.seq,
+            'mine': m.sender_id == account.pk,
+            'sender': m.sender.name,
+            'body': m.body,
+            'at': _ms(m.created_at),
+            'delivered': bool(m.delivered_at),
+        } for m in rows],
+        'has_more': bool(has_more),
+        'from_seq': rows[0].seq if rows else 0,
     }
 
 
@@ -192,6 +229,12 @@ def send(account, chat, body, config=None):
     # Sending is reading: you have obviously seen everything above your own line.
     Member.objects.filter(chat=chat, account=account).update(last_read_seq=seq,
                                                              typing_until=None)
+
+    # And if the other side is not looking, push it now rather than on the next quarter hour.
+    # Everything that can be decided without a network call is decided inside; only a real
+    # delivery costs a thread, so this does not slow the send down.
+    from . import push as pusher
+    pusher.notify_new_message(chat, message)
     return message
 
 

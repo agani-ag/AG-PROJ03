@@ -75,6 +75,10 @@ class Settings(models.Model):
         default=15, help_text='Clips shorter than this play muted and looping, like a GIF.')
     max_media_px = models.PositiveSmallIntegerField(default=240)
     allow_svg = models.BooleanField(default=True)
+    admin_render_media = models.BooleanField(
+        default=True,
+        help_text='Show pictures in the console instead of a link with a button. Convenient, '
+                  'and it means a chat you read fetches from whatever host was linked.')
 
     # Where SyncUp lives and what this site is called belong to the hub — core.models.HubSettings,
     # edited at System → Settings — because every module posts to the same place. What is left

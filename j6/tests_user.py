@@ -205,3 +205,88 @@ class RouteTests(TestCase):
 
     def test_the_client_api_is_unchanged(self):
         self.assertEqual(reverse('j6_api_hello'), '/j6/api/hello')
+
+
+class ThreadLayoutTests(TestCase):
+    """Two layout bugs that only show on a real screen, pinned here instead.
+
+    The stylesheet had the rules; the markup never gave them anything to work with — which is
+    why the earlier tests passed while the page looked wrong.
+    """
+
+    def setUp(self):
+        self.anand, self.mani = make('Anand'), make('Mani')
+        self.chat, _ = service.start_chat(self.anand, self.mani.account_id)
+        service.send(self.mani, self.chat, 'morning')
+        self.client.post(reverse('j6_login'), {'self_id': self.anand.self_id})
+
+    def test_a_short_conversation_rests_at_the_bottom(self):
+        """`.msgs .pad { margin-top: auto }` needs an element to push. There wasn't one."""
+        body = self.client.get(reverse('j6_chat', args=[self.chat.pk])).content.decode()
+        msgs = body.split('id="msgs"', 1)[1]
+        self.assertIn('<div class="pad"></div>', msgs)
+        self.assertIn('.msgs .pad { margin-top: auto; }', CSS.read_text(encoding='utf-8'))
+
+    def test_the_jump_pill_anchors_to_the_thread_not_the_window(self):
+        css = CSS.read_text(encoding='utf-8')
+        thread = css.split('.thread {', 1)[1].split('}', 1)[0]
+        self.assertIn('position: relative', thread)
+        jump = css.split('.jump {', 1)[1].split('}', 1)[0]
+        self.assertIn('position: absolute', jump)
+
+
+class NotificationScriptTests(TestCase):
+    """What the page does about telling somebody a message arrived."""
+
+    JS = JS.read_text(encoding='utf-8')
+
+    def test_the_first_message_of_a_new_chat_is_announced(self):
+        """It used to reload the page instead, throwing the notification away."""
+        block = self.JS.split('if (!node) {', 1)[1].split('}', 1)[0]
+        self.assertIn('notify(', block)
+        self.assertLess(block.index('notify('), block.index('location.reload'))
+
+    def test_http_is_explained_rather_than_called_unsupported(self):
+        """Browsers withhold notifications on a plain-http origin; that is not the browser's fault."""
+        self.assertIn('isSecureContext === false', self.JS)
+        self.assertIn('https', self.JS.split('isSecureContext === false', 1)[1][:300])
+
+    def test_a_hidden_tab_still_checks_often_enough_to_feel_like_a_chat(self):
+        cadence = self.JS.split('function cadence', 1)[1][:400]
+        self.assertIn('10000', cadence)
+        self.assertNotIn('20000', cadence)
+
+    def test_one_notification_per_sender_rather_than_per_message(self):
+        self.assertIn('tag: "j6-" + title', self.JS)
+
+    def test_nothing_is_raised_while_the_tab_is_in_front(self):
+        notify = self.JS.split('function notify(', 1)[1][:400]
+        self.assertIn('visibilityState === "visible") return', notify)
+
+
+class LoadEarlierScriptTests(TestCase):
+    """Walking back through a conversation without losing your place."""
+
+    JS = JS.read_text(encoding='utf-8')
+
+    def test_the_button_asks_for_the_page_above(self):
+        self.assertIn('data-earlier', self.JS)
+        self.assertIn('"?chat=" + CHAT + "&before=" + state.oldest', self.JS)
+
+    def test_older_messages_are_prepended_not_appended(self):
+        self.assertIn('function prepend(', self.JS)
+        self.assertIn('msgs.insertBefore(frag', self.JS)
+
+    def test_the_scroll_position_is_kept(self):
+        """Without this the thread jumps to the top and you lose what you were reading."""
+        block = self.JS.split('function prepend(', 1)[1].split('\n  }', 1)[0]
+        self.assertIn('msgs.scrollHeight', block)
+        self.assertIn('msgs.scrollTop = atTop + (msgs.scrollHeight - before)', block)
+
+    def test_it_cannot_fire_twice_at_once(self):
+        block = self.JS.split('earlierBtn.addEventListener', 1)[1][:400]
+        self.assertIn('if (state.loading', block)
+
+    def test_the_button_hides_at_the_start_of_the_conversation(self):
+        block = self.JS.split('function paintEarlier(', 1)[1][:300]
+        self.assertIn('hidden = !state.more', block)

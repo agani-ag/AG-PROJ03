@@ -33,6 +33,49 @@
     </div>
 </div>
 
+<div class="card" style="margin-bottom:16px">
+    <div class="card-head">{% icon "key-round" %}<h2>Account</h2>
+        <span class="small muted ml-auto">a name and two generated IDs — nothing else</span></div>
+    <div class="card-body form">
+        <form method="POST" action="{% url 'j6_account_rename' person.pk %}" class="row">
+            {% csrf_token %}
+            <div class="field grow">
+                <label class="label" for="rename">Name</label>
+                <input class="input" id="rename" name="name" value="{{ person.name }}" maxlength="24">
+                <span class="help">What the people they chat with see. Changing it leaves both IDs alone.</span>
+            </div>
+            <button class="btn" type="submit">{% icon "check" %}Save</button>
+        </form>
+
+        <dl class="kv">
+            <dt>Account ID</dt>
+            <dd>
+                <div class="input-group" style="max-width:420px">
+                    <input class="input" id="acc-{{ person.pk }}" value="{{ person.account_id }}" readonly
+                           style="font-family:var(--mono);font-size:12.5px">
+                    <button class="btn btn-icon" type="button" data-copy-target="#acc-{{ person.pk }}"
+                            aria-label="Copy the Account ID">{% icon "copy" %}</button>
+                </div>
+                <span class="help">What they hand out. Anyone holding it can write to them.</span>
+            </dd>
+            <dt>Self-ID</dt>
+            <dd>
+                <div class="input-group" style="max-width:420px">
+                    <input class="input" id="self-{{ person.pk }}" value="{{ person.self_id }}" readonly
+                           type="password" style="font-family:var(--mono);font-size:12.5px">
+                    <button class="btn btn-icon" type="button" aria-label="Show the Self-ID"
+                            onclick="var i=document.getElementById('self-{{ person.pk }}');
+                                     i.type = i.type === 'password' ? 'text' : 'password';">{% icon "eye" %}</button>
+                    <button class="btn btn-icon" type="button" data-copy-target="#self-{{ person.pk }}"
+                            aria-label="Copy the Self-ID">{% icon "copy" %}</button>
+                </div>
+                <span class="help text-danger">This is their way in — it signs you in <b>as them</b>. It is stored
+                    readable so its owner can always find it again, which is why it is also visible here.</span>
+            </dd>
+        </dl>
+    </div>
+</div>
+
 <div class="stats">
     <div class="stat">
         <span class="stat-label">{% icon "messages-square" %}Chats</span>
@@ -47,7 +90,16 @@
     <div class="stat">
         <span class="stat-label">{% icon "bell" %}SyncUp push</span>
         <span class="stat-value" style="font-size:17px">{% if person.syncup_token %}Ready{% else %}No token{% endif %}</span>
-        <span class="stat-meta">{% if person.syncup_token %}opened inside the app{% else %}they have not opened it in SyncUp{% endif %}</span>
+        <span class="stat-meta">
+            {% if person.syncup_token %}
+            <form method="POST" action="{% url 'j6_account_test_push' person.pk %}"
+                  data-confirm="Send a test message to {{ person.name }}?"
+                  data-confirm-text="A real notification goes to their device now, saying it is a test from the console."
+                  data-confirm-button="Send it">{% csrf_token %}
+                <button class="btn btn-ghost btn-sm" type="submit">{% icon "send" %}Test push</button>
+            </form>
+            {% else %}they have not opened J6 inside SyncUp{% endif %}
+        </span>
     </div>
     <div class="stat">
         <span class="stat-label">{% icon "eye" %}Media links</span>

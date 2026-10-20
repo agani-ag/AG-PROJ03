@@ -237,6 +237,22 @@ def send(request):
     }}))
 
 
+@never_cache
+@auth.account_required
+def earlier(request):
+    """The page above the one you are looking at.
+
+    A conversation is handed over newest-first in pages, so opening a chat with two thousand
+    messages in it costs the same as opening one with ten — and the media in those older
+    messages is never fetched until somebody actually scrolls back to it.
+    """
+    chat = get_object_or_404(Chat, pk=request.GET.get('chat'))
+    if request.account.pk not in (chat.low_id, chat.high_id):
+        raise Http404('Not your chat')
+    before = int(request.GET.get('before') or 0)
+    return _no_store(JsonResponse(service.earlier(request.account, chat, before)))
+
+
 @require_POST
 @auth.account_required
 def typing(request):

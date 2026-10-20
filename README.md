@@ -202,8 +202,14 @@ J6 in short: you give a **name** and get two permanent IDs — an **Account ID**
 a new account. Chats are one-to-one, text only, and any **public media link plays in the bubble**
 — the browser probes the URL and draws a picture, a clip or an audio player, or leaves it a link.
 Nothing is ever uploaded; a message with a picture in it is a message with a URL in its body.
-Delivery is polling (3s focused, 8s for the list, 20s hidden, `304` when nothing changed), because
-the host cannot do WebSockets. The console reads **by account**: pick a person, see their chats,
+Delivery is polling (3s focused, 8s for the list, 10s hidden, `304` when nothing changed), because
+the host cannot do WebSockets. A message to somebody who is **away** is pushed to SyncUp — and so
+to their phone — the moment it is written, in a background thread so the sender never waits; the
+hub's 15-minute tick is only the backstop for what that missed. A conversation is handed over **a page at a time, newest first** — 40 messages on the user side,
+60 in the console — so opening a chat with thousands in it costs the same as opening a new one,
+and the media in older messages is only fetched if somebody walks back to it.
+
+The console reads **by account**: pick a person, see their chats,
 open one as they see it, and delete a single message outright if it should not be there — no
 placeholder is left behind. A **factory reset** on the module settings page empties J6 entirely,
 behind a typed confirmation, for while it is being tested. Messages are kept 90 days and idle accounts 180, both by SyncHub's

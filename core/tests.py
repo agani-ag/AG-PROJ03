@@ -498,3 +498,25 @@ class CarrySyncUpCommandTests(TestCase):
             output = self._run()
         self.assertIn('syncup_base', output)
         self.assertEqual(HubSettings.load().syncup_base, 'https://syncup.example.com')
+
+
+class PointsAtTests(TestCase):
+    """One implementation of "is this address us?", shared by the hub and both modules."""
+
+    def _hub(self, address):
+        from core.models import HubSettings
+        hub = HubSettings.load()
+        hub.syncup_base = address
+        hub.save()
+        return hub
+
+    def test_this_very_site(self):
+        self.assertTrue(self._hub('https://testserver').points_at('testserver'))
+        self.assertTrue(self._hub('testserver').points_at('testserver'))      # no scheme typed
+        self.assertTrue(self._hub('https://testserver:8000/').points_at('testserver'))
+
+    def test_somewhere_else(self):
+        self.assertFalse(self._hub('https://syncup.example.com').points_at('testserver'))
+
+    def test_nothing_set(self):
+        self.assertFalse(self._hub('').points_at('testserver'))

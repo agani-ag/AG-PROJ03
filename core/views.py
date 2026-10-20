@@ -22,7 +22,6 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
-from urllib.parse import urlparse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -217,22 +216,9 @@ def system_settings(request):
         'form': form,
         'config': config,
         'here': here,
-        'points_at_self': _same_host(config.syncup_base, request.get_host()),
+        'points_at_self': config.points_at(request.get_host()),
         'modules': [m for m in MODULES if m.is_live],
     })
-
-
-def _same_host(address, host):
-    """True when an address somebody typed is this very site.
-
-    Worth catching on its own: SyncUp lives somewhere else, and a server asked to call itself
-    while it is busy answering that same request has nothing left to answer with — it waits until
-    the timeout, which reads like "SyncUp is down" rather than "that is the wrong address".
-    """
-    if not address:
-        return False
-    netloc = urlparse(address if '//' in address else '//' + address).netloc.lower()
-    return netloc.split(':')[0] == host.split(':')[0].lower()
 
 
 @admin_required

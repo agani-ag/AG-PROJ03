@@ -42,14 +42,15 @@
             <div class="card-head">{% icon "eye" %}<h2>Media in messages</h2>
                 <span class="small muted ml-auto">links only — nothing is uploaded</span></div>
             <div class="card-body form">
-                {% for f in form %}{% if f.name == 'render_media' or f.name == 'autoplay_seconds' or f.name == 'max_media_px' or f.name == 'allow_svg' %}
+                {% for f in form %}{% if f.name == 'render_media' or f.name == 'autoplay_seconds' or f.name == 'max_media_px' or f.name == 'allow_svg' or f.name == 'admin_render_media' %}
                 {% include "_field.html" %}
                 {% endif %}{% endfor %}
                 <div class="alert">
                     {% icon "info" %}
-                    <div class="alert-body"><b>The console never loads media on its own</b>Whatever these say, a
-                        conversation read here shows the URL with a <b>Show media</b> button. That is a rule, not a setting:
-                        reading someone else's chat should not hand your address to a stranger's server.</div>
+                    <div class="alert-body"><b>What showing it in the console costs</b>A picture in somebody's chat is a
+                        link to whatever host they pasted, so loading it here tells that host your address — the admin's, not
+                        theirs. It is sent with no referrer and loaded lazily, and turning this off puts every one back behind
+                        a <b>Show media</b> button.</div>
                 </div>
             </div>
         </div>

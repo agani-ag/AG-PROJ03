@@ -27,6 +27,7 @@ class SettingsForm(forms.ModelForm):
         fields = ['signup_open', 'new_chats_per_hour', 'msgs_per_minute', 'max_chars',
                   'keep_days', 'idle_account_days',
                   'render_media', 'autoplay_seconds', 'max_media_px', 'allow_svg',
+                  'admin_render_media',
                   'push_enabled']
         labels = {
             'signup_open': 'New accounts are open',
@@ -39,6 +40,7 @@ class SettingsForm(forms.ModelForm):
             'autoplay_seconds': 'Autoplay clips shorter than (seconds)',
             'max_media_px': 'Tallest a bubble may be (px)',
             'allow_svg': 'Allow SVG',
+            'admin_render_media': 'Show media in the console too',
             'push_enabled': 'Push unread through SyncUp',
         }
 

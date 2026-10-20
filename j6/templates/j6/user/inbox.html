@@ -74,7 +74,15 @@ one stylesheet — AG-PROJ01's support inbox, re-cut for two users.
             </form>
         </header>
 
-        <div class="msgs" id="msgs" tabindex="0"></div>
+        <button class="earlier" id="earlier" type="button" hidden>Load earlier messages</button>
+        <div class="msgs" id="msgs" tabindex="0">
+            {% comment %}
+            The spacer is what makes a short conversation rest at the bottom of the pane instead
+            of clinging to the top: `.msgs .pad { margin-top: auto }` needs something to push.
+            The console's thread had it; this one did not.
+            {% endcomment %}
+            <div class="pad"></div>
+        </div>
         <button class="jump" id="jump" type="button" hidden>↓ <span id="jump-n"></span></button>
 
         <form class="composer" id="composer">

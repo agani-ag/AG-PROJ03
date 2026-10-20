@@ -78,6 +78,20 @@ class HubSettings(models.Model):
     def can_push(self):
         return bool(self.syncup_base)
 
+    def points_at(self, host):
+        """True when the SyncUp address somebody typed is this very site.
+
+        Worth its own method because the mistake is silent: a server asked to call itself while
+        it is busy answering that request has nothing left to answer with, so it waits out the
+        timeout and the error reads like "SyncUp is down".
+        """
+        from urllib.parse import urlparse
+        if not self.syncup_base:
+            return False
+        address = self.syncup_base
+        netloc = urlparse(address if '//' in address else '//' + address).netloc.lower()
+        return netloc.split(':')[0] == (host or '').split(':')[0].lower()
+
     def url_for(self, path='/'):
         """An absolute link to somewhere on this site, or '' when nobody has said where it is."""
         if not self.site_base:
