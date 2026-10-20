@@ -52,6 +52,9 @@ def main(argv=None):
         config.force_portable()
 
     if '--version' in argv:
+        # A windowed build has no stdout, and printing to a stdout that is None is dropped on
+        # the floor rather than failing — so borrow a console first, exactly as --cli does.
+        attach_console()
         print(f'J6 {__version__}')
         return 0
 

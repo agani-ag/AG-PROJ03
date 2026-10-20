@@ -8,6 +8,7 @@ API client builds the right requests and turns failures into something a person 
 """
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -193,7 +194,7 @@ class EntryPointTests(unittest.TestCase):
         from j6desk import __main__ as entry
         from io import StringIO
         out = StringIO()
-        with patch('sys.stdout', out):
+        with patch('j6desk.__main__.attach_console', return_value=True),              patch('sys.stdout', out):
             code = entry.main(['--version'])
         self.assertEqual(code, 0)
         self.assertIn('J6', out.getvalue())
@@ -214,9 +215,6 @@ class EntryPointTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(term.call_args[0][0], ['whoami'])    # the rest is passed through
 
-
-if __name__ == '__main__':
-    unittest.main()
 
 
 class TrayTests(unittest.TestCase):
@@ -243,3 +241,40 @@ class VersionTests(unittest.TestCase):
             encoding='utf-8')
         self.assertIn(f"VERSION = '{__version__}'", server,
                       'desktop/j6desk/__init__.py and j6/views_api.py have drifted apart')
+
+
+class TerminalSignInTests(unittest.TestCase):
+    """Getting in from a console, including the ways a console can end mid-question."""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        self.patcher = patch.dict(os.environ, {'APPDATA': self.home})
+        self.patcher.start()
+
+    def tearDown(self):
+        self.patcher.stop()
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def test_a_closed_stdin_does_not_trap_the_prompt(self):
+        """Ctrl-C and a piped-in EOF both read as '', which must not mean 'ask again forever'."""
+        from j6desk import ui_term
+        with patch('j6desk.ui_term.ask', return_value=''), \
+             patch('j6desk.ui_term.say'):
+            with self.assertRaises(ApiError):
+                ui_term.ensure_account({}, 'https://example.com')
+
+    def test_a_name_given_late_is_still_accepted(self):
+        from j6desk import ui_term
+        answers = iter(['', 'x', 'MANI'])
+        made = {'self_id': 'j6s-a', 'account_id': 'j6-a', 'name': 'MANI'}
+        with patch('j6desk.ui_term.ask', lambda _: next(answers)), \
+             patch('j6desk.ui_term.say'), \
+             patch.object(ui_term.Api, 'start', return_value=made), \
+             patch.object(ui_term.Api, 'hello', return_value=made):
+            api, me = ui_term.ensure_account({}, 'https://example.com')
+        self.assertEqual(me['name'], 'MANI')
+        self.assertEqual(config.load()['self_id'], 'j6s-a')
+
+
+if __name__ == '__main__':
+    unittest.main()

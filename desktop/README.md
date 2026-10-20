@@ -1,6 +1,6 @@
 # J6 for Windows
 
-One portable `j6.exe` — about 15 MB, nothing to install — that is both a chat window and a
+One portable `j6.exe` — about 20 MB, nothing to install — that is both a chat window and a
 terminal client. It talks to the same server the browser does, over the same API, with the
 Self-ID as its whole credential.
 
@@ -51,6 +51,15 @@ cd desktop
 .\build.ps1 -Tag j6-v1.0.0      # …and creates the GitHub release
 ```
 
+The first run makes `desktop\.venv` on **Python 3.13** and builds there, whatever is first on
+PATH. pywebview's Windows window is WinForms through pythonnet, and the server code is written
+against a newer Python than pythonnet has wheels for — so the client is built one version back
+rather than the whole project being held there. The venv is gitignored.
+
+Before tagging a release, run the EXE once against a local `runserver`: `j6.exe --cli send
+"<name>" "hello"` proves the frozen build still carries `urllib` and everything under it, which
+is the one thing a trimmed `excludes=` list quietly breaks.
+
 No CI. The EXE is never committed — release assets live outside git history, so the repository
 stays the size it is however many builds you cut. The permanent download link is:
 
@@ -68,10 +77,11 @@ beside it lets anyone check they got what you built.
 cd desktop && python -m unittest tests_desktop
 ```
 
-Nineteen tests covering the config file (where it goes, that a crash mid-save cannot truncate
-it, that nothing about a conversation is kept) and the API client (the header, the URLs, and
-what each kind of failure says). The window itself is not tested here: it needs a desktop
-session and WebView2.
+Twenty-four tests covering the config file (where it goes, that a crash mid-save cannot
+truncate it, that nothing about a conversation is kept), the API client (the header, the URLs,
+and what each kind of failure says), the entry point's two faces, the optional tray, and
+signing in from a console — including the EOF that a piped or interrupted session hands the
+name prompt. The window itself is not tested here: it needs a desktop session and WebView2.
 
 ## How one file is also a terminal
 

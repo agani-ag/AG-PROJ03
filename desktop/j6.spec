@@ -14,8 +14,12 @@ a = Analysis(
                    'PIL.ImageDraw'],
     hookspath=[],
     runtime_hooks=[],
-    excludes=['tkinter', 'unittest', 'pydoc', 'test', 'distutils', 'email', 'html', 'http',
-              'xmlrpc', 'pdb'],
+    # Trimming the standard library is worth a few MB, but only where nothing reaches for it.
+    # `email`, `html` and `http` stay because urllib.request imports all three and urllib is the
+    # client's entire transport; `distutils`, `pydoc` and `unittest` stay because setuptools and
+    # PyInstaller's own graph pull them in and excluding them fails the build outright. tkinter
+    # is the one that actually pays: several MB for a toolkit this client never opens.
+    excludes=['tkinter', 'test', 'xmlrpc'],
     cipher=block_cipher,
     noarchive=False,
 )

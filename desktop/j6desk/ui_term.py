@@ -70,10 +70,16 @@ def ensure_account(cfg, server):
         say(f'{C["green"]}Signed in as {me["name"]}.{C["reset"]}')
         return api, me
 
+    # Asked, not insisted on: `ask` answers '' for Ctrl-C and for a closed stdin alike, so an
+    # unbounded loop here is one a piped or interrupted session can never leave.
     name = ''
-    while len(name.strip()) < 2:
-        name = ask('What should people call you? ')
-    made = api.start(name.strip())
+    for _ in range(3):
+        name = ask('What should people call you? ').strip()
+        if len(name) >= 2:
+            break
+    else:
+        raise ApiError('No name given, so there is nothing to sign in with.')
+    made = api.start(name)
     config.update(server=server, self_id=made['self_id'], name=made['name'])
     say('')
     say(f'{C["green"]}Account created.{C["reset"]}')
