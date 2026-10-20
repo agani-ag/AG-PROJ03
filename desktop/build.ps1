@@ -37,7 +37,10 @@ $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
 Write-Host ""
 Write-Host "Built dist\j6.exe  ($size)"
 Write-Host "SHA256 $hash"
-"$hash  j6.exe" | Out-File -Encoding utf8 (Join-Path $PSScriptRoot "dist\SHA256SUMS.txt")
+# Written without a BOM: Out-File -Encoding utf8 adds one under Windows PowerShell, and a
+# BOM is enough to make `sha256sum -c SHA256SUMS.txt` reject its own first line.
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot "dist\SHA256SUMS.txt"), "$hash  j6.exe`n",
+                        (New-Object Text.UTF8Encoding $false))
 
 if ($Tag) {
     # Say out loud which account is about to publish: `gh` remembers a login, and a release is
