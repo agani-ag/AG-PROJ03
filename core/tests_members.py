@@ -424,3 +424,48 @@ class MergeKeepsTheWayInTests(TestCase):
         diary('Divya', email='d@example.com', password='swan7tide')
         call_command('merge_identities', '--apply', stdout=StringIO())
         self.assertTrue(auth.check_member_password(Member.objects.get(), 'swan7tide'))
+
+
+class AppsPageLinksTests(TestCase):
+    """Where "Your apps" actually sends people.
+
+    It sent them to /hibiscus/admin/ and /pocket/admin/ for a while — the console, which would
+    only bounce an ordinary person to an admin sign-in they have no business seeing. The
+    registry's url_name is the console landing, because that is what the sidebar needs; a
+    person needs a different one.
+    """
+
+    def setUp(self):
+        self.member = Member.objects.create(name='Riya', email='riya@example.com')
+        auth.set_password(self.member, 'pw-for-tests')
+        self.client.post(reverse('member_login'),
+                         {'sign_in_id': 'riya@example.com', 'password': 'pw-for-tests'})
+
+    def test_an_app_you_are_in_opens_the_app_not_the_console(self):
+        from hibiscus.models import Person
+        Person.objects.create(member=self.member, name='Riya')
+        body = self.client.get(reverse('member_apps')).content.decode()
+        self.assertIn(f'href="{reverse("hibiscus_me_home")}"', body)
+        self.assertNotIn('/hibiscus/admin/', body)
+
+    def test_an_app_you_are_not_in_offers_the_join_page(self):
+        body = self.client.get(reverse('member_apps')).content.decode()
+        self.assertIn(f'href="{reverse("pocket_join")}"', body)
+        self.assertIn(f'href="{reverse("j6_start_hub")}"', body)
+        self.assertNotIn('/pocket/admin/', body)
+        self.assertNotIn('/j6/admin/', body)
+
+    def test_no_console_address_reaches_this_page_at_all(self):
+        from pocket import service as pocket_service
+        pocket_service.join(self.member)
+        body = self.client.get(reverse('member_apps')).content.decode()
+        self.assertNotIn('/admin/', body,
+                         'nothing on a person\'s own page should point at a console')
+
+    def test_every_live_module_says_where_a_person_goes(self):
+        """A new module that forgets these would send its people to an admin sign-in."""
+        from core.modules import MODULES
+        for module in MODULES:
+            if module.is_live:
+                self.assertTrue(module.user_url_name, f'{module.key} has no user_url_name')
+                self.assertTrue(module.join_url_name, f'{module.key} has no join_url_name')

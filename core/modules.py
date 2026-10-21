@@ -16,7 +16,11 @@ to it. Until then both link to the placeholder page and show a "Not built yet" b
     icon         a Lucide name from static/icons.svg
     group        sidebar heading the link sits under
     description  one line on the dashboard card
-    url_name     the module's landing URL name once it exists, else None
+    url_name     the module's CONSOLE landing once it exists, else None
+    user_url_name  where a signed-in person goes. Not the console: /apps/ sends
+                 people here, and the console would only bounce them to an admin
+                 sign-in they have no business seeing
+    join_url_name  the page that starts this module for somebody who has not
 
 A module can also have a link in the SyncUp app (System → Tools in SyncUp sends it):
 
@@ -37,7 +41,9 @@ class Module:
     icon: str
     group: str
     description: str
-    url_name: str | None = None
+    url_name: str | None = None          # the CONSOLE landing, for the sidebar and dashboard
+    user_url_name: str | None = None     # where a person goes — the module itself
+    join_url_name: str | None = None     # where somebody starts it for the first time
     syncup_path: str = ''
     syncup_description: str = ''
     syncup_icon: str = ''
@@ -62,6 +68,8 @@ MODULES = [
         group='Modules',
         description='Cycle diary — day-by-day log, calendar and stocks. Was Red Hibiscus.',
         url_name='hibiscus_people',
+        user_url_name='hibiscus_me_home',
+        join_url_name='hibiscus_join',
         syncup_path='/hibiscus/',
         syncup_description='Cycle diary',
         syncup_icon='flower',
@@ -76,6 +84,8 @@ MODULES = [
         group='Modules',
         description='Chat with no sign-up — a name and two generated IDs.',
         url_name='j6_accounts',
+        user_url_name='j6_inbox',
+        join_url_name='j6_start_hub',
         syncup_path='/j6/',
         syncup_description='Chat with no sign-up',
         syncup_icon='chat',
@@ -90,6 +100,8 @@ MODULES = [
         group='Modules',                  #   already mean "in" and "out" on every screen
         description='Your own money in and out, and a shared ledger of who owes whom.',
         url_name='pocket_accounts',
+        user_url_name='pocket_tracker',
+        join_url_name='pocket_join',
         syncup_path='/pocket/',
         syncup_description='Money in and out, and who owes whom',
         syncup_icon='wallet',

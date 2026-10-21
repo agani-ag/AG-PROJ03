@@ -26,7 +26,7 @@ day they need one.
 
 <div class="apps">
     {% for item in joined %}
-    <a class="app" href="{% url item.module.url_name %}">
+    <a class="app" href="{% url item.module.user_url_name %}">
         <span class="mark" style="background:{% if item.module.key == 'hibiscus' %}#db2777{% elif item.module.key == 'pocket' %}#4f46e5{% else %}#0d9488{% endif %}">
             <svg class="ic lg" style="stroke:#fff"><use href="#m-{% if item.module.key == 'hibiscus' %}flower{% elif item.module.key == 'pocket' %}wallet{% else %}chat{% endif %}"/></svg>
         </span>
@@ -44,7 +44,7 @@ day they need one.
 <p class="label" style="margin-bottom:0">Also here</p>
 <div class="apps">
     {% for item in available %}
-    <a class="app join" href="{% url item.module.url_name %}">
+    <a class="app join" href="{% url item.module.join_url_name %}">
         <span class="mark" style="background:var(--chip);color:var(--mut)">
             <svg class="ic lg"><use href="#m-plus"/></svg></span>
         <span class="mn"><b>{{ item.module.title }}</b>

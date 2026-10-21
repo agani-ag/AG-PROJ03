@@ -339,3 +339,33 @@ class ScriptOrderTests(TestCase):
         self.assertLess(body.index('dataset.autoSso !== "1"'), silent,
                         'the silent attempt must sit below the sign-out gate')
         self.assertLess(body.index('if (!signedIn()) { return; }'), silent)
+
+
+class SettingsPageTests(TestCase):
+    """The key has to be typeable. It was in the model and read by the code, with no input."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+
+    def test_the_sign_in_key_has_a_field_on_the_system_page(self):
+        r = self.client.get(reverse('system_settings'))
+        self.assertContains(r, 'SyncUp sign-in key')
+        self.assertContains(r, 'name="syncup_sso_key"')
+
+    def test_pasting_it_saves_and_switches_sso_on(self):
+        from core.models import HubSettings
+        self.assertFalse(syncup_sso.is_configured())
+        self.client.post(reverse('system_settings'), {
+            'site_base': 'https://synchub.example.com',
+            'syncup_base': 'https://syncup.example.com',
+            'syncup_notify_key': '', 'syncup_links_key': '',
+            'syncup_sso_key': 'a-real-key-from-syncup'})
+        self.assertEqual(HubSettings.load().syncup_sso_key, 'a-real-key-from-syncup')
+        self.assertTrue(syncup_sso.is_configured())
+
+    def test_and_the_button_then_appears_on_the_sign_in_page(self):
+        configure()
+        self.client.logout()
+        self.assertContains(self.client.get(reverse('member_login')), 'data-sso-url')
