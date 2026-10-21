@@ -368,3 +368,59 @@ class PublicPageTests(TestCase):
         self.assertContains(r, 'not right')
         member.refresh_from_db()
         self.assertTrue(auth.check_member_password(member, 'first-password'))
+
+
+class MergeKeepsTheWayInTests(TestCase):
+    """The one thing this command must never do is lock somebody out on the day it runs."""
+
+    def test_a_diary_link_still_works_afterwards(self):
+        person = diary('Divya', email='d@example.com')
+        from hibiscus import auth as diary_auth
+        # the shape a pre-merge diary row is in: its own key, no member
+        person.login_key = 'a-key-somebody-has-bookmarked'
+        person.login_key_made_at = timezone.now() - timedelta(days=200)
+        person.login_key_uses = 14
+        person.save()
+
+        call_command('merge_identities', '--apply', stdout=StringIO())
+        member = Member.objects.get()
+        self.assertEqual(member.login_key, 'a-key-somebody-has-bookmarked')
+        self.assertEqual(member.login_key_uses, 14)
+        self.assertEqual(auth.member_by_login_key('a-key-somebody-has-bookmarked'), member)
+
+    def test_the_diary_link_keeps_being_the_durable_kind(self):
+        """Two hundred days old and used fourteen times is normal for one of these."""
+        person = diary('Divya', email='d@example.com')
+        person.login_key = 'bookmarked'
+        person.login_key_made_at = timezone.now() - timedelta(days=200)
+        person.save()
+        call_command('merge_identities', '--apply', stdout=StringIO())
+        member = Member.objects.get()
+        self.assertIsNone(member.login_key_expires_at, 'the diary\'s links do not expire')
+        self.assertFalse(member.login_key_one_shot, 'and they are not one-shot')
+        auth.spend_login_key(member)
+        member.refresh_from_db()
+        self.assertEqual(auth.member_by_login_key('bookmarked'), member)
+
+    def test_a_pocket_link_keeps_its_hour(self):
+        account = money('Anand K', 'anand@example.com')
+        account.login_key = 'short-lived'
+        account.login_key_made_at = timezone.now() - timedelta(minutes=5)
+        account.save()
+        call_command('merge_identities', '--apply', stdout=StringIO())
+        member = Member.objects.get()
+        self.assertTrue(member.login_key_one_shot)
+        self.assertIsNotNone(member.login_key_expires_at)
+        self.assertEqual(auth.member_by_login_key('short-lived'), member)
+
+    def test_the_report_mentions_them(self):
+        person = diary('Divya', email='d@example.com')
+        person.login_key = 'bookmarked'
+        person.login_key_made_at = timezone.now()
+        person.save()
+        self.assertIn('sign in by link', report('--dry-run'))
+
+    def test_a_password_still_works_afterwards_too(self):
+        diary('Divya', email='d@example.com', password='swan7tide')
+        call_command('merge_identities', '--apply', stdout=StringIO())
+        self.assertTrue(auth.check_member_password(Member.objects.get(), 'swan7tide'))

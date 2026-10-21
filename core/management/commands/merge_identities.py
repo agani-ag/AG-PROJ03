@@ -14,6 +14,8 @@ to decide on its own. Take a backup from /download/sqlite before `--apply`.
 
 Safe to run twice: it links whatever is unlinked and leaves everything else alone.
 """
+from datetime import timedelta
+
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -190,6 +192,22 @@ class Command(BaseCommand):
                                default=None),
             open_count=sum(r.open_count for r in rows),
         )
+        # The magic link comes across, and keeps the policy it was made under. The diary's are
+        # deliberately permanent and reusable - the admin hands somebody a link to bookmark and
+        # they never type a password - so dropping it here would lock those people out on the
+        # day of the move, which is the one thing this command must not do.
+        linked = [r for r in rows if getattr(r, 'login_key', None)]
+        if linked:
+            latest = max(linked, key=lambda r: r.login_key_made_at or r.created_at)
+            from_diary = latest._meta.app_label == 'hibiscus'
+            member.login_key = latest.login_key
+            member.login_key_made_at = latest.login_key_made_at
+            member.login_key_used_at = latest.login_key_used_at
+            member.login_key_uses = getattr(latest, 'login_key_uses', 0)
+            member.login_key_one_shot = not from_diary
+            member.login_key_expires_at = None if from_diary else (
+                (latest.login_key_made_at + timedelta(hours=1))
+                if latest.login_key_made_at else None)
         # The kindness that makes this safe to run on seventy-five people: when the two profiles
         # carry different passwords, keep the other one too. Either will sign them in, and the
         # first successful sign-in settles which and clears the spare.
@@ -232,6 +250,13 @@ class Command(BaseCommand):
         for key, flat in names:
             shown = ' / '.join(f'{m}: {r.name}' for m, r in flat.items())
             out.write(f'      {key[1]}  {shown}')
+
+        with_links = [f for _k, f in matched + singles
+                      if any(getattr(r, 'login_key', None) for r in f.values())]
+        if with_links:
+            out.write(self.style.MIGRATE_HEADING('\nMagic links'))
+            out.write(f'  {len(with_links)} person(s) sign in by link. Those links are '
+                      f'carried across and keep working.')
 
         out.write(self.style.MIGRATE_HEADING('\nNeeds a human — nothing will be done to these'))
         if not collisions:
