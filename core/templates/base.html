@@ -3,8 +3,15 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    {# Apply a saved light/dark choice before first paint (no flash). #}
-    <script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    {% comment %}
+    The console is light unless somebody says otherwise. Following the operating system sounds
+    neutral and is not: an admin on a dark laptop opens a console they never asked to be dark,
+    and the screenshots they send look nothing like the ones anybody else sees. A saved choice
+    always wins, and "System" is still one of the three — it just has to be chosen.
+
+    Applied before first paint, so there is no flash of the wrong theme.
+    {% endcomment %}
+    <script>try{var t=localStorage.getItem("theme");document.documentElement.setAttribute("data-theme",(t==="dark"||t==="system")?t:"light")}catch(e){document.documentElement.setAttribute("data-theme","light")}</script>
     {# Status-bar colour in a phone WebView: matches the top bar (--surface). #}
     {% include "_theme_color.html" with light="#ffffff" dark="#131a26" %}
     <title>{% block title %}Admin{% endblock %} · {{ app_name }}</title>

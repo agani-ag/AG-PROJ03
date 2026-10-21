@@ -194,8 +194,9 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && $("#palette")) { e.preventDefault(); openPalette(); }
   });
 
-  /* ---- Theme: system → light → dark (remembered per browser) ---- */
-  function currentTheme() { return document.documentElement.getAttribute("data-theme") || "system"; }
+  /* ---- Theme: light → dark → system. Light is the default; a choice is
+       remembered per browser. ---- */
+  function currentTheme() { return document.documentElement.getAttribute("data-theme") || "light"; }
   function paintThemeButton() {
     var b = $("[data-theme-toggle]"); if (!b) return;
     var th = currentTheme();
@@ -203,8 +204,11 @@
     b.title = "Theme: " + th;
   }
   function cycleTheme() {
-    var order = ["system", "light", "dark"], next = order[(order.indexOf(currentTheme()) + 1) % 3];
-    if (next === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", next);
+    var order = ["light", "dark", "system"], next = order[(order.indexOf(currentTheme()) + 1) % 3];
+    // "system" is set rather than removed: the CSS reads :not([data-theme="light"]) for its
+    // media query, so the attribute says the same thing either way — and keeping it present
+    // means a reload agrees with the button instead of falling back to the light default.
+    document.documentElement.setAttribute("data-theme", next);
     try { localStorage.setItem("theme", next); } catch (err) { /* private mode */ }
     paintThemeButton();
     syncThemeColor();

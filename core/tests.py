@@ -522,3 +522,35 @@ class PointsAtTests(TestCase):
 
     def test_nothing_set(self):
         self.assertFalse(self._hub('').points_at('testserver'))
+
+
+class ConsoleThemeTests(TestCase):
+    """The console is light unless somebody chooses otherwise.
+
+    Following the operating system sounds neutral and is not: an admin on a dark laptop gets a
+    console they never asked to be dark, and their screenshots match nobody else's.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+
+    def test_a_page_with_no_saved_choice_starts_light(self):
+        body = self.client.get(reverse('dashboard')).content.decode()
+        self.assertIn('"data-theme",(t==="dark"||t==="system")?t:"light"', body)
+
+    def test_even_when_storage_throws(self):
+        """A private window must not leave the console themeless."""
+        body = self.client.get(reverse('dashboard')).content.decode()
+        tail = body.split('catch(e){', 1)[1][:80]
+        self.assertIn('"data-theme","light"', tail)
+
+    def test_all_three_choices_are_still_reachable(self):
+        from pathlib import Path
+
+        from django.conf import settings
+        script = (Path(settings.BASE_DIR) / 'static' / 'js' / 'app.js').read_text(
+            encoding='utf-8')
+        self.assertIn('["light", "dark", "system"]', script)
+        self.assertNotIn('removeAttribute("data-theme")', script,
+                         'system is set, not removed, so a reload agrees with the button')
