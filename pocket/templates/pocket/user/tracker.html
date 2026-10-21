@@ -125,10 +125,8 @@
         </span>
         <span class="am {{ entry.flow }}">{% if entry.flow == 'in' %}+{% else %}−{% endif %}{{ money }}{{ entry.amount|floatformat:0 }}</span>
         {% if not entry.is_void %}
-        <form method="POST" action="{% url 'pocket_tracker_void' entry.pk %}">
-            {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <button class="rb flat" type="submit" title="Void this"><svg class="ic sm"><use href="#p-x"/></svg></button>
-        </form>
+        <a class="rb flat" href="{% url 'pocket_tracker_edit' entry.pk %}"
+           title="Fix or delete this"><svg class="ic sm"><use href="#p-pen"/></svg></a>
         {% endif %}
     </div>
     {% endfor %}

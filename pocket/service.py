@@ -656,3 +656,114 @@ def folder_csv(folder):
                          entry.due_on or '', entry.created_by.name if entry.created_by else '',
                          'yes' if entry.is_void else ''])
     return buffer.getvalue()
+
+
+# --------------------------------------------------------------------------- #
+# Fixing and removing what somebody typed
+#
+# A wrong figure is the commonest thing that happens to a money app, so correcting one has to
+# be ordinary rather than a confession. Two ways out, and which is offered depends on whether
+# anybody else is relying on the figure:
+#
+# * **Edit** is always allowed, and the log keeps the before and after. This is the right
+#   answer to "I typed 12,000 instead of 1,200".
+# * **Delete** is allowed when nothing is shared — your own Tracker always, and a ledger line
+#   in a folder nobody else can see. Then a typo leaves nothing behind, which is what a typo
+#   deserves.
+# * **Void** is what is left when somebody else can see the figure: a shared folder, or a line
+#   a linked person reads. There the row stays, struck through, with the reason — because a
+#   number disappearing out of the other person's view with no trace is how a shared book
+#   stops being trusted.
+# --------------------------------------------------------------------------- #
+def edit_tracker(account, entry, *, flow=None, amount=None, category=None, date=None,
+                 source=None, note=None):
+    """Correct an entry. Returns it, and records what changed."""
+    if entry.account_id != account.pk:
+        raise ValidationError('That is not yours to change.')
+    before = entry.amount
+    if flow is not None:
+        flow = Flow(flow)
+        if flow not in (Flow.IN, Flow.OUT):
+            raise ValidationError('An entry is either money in or money out.')
+        entry.flow = flow
+    if amount is not None:
+        entry.amount = clean_amount(amount)
+    if category is not None:
+        if category and (category.account_id != account.pk or category.flow != entry.flow):
+            raise ValidationError('That category belongs somewhere else.')
+        entry.category = category or None
+    if date is not None:
+        entry.date = date
+    if source is not None:
+        entry.source = (source or '')[:20]
+    if note is not None:
+        entry.note = (note or '')[:200]
+    entry.save()
+    log('tracker', 'Edited', account=account, entry_id=entry.pk, before=before,
+        after=entry.amount)
+    return entry
+
+
+def delete_tracker(account, entry):
+    """Really delete. Nobody else has ever seen a Tracker entry, so nothing is owed to them."""
+    if entry.account_id != account.pk:
+        raise ValidationError('That is not yours to delete.')
+    amount = entry.amount
+    entry.delete()
+    log('tracker', 'Deleted', account=account, before=amount)
+
+
+def is_shared(folder):
+    """Is anybody other than the owner relying on the figures in this book?"""
+    return (folder.shares.filter(accepted_at__isnull=False, declined_at__isnull=True).exists()
+            or folder.people.filter(linked_at__isnull=False,
+                                    linked_account__isnull=False).exists())
+
+
+def can_delete_ledger(acc, entry):
+    """Delete outright, or only void? The answer is about who else can see it.
+
+    The owner of a book nobody else reads may remove a mistake completely. The moment a folder
+    is shared, or one of its people is a real account reading their own line, a figure that
+    vanishes without trace is a figure the other side cannot reconcile — so it is voided
+    instead, and stays visible struck through.
+    """
+    if not acc or not acc.is_owner:
+        return False
+    if entry.person.linked_account_id:
+        return False
+    return not is_shared(acc.folder)
+
+
+def edit_ledger(acc, entry, *, kind=None, amount=None, category=None, date=None, source=None,
+                note=None, due_on=None):
+    if not acc or not acc.can_write or acc.role == 'person':
+        raise ValidationError('Only the people who keep this book can change an entry.')
+    before = entry.amount
+    if kind is not None:
+        entry.kind = MIRROR[Kind(kind)] if acc.mirrored else Kind(kind)
+    if amount is not None:
+        entry.amount = clean_amount(amount)
+    if category is not None:
+        entry.category = category or None
+    if date is not None:
+        entry.date = date
+    if source is not None:
+        entry.source = (source or '')[:20]
+    if note is not None:
+        entry.note = (note or '')[:200]
+    if due_on is not None:
+        entry.due_on = due_on or None
+    entry.save()
+    log('ledger', 'Edited', account=acc.account, folder=acc.folder, entry_id=entry.pk,
+        before=before, after=entry.amount)
+    return entry
+
+
+def delete_ledger(acc, entry):
+    if not can_delete_ledger(acc, entry):
+        raise ValidationError('This book is shared, so an entry is taken back rather than '
+                              'removed — the other side has seen it.')
+    amount = entry.amount
+    entry.delete()
+    log('ledger', 'Deleted', account=acc.account, folder=acc.folder, before=amount)

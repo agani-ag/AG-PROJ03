@@ -298,6 +298,7 @@ def person(request, pk, person_pk):
         'categories': service.categories(folder.owner, Flow.LEDGER),
         'upi': service.upi_link(person.upi_id, person.name),
         'today': config.today(),
+        'deletable_here': not service.is_shared(folder) and not person.linked_account_id,
     })
 
 
@@ -665,3 +666,92 @@ def save_syncup_token(request):
     # of them reachable.
     type(member).objects.filter(pk=member.pk).update(syncup_token=token)
     return JsonResponse({'saved': True})
+
+
+# --------------------------------------------------------------------------- #
+# Putting a wrong figure right
+# --------------------------------------------------------------------------- #
+@never_cache
+@auth.account_required
+def tracker_edit(request, pk):
+    """Correct or remove one of your own entries. Nobody else has ever seen it."""
+    entry = get_object_or_404(TrackerEntry, pk=pk, account=request.account)
+    config = Settings.load()
+    error = ''
+    if request.method == 'POST':
+        if request.POST.get('what') == 'delete':
+            service.delete_tracker(request.account, entry)
+            messages.success(request, 'Deleted.')
+            return redirect(f"{reverse('pocket_tracker')}?m={entry.date:%Y-%m}")
+        category = None
+        if request.POST.get('category'):
+            category = Category.objects.filter(pk=request.POST['category'],
+                                               account=request.account).first()
+        try:
+            service.edit_tracker(request.account, entry, flow=request.POST.get('flow'),
+                                 amount=request.POST.get('amount'), category=category,
+                                 date=_parse_date(request.POST.get('date'), config),
+                                 source=request.POST.get('source', ''),
+                                 note=request.POST.get('note', ''))
+        except ValidationError as exc:
+            error = exc.messages[0]
+        else:
+            messages.success(request, 'Saved.')
+            return redirect(f"{reverse('pocket_tracker')}?m={entry.date:%Y-%m}")
+    return _page(request, 'pocket/user/tracker_edit.html', {
+        'entry': entry, 'error': error,
+        'in_categories': service.categories(request.account, Flow.IN),
+        'out_categories': service.categories(request.account, Flow.OUT),
+    })
+
+
+@never_cache
+@auth.account_required
+def ledger_edit(request, pk, entry_pk):
+    """Correct one entry — and remove it outright when nobody else is reading this book."""
+    entry = get_object_or_404(LedgerEntry.objects.select_related('person'),
+                              pk=entry_pk, folder_id=pk)
+    folder, acc = _folder_access(request, pk, entry.person)
+    if not acc.can_write or acc.role == 'person':
+        raise Http404('Not yours to change.')
+    config = Settings.load()
+    error = ''
+    deletable = service.can_delete_ledger(acc, entry)
+
+    if request.method == 'POST':
+        what = request.POST.get('what')
+        if what == 'delete':
+            try:
+                service.delete_ledger(acc, entry)
+            except ValidationError as exc:
+                messages.error(request, exc.messages[0])
+            else:
+                messages.success(request, 'Deleted.')
+            return redirect('pocket_person', pk=folder.pk, person_pk=entry.person_id)
+        if what == 'void':
+            service.void_ledger(acc, entry, request.POST.get('reason', ''))
+            messages.success(request, 'Taken back. It stays on the line, struck through.')
+            return redirect('pocket_person', pk=folder.pk, person_pk=entry.person_id)
+        category = None
+        if request.POST.get('category'):
+            category = Category.objects.filter(pk=request.POST['category'],
+                                               account=folder.owner).first()
+        due = request.POST.get('due_on') or ''
+        try:
+            service.edit_ledger(acc, entry, kind=request.POST.get('kind'),
+                                amount=request.POST.get('amount'), category=category,
+                                date=_parse_date(request.POST.get('date'), config),
+                                source=request.POST.get('source', ''),
+                                note=request.POST.get('note', ''),
+                                due_on=date.fromisoformat(due) if due else '')
+        except (ValidationError, ValueError) as exc:
+            error = getattr(exc, 'messages', [str(exc)])[0]
+        else:
+            messages.success(request, 'Saved.')
+            return redirect('pocket_person', pk=folder.pk, person_pk=entry.person_id)
+
+    return _page(request, 'pocket/user/ledger_edit.html', {
+        'entry': entry, 'folder': folder, 'acc': acc, 'error': error,
+        'deletable': deletable, 'shared': service.is_shared(folder),
+        'categories': service.categories(folder.owner, Flow.LEDGER),
+    })

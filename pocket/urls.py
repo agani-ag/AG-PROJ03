@@ -23,6 +23,7 @@ urlpatterns = [
     path('tracker', views_user.tracker, name='pocket_tracker'),
     path('tracker/add', views_user.tracker_add, name='pocket_tracker_add'),
     path('tracker/<int:pk>/void', views_user.tracker_void, name='pocket_tracker_void'),
+    path('tracker/<int:pk>/edit', views_user.tracker_edit, name='pocket_tracker_edit'),
     path('tracker/csv', views_user.tracker_csv, name='pocket_tracker_csv'),
     path('categories', views_user.categories, name='pocket_categories'),
     path('categories/<int:pk>/archive', views_user.category_archive,
@@ -42,6 +43,8 @@ urlpatterns = [
          name='pocket_person_invite'),
     path('f/<int:pk>/p/<int:person_pk>/edit', views_user.person_edit, name='pocket_person_edit'),
     path('f/<int:pk>/e/<int:entry_pk>/void', views_user.ledger_void, name='pocket_ledger_void'),
+    path('f/<int:pk>/e/<int:entry_pk>/edit', views_user.ledger_edit,
+         name='pocket_ledger_edit'),
 
     # ---- the other side of a line, for the person it belongs to
     path('line/<int:pk>', views_user.line, name='pocket_line'),

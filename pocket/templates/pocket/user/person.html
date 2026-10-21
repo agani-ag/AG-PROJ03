@@ -117,7 +117,10 @@
                 {% if row.entry.note %}{% if row.entry.category %} · {% endif %}{{ row.entry.note }}{% endif %}</span>{% endif %}
             {% if row.entry.is_void %}<br><span class="tiny">voided{% if row.entry.void_reason %} — {{ row.entry.void_reason }}{% endif %}</span>{% endif %}
         </span>
-        <span class="n out">{% if row.gave %}{{ row.gave|floatformat:0 }}{% else %}—{% endif %}</span>
+        <span class="n out">{% if row.gave %}{{ row.gave|floatformat:0 }}{% else %}—{% endif %}
+            {% if acc.can_write and acc.role != 'person' and not row.entry.is_void %}
+            <a class="link" style="font-size:10.5px;display:block"
+               href="{% url 'pocket_ledger_edit' folder.pk row.entry.pk %}">fix</a>{% endif %}</span>
         <span class="n in">{% if row.got %}{{ row.got|floatformat:0 }}{% else %}—{% endif %}</span>
     </div>
     {% empty %}
@@ -143,22 +146,10 @@
 </form>
 {% endif %}
 
-{% if acc.whole_folder and acc.can_write %}
-<details class="card">
-    <summary style="cursor:pointer;list-style:none" class="tiny">Take an entry back</summary>
-    <div class="stack" style="margin-top:10px">
-        {% for row in page.rows %}{% if not row.entry.is_void %}
-        <form method="POST" action="{% url 'pocket_ledger_void' folder.pk row.entry.pk %}" class="row-h">
-            {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
-            <span class="mn tiny">{{ row.entry.date|date:"j M" }} · {{ row.label }} ·
-                {{ money }}{{ row.entry.amount|floatformat:0 }}</span>
-            <input class="input" name="reason" placeholder="Why" maxlength="120" style="max-width:140px">
-            <button class="btn danger sm" type="submit">Void</button>
-        </form>
-        {% endif %}{% endfor %}
-        <p class="tiny">A voided entry leaves the sums and stays here, struck through. Nothing is
-            deleted on this side.</p>
-    </div>
-</details>
+{% if acc.can_write and acc.role != 'person' %}
+<p class="tiny center">Typed something wrong? Tap <b>fix</b> beside the figure to correct the
+    amount{% if deletable_here %}, or remove the entry altogether{% else %} or take the entry
+    back{% endif %}.</p>
 {% endif %}
+
 {% endblock %}

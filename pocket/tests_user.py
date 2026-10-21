@@ -468,3 +468,112 @@ class MePageTests(TestCase):
         self.assertRedirects(
             self.client.get(reverse('pocket_tracker')),
             f'{reverse("member_login")}?next={reverse("pocket_tracker")}', target_status_code=200)
+
+
+class FixingAMistakeTests(TestCase):
+    """A wrong figure is the commonest thing that happens to a money app.
+
+    Correcting one has to be ordinary. What differs is whether anybody else has seen it:
+    your own Tracker is yours, a shared book is not.
+    """
+
+    def setUp(self):
+        self.anand = make_account()
+        sign_in(self.client, 'anand@example.com')
+        self.folder = make_folder(self.anand)
+        self.mani = make_person(self.folder)
+
+    # ---- the Tracker: yours alone
+    def test_a_mistyped_amount_can_be_corrected(self):
+        entry = service.add_tracker(self.anand, Flow.OUT, '12000', note='Groceries')
+        self.client.post(reverse('pocket_tracker_edit', args=[entry.pk]),
+                         {'flow': 'out', 'amount': '1200', 'note': 'Groceries',
+                          'date': entry.date.isoformat()})
+        entry.refresh_from_db()
+        self.assertEqual(entry.amount, D('1200.00'))
+        self.assertFalse(entry.is_void, 'a correction is not a void')
+
+    def test_and_it_can_simply_be_deleted(self):
+        entry = service.add_tracker(self.anand, Flow.OUT, '12000')
+        self.client.post(reverse('pocket_tracker_edit', args=[entry.pk]), {'what': 'delete'})
+        self.assertFalse(TrackerEntry.objects.filter(pk=entry.pk).exists())
+
+    def test_the_fix_is_one_tap_from_the_row(self):
+        service.add_tracker(self.anand, Flow.OUT, '1240', note='Groceries')
+        entry = TrackerEntry.objects.get()
+        self.assertContains(self.client.get(reverse('pocket_tracker')),
+                            reverse('pocket_tracker_edit', args=[entry.pk]))
+
+    def test_somebody_elses_entry_is_not_yours_to_touch(self):
+        other = make_account('Divya', 'divya@example.com')
+        theirs = service.add_tracker(other, Flow.OUT, '500')
+        self.assertEqual(self.client.get(
+            reverse('pocket_tracker_edit', args=[theirs.pk])).status_code, 404)
+
+    def test_the_correction_is_recorded(self):
+        from .models import EntryLog
+        entry = service.add_tracker(self.anand, Flow.OUT, '12000')
+        self.client.post(reverse('pocket_tracker_edit', args=[entry.pk]),
+                         {'flow': 'out', 'amount': '1200', 'date': entry.date.isoformat()})
+        row = EntryLog.objects.filter(action='Edited').get()
+        self.assertEqual(row.before, D('12000.00'))
+        self.assertEqual(row.after, D('1200.00'))
+
+    # ---- the Ledger: it depends who is watching
+    def test_an_entry_in_a_private_book_can_be_deleted(self):
+        made = entry(self.folder, self.mani, Kind.LENT, '20000')
+        r = self.client.get(reverse('pocket_ledger_edit', args=[self.folder.pk, made.pk]))
+        self.assertContains(r, 'Delete it instead')
+        self.client.post(reverse('pocket_ledger_edit', args=[self.folder.pk, made.pk]),
+                         {'what': 'delete'})
+        self.assertFalse(LedgerEntry.objects.filter(pk=made.pk).exists())
+
+    def test_but_a_shared_book_takes_it_back_instead(self):
+        divya = make_account('Divya', 'divya@example.com')
+        share = service.share_folder(self.folder, can_edit=True, by=self.anand)
+        service.accept_share(share, divya)
+        made = entry(self.folder, self.mani, Kind.LENT, '20000')
+        r = self.client.get(reverse('pocket_ledger_edit', args=[self.folder.pk, made.pk]))
+        self.assertContains(r, 'Take it back')
+        self.assertNotContains(r, 'Delete it instead')
+        self.client.post(reverse('pocket_ledger_edit', args=[self.folder.pk, made.pk]),
+                         {'what': 'delete'})
+        self.assertTrue(LedgerEntry.objects.filter(pk=made.pk).exists(),
+                        'the other side has seen this figure')
+
+    def test_a_line_somebody_reads_is_the_same(self):
+        mani_account = make_account('Mani', 'mani@example.com')
+        service.invite_person(self.mani, can_edit=True, by=self.anand)
+        service.accept_person_invite(self.mani, mani_account)
+        made = entry(self.folder, self.mani, Kind.LENT, '20000')
+        r = self.client.get(reverse('pocket_ledger_edit', args=[self.folder.pk, made.pk]))
+        self.assertContains(r, 'reads this line')
+        self.assertNotContains(r, 'Delete it instead')
+
+    def test_taking_it_back_keeps_it_visible_with_the_reason(self):
+        divya = make_account('Divya', 'divya@example.com')
+        share = service.share_folder(self.folder, can_edit=True, by=self.anand)
+        service.accept_share(share, divya)
+        made = entry(self.folder, self.mani, Kind.LENT, '20000')
+        self.client.post(reverse('pocket_ledger_edit', args=[self.folder.pk, made.pk]),
+                         {'what': 'void', 'reason': 'typed twice'})
+        made.refresh_from_db()
+        self.assertTrue(made.is_void)
+        self.assertEqual(made.void_reason, 'typed twice')
+        self.assertEqual(service.person_balance(self.mani), D('0.00'))
+
+    def test_correcting_a_ledger_amount_moves_the_balance(self):
+        made = entry(self.folder, self.mani, Kind.LENT, '20000')
+        self.client.post(reverse('pocket_ledger_edit', args=[self.folder.pk, made.pk]),
+                         {'kind': 'lent', 'amount': '2000', 'date': made.date.isoformat()})
+        self.assertEqual(service.person_balance(self.mani), D('2000.00'))
+
+    def test_a_linked_person_cannot_reach_the_fix_page(self):
+        """They may add to their line, never edit or void — corrections stay with the owner."""
+        mani_account = make_account('Mani', 'mani@example.com')
+        service.invite_person(self.mani, can_edit=True, by=self.anand)
+        service.accept_person_invite(self.mani, mani_account)
+        made = entry(self.folder, self.mani, Kind.LENT, '2000')
+        sign_in(self.client, 'mani@example.com')
+        self.assertEqual(self.client.get(
+            reverse('pocket_ledger_edit', args=[self.folder.pk, made.pk])).status_code, 404)

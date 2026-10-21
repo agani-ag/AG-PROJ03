@@ -1,0 +1,74 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}Fix an entry{% endblock %}
+{% block tab_tracker %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar">
+    <a class="rb flat" href="{% url 'pocket_tracker' %}?m={{ entry.date|date:'Y-m' }}" aria-label="Back">
+        <svg class="ic sm"><use href="#p-left"/></svg></a>
+    <span class="nm" style="font-size:17px">Fix this entry</span>
+</div></div>
+{% endblock %}
+
+{% block content %}
+<form method="POST" class="card">
+    {% csrf_token %}
+    <div class="seg">
+        <label class="kind"><input type="radio" name="flow" value="in"
+               {% if entry.flow == 'in' %}checked{% endif %}>
+            <span class="ch in"><svg class="ic sm"><use href="#p-in"/></svg></span>
+            <span><span class="k1">Money in</span><span class="k2">came to me</span></span></label>
+        <label class="kind"><input type="radio" name="flow" value="out"
+               {% if entry.flow == 'out' %}checked{% endif %}>
+            <span class="ch out"><svg class="ic sm"><use href="#p-out"/></svg></span>
+            <span><span class="k1">Money out</span><span class="k2">I spent it</span></span></label>
+    </div>
+
+    <div class="amount"><span class="cur">{{ money }}</span>
+        <input name="amount" inputmode="decimal" value="{{ entry.amount|floatformat:0 }}"
+               aria-label="Amount" autofocus required></div>
+
+    <span class="label">Category</span>
+    <div class="chips">
+        {% for c in out_categories %}
+        <label class="chip"><input type="radio" name="category" value="{{ c.pk }}"
+               {% if entry.category_id == c.pk %}checked{% endif %}>
+            <span class="cdot" style="background:{{ c.colour }}"></span>{{ c.name }}</label>
+        {% endfor %}
+        {% for c in in_categories %}
+        <label class="chip"><input type="radio" name="category" value="{{ c.pk }}"
+               {% if entry.category_id == c.pk %}checked{% endif %}>
+            <span class="cdot" style="background:{{ c.colour }}"></span>{{ c.name }}</label>
+        {% endfor %}
+    </div>
+    <p class="tiny" style="margin-top:6px">Pick one that belongs on the side you chose above.</p>
+
+    <span class="label">Where from</span>
+    <div class="chips">
+        <label class="chip"><input type="radio" name="source" value="Cash"
+               {% if entry.source == 'Cash' %}checked{% endif %}>Cash</label>
+        <label class="chip"><input type="radio" name="source" value="Bank"
+               {% if entry.source == 'Bank' %}checked{% endif %}>Bank</label>
+        <label class="chip"><input type="radio" name="source" value="UPI"
+               {% if entry.source == 'UPI' %}checked{% endif %}>UPI</label>
+    </div>
+
+    <label class="label" for="note">Note</label>
+    <input class="input" id="note" name="note" maxlength="200" value="{{ entry.note }}">
+    <label class="label" for="date">Date</label>
+    <input class="input" id="date" name="date" type="date" value="{{ entry.date|date:'Y-m-d' }}">
+
+    {% if error %}<p class="err" style="margin-top:10px">{{ error }}</p>{% endif %}
+    <div style="margin-top:14px"><button class="btn" type="submit">Save the correction</button></div>
+</form>
+
+<form method="POST" class="card" style="border-style:dashed"
+      onsubmit="return confirm('Delete this entry for good?')">
+    {% csrf_token %}<input type="hidden" name="what" value="delete">
+    <b style="font-size:13.5px">Delete it instead</b>
+    <p class="tiny" style="margin-top:3px">Your Tracker is yours alone — nobody else has ever
+        seen this entry, so a mistake can simply go and leave nothing behind.</p>
+    <div style="margin-top:11px"><button class="btn danger" type="submit">
+        <svg class="ic sm"><use href="#p-trash"/></svg>Delete this entry</button></div>
+</form>
+{% endblock %}
