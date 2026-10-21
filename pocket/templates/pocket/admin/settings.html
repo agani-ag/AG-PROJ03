@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Pocket Money settings{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <p class="page-sub"><a href="{% url 'pocket_accounts' %}">Pocket Money</a> › Settings</p>
+        <h1>Settings</h1>
+    </div>
+</div>
+
+<form method="POST">
+    {% csrf_token %}
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-head">{% icon "user-plus" %}<h2>Who may join</h2></div>
+            <div class="card-body">
+                {% include "_field.html" with field=form.signup_open %}
+                {% include "_field.html" with field=form.invite_code %}
+                {% include "_field.html" with field=form.currency_symbol %}
+                {% include "_field.html" with field=form.time_zone %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "bell" %}<h2>Notifications</h2></div>
+            <div class="card-body">
+                {% include "_field.html" with field=form.push_enabled %}
+                {% include "_field.html" with field=form.notify_quiet_from %}
+                {% include "_field.html" with field=form.notify_quiet_to %}
+                {% include "_field.html" with field=form.reminder_hour %}
+                {% include "_field.html" with field=form.coalesce_minutes %}
+                <p class="small muted">Where SyncUp lives and the key it needs are at
+                    <a href="{% url 'system_settings' %}">System → Settings</a>, shared by
+                    every module.
+                    {% if hub.syncup_base %}It is set to <code>{{ hub.syncup_base }}</code>.
+                    {% else %}<b>It is not set, so nothing can be pushed from here.</b>{% endif %}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:14px">
+        <div class="card">
+            <div class="card-head">{% icon "link" %}<h2>Links between people</h2></div>
+            <div class="card-body">
+                {% include "_field.html" with field=form.link_days %}
+                <dl class="kv" style="margin-top:10px">
+                    <dt>Suggest a match on a phone number</dt><dd><span class="badge badge-success">on</span></dd>
+                    <dt>Link without both confirming</dt><dd><span class="badge badge-danger">never</span></dd>
+                </dl>
+                <p class="small muted">The second row is not a switch. It is written here so nobody
+                    goes looking for one: a phone number match only ever <i>suggests</i>, the folder's
+                    owner confirms, and the other account still has to accept. Numbers get recycled,
+                    and linking on a match alone would hand a stranger somebody's debt record.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "database" %}<h2>Keeping things</h2></div>
+            <div class="card-body">
+                {% include "_field.html" with field=form.keep_audit_days %}
+                <dl class="kv" style="margin-top:10px">
+                    <dt>Entries — both halves</dt><dd><b>kept for ever</b></dd>
+                    <dt>Accounts</dt><dd>{{ accounts }}</dd>
+                    <dt>Entries stored</dt><dd>{{ entries }}</dd>
+                </dl>
+                <p class="small muted">Nothing prunes a figure. The history is the point of the
+                    module, and a row of money is a few dozen bytes — which is exactly why no
+                    photographs are allowed near it.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+        <div class="card-body">
+            <div class="alert">
+                <div class="alert-body">
+                    <b>No factory reset here.</b>
+                    <p class="small muted">J6 has one because a chat server full of strangers
+                        sometimes needs emptying. A module holding other people's money records
+                        should not have a single button that erases all of it — deleting is per
+                        account, and it asks what should happen to their folders first.</p>
+                </div>
+            </div>
+        </div>
+        <div class="card-foot bordered">
+            <button class="btn btn-primary" type="submit">{% icon "save" %}Save settings</button>
+        </div>
+    </div>
+</form>
+{% endblock %}

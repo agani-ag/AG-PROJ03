@@ -171,6 +171,7 @@ recorded and shown on **System → Cron**, which also has "Run now" buttons.
 |---|---|
 | **Hibiscus** (`/hibiscus/`) | A cycle diary. The diary itself is at `/hibiscus/` with its own sign-up, session and theme; the console side is at `/hibiscus/admin/`. Was a separate Flask app called Red Hibiscus. |
 | **J6** (`/j6/`) | Chat with no sign-up. The chat is at `/j6/`, the console at `/j6/admin/`, plus a portable Windows client in [desktop/](desktop/). |
+| **Pocket Money** (`/pocket/`) | Two halves under one sign-in: a **Tracker** for your own money in and out, and a **Ledger** of folders of people and what passes between you. Console at `/pocket/admin/`. |
 
 Hibiscus in short: flow is recorded **per day**, and a period is a *run* of days worked out by
 `hibiscus/cycle.py` — no start or end dates are stored. Spotting shows on the calendar but is not
@@ -218,6 +219,28 @@ nightly cron.
 The same server also answers `/j6/api/` for non-browser clients, authenticated by the Self-ID in
 an `X-J6-Self` header — that is what the Windows app and the terminal client speak.
 
+Pocket Money in short: **two halves that never share a balance.** The *Tracker* is `IN` and `OUT`
+with typed categories — an income category can never land on an expense, which is the rule that
+makes the month breakdown worth opening. The *Ledger* is folders of people, each person carrying
+one signed number from four kinds (`LENT`, `COLLECTED`, `BORROWED`, `REPAID`): positive means they
+owe you. Lending ₹2,000 does **not** move your Tracker, so "what I have left" never counts money
+that is out on loan — the two figures sit side by side and are never added.
+
+A person typed into a folder can later become a real user. Either the owner invites them, or they
+sign up with the phone number already on the row and the owner is shown a *suggestion* — never an
+automatic link, because numbers get recycled. Both sides confirm. After that the row is a line
+both can read: entries are stored once in the **folder owner's** orientation and mirrored on
+display (`LENT ↔ BORROWED`, `COLLECTED ↔ REPAID`), so "I gave you ₹2,000" and "I took ₹2,000 from
+you" are one row, not two figures to disagree about. A linked person may *add* if allowed, and
+never edit or void — corrections stay with the owner.
+
+Two scopes of sharing: a **folder share** (the whole book, view or edit) and a **person link**
+(one line only). An account and a person each carry an optional **UPI ID**, typed or read off a QR
+with the browser's own `BarcodeDetector` — no library. Paying is a redirect and nothing more:
+`upi://pay?pa=…&pn=…&cu=INR`, no amount in the link, and the ledger entry is a separate deliberate
+tap when you come back, because nothing useful comes back from a `upi://` hand-off. Entries are
+voided, never deleted, on the people's side; only the console can hard-delete one.
+
 ## Pages
 
 | URL | Page |
@@ -237,6 +260,10 @@ an `X-J6-Self` header — that is what the Windows app and the terminal client s
 | `/j6/` | The chat itself (its own session) |
 | `/j6/s/<self-id>` | One-tap sign-in link, also how the Windows app hands its account to the page |
 | `/j6/api/…` | `start · hello · poll · send · new · read · version` for desktop and terminal clients |
+| `/pocket/admin/` | Pocket Money console: accounts → their folders → one folder's entries and audit |
+| `/pocket/` | The four tabs — Tracker, Ledger, Shared, Me (its own sign-in) |
+| `/pocket/s/<key>` | One-hour magic link |
+| `/pocket/i/<code>` | An invitation to one line; `/pocket/j/<code>` shares a whole folder |
 | `/m/<key>/` | Placeholder for a module that isn't built yet |
 | `/django-admin/` | Django's own admin |
 
@@ -256,6 +283,7 @@ core/            the shell
 static/          app.css, app.js, icons.svg, images/app-icon.svg  (copied from AG-PROJ01)
   hibiscus/        user.css, user.js, flower.svg — the diary's own assets
   j6/              user.css, user.js — the chat's own
+  pocket/          user.css, user.js — the money module's own
 desktop/         the Windows client: one portable j6.exe that is a window and a terminal
 ```
 

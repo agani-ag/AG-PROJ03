@@ -1,0 +1,112 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}{{ owner.name }}{% endblock %}
+{% block tab_shared %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar">
+    <a class="rb flat" href="{% url 'pocket_shared' %}" aria-label="Back">
+        <svg class="ic sm"><use href="#p-left"/></svg></a>
+    <span class="av sm" style="background:var(--me)">{{ owner.initials }}</span>
+    <span class="nm" style="font-size:17px">{{ owner.name }}</span><span class="sp"></span>
+    {% if acc.can_write %}<span class="pill on">
+        <svg class="ic sm" style="width:11px;height:11px"><use href="#p-pen"/></svg>can add</span>
+    {% else %}<span class="pill">
+        <svg class="ic sm" style="width:11px;height:11px"><use href="#p-eye"/></svg>view</span>{% endif %}
+</div></div>
+{% endblock %}
+
+{% block content %}
+<div class="head {% if page.they_owe %}they{% elif page.you_owe %}you{% endif %}">
+    <div class="lb">{% if page.you_owe %}You owe {{ owner.name }}
+        {% elif page.they_owe %}{{ owner.name }} owes you
+        {% else %}You two are square{% endif %}</div>
+    <div class="vl">{{ money }}{{ page.balance|floatformat:0|cut:"-" }}</div>
+    <div class="mt">{{ money }}{{ page.got|floatformat:0 }} taken · {{ money }}{{ page.gave|floatformat:0 }} paid back</div>
+</div>
+
+{% if page.you_owe and owner.upi_id %}
+<a class="btn" href="{{ upi }}" data-pay><svg class="ic lg" style="stroke:#fff"><use href="#p-upi"/></svg>Pay {{ owner.name }} by UPI</a>
+<p class="tiny center" style="margin-top:-4px">{{ owner.upi_id }}, from {{ owner.name }}'s profile —
+    you type the amount in your UPI app</p>
+{% endif %}
+
+{% if acc.can_write %}
+<details class="card" id="record">
+    <summary style="cursor:pointer;font-weight:700;list-style:none">
+        <span class="row-h"><span class="av sq sm" style="background:var(--me)">
+            <svg class="ic sm" style="stroke:#fff"><use href="#p-plus"/></svg></span>
+            Did it go through?</span></summary>
+    <form method="POST" action="{% url 'pocket_line_add' person.pk %}" style="margin-top:12px">
+        {% csrf_token %}
+        <div class="seg">
+            <label class="kind"><input type="radio" name="kind" value="repaid" checked>
+                <span class="ch out"><svg class="ic sm"><use href="#p-back"/></svg></span>
+                <span><span class="k1">Paid back</span><span class="k2">to {{ owner.name }}</span></span></label>
+            <label class="kind"><input type="radio" name="kind" value="borrowed">
+                <span class="ch in"><svg class="ic sm"><use href="#p-in"/></svg></span>
+                <span><span class="k1">I took</span><span class="k2">from {{ owner.name }}</span></span></label>
+        </div>
+        <div class="amount"><span class="cur">{{ money }}</span>
+            <input name="amount" inputmode="decimal" aria-label="Amount"
+                   value="{% if page.you_owe %}{{ page.balance|floatformat:0|cut:'-' }}{% endif %}" required></div>
+        <p class="tiny center" style="margin-top:-4px">The whole balance — change it if you paid part</p>
+        <span class="label">Where from</span>
+        <div class="chips">
+            <label class="chip"><input type="radio" name="source" value="UPI" checked>UPI</label>
+            <label class="chip"><input type="radio" name="source" value="Cash">Cash</label>
+            <label class="chip"><input type="radio" name="source" value="Bank">Bank</label>
+        </div>
+        <label class="label" for="note">Note</label>
+        <input class="input" id="note" name="note" maxlength="200">
+        <label class="label" for="date">Date</label>
+        <input class="input" id="date" name="date" type="date" value="{{ today|date:'Y-m-d' }}">
+        <div style="margin-top:12px"><button class="btn" type="submit">
+            <svg class="ic lg" style="stroke:#fff"><use href="#p-check"/></svg>Yes — record it</button></div>
+        <p class="tiny center" style="margin-top:8px">Pocket Money cannot tell on its own — only your
+            UPI app and your bank know. Nothing is written until you tap.</p>
+    </form>
+</details>
+{% endif %}
+
+<div class="stmt">
+    <div class="hd"><span>What happened</span>
+        <span style="text-align:right">{% if page.you_owe %}Taken{% else %}Given{% endif %}</span>
+        <span style="text-align:right">{% if page.you_owe %}Paid{% else %}Back{% endif %}</span></div>
+    {% for row in page.rows %}
+    <div class="ln{% if row.entry.is_void %} void{% endif %}">
+        <span>{{ row.entry.date|date:"j M" }}{% if row.entry.source %} · {{ row.entry.source }}{% endif %}
+            <span class="who">{% if row.who and row.who.pk == account.pk %}you{% else %}{{ owner.name }}{% endif %}</span>
+            {% if row.entry.note %}<br><span class="tiny">{{ row.entry.note }}</span>{% endif %}
+            {% if row.entry.is_void %}<br><span class="tiny">voided by {{ owner.name }}</span>{% endif %}
+        </span>
+        <span class="n out">{% if row.got %}{{ row.got|floatformat:0 }}{% else %}—{% endif %}</span>
+        <span class="n in">{% if row.gave %}{{ row.gave|floatformat:0 }}{% else %}—{% endif %}</span>
+    </div>
+    {% empty %}
+    <div class="empty">Nothing between you yet.</div>
+    {% endfor %}
+    {% if page.rows %}
+    <div class="ln tot"><span>Net</span>
+        <span class="n">{{ page.got|floatformat:0 }}</span>
+        <span class="n">{{ page.gave|floatformat:0 }}</span></div>
+    {% endif %}
+</div>
+
+{% if page.has_more %}
+<a class="btn ghost sm" style="width:100%" href="?before={{ page.last_id }}">Load earlier</a>
+{% endif %}
+
+<div class="note dashed"><svg class="ic sm"><use href="#p-info"/></svg>
+    <div>This line lives in {{ owner.name }}'s folder <b>{{ folder.name }}</b>.
+        {% if acc.can_write %}You can add to it and read it; {{ owner.name }} can also edit and void.
+        {% else %}You can read it. Spotted something wrong? Tell {{ owner.name }}.{% endif %}
+        Leaving removes your access, not the records.</div></div>
+
+<details class="card">
+    <summary style="cursor:pointer;list-style:none" class="tiny">Leave this line</summary>
+    <form method="POST" action="{% url 'pocket_line_leave' person.pk %}" style="margin-top:10px">
+        {% csrf_token %}
+        <button class="btn danger" type="submit">Leave — I stop seeing it</button>
+    </form>
+</details>
+{% endblock %}

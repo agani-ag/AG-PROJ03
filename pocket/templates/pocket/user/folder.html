@@ -1,0 +1,99 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}{{ folder.name }}{% endblock %}
+{% block tab_ledger %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar">
+    <a class="rb flat" href="{% url 'pocket_ledger' %}" aria-label="Back">
+        <svg class="ic sm"><use href="#p-left"/></svg></a>
+    <span class="nm" style="font-size:17px">{{ folder.name }}</span>
+    {% if acc.role == 'viewer' %}<span class="pill"><svg class="ic sm" style="width:11px;height:11px"><use href="#p-eye"/></svg>view</span>{% endif %}
+    {% if acc.role == 'editor' %}<span class="pill on"><svg class="ic sm" style="width:11px;height:11px"><use href="#p-pen"/></svg>can edit</span>{% endif %}
+    <span class="sp"></span>
+    {% if acc.can_manage %}
+    <a class="rb" href="{% url 'pocket_folder_share' folder.pk %}" aria-label="Share">
+        <svg class="ic sm"><use href="#p-share"/></svg></a>{% endif %}
+    {% if acc.whole_folder %}
+    <a class="rb" href="{% url 'pocket_folder_csv' folder.pk %}" aria-label="Download">
+        <svg class="ic sm"><use href="#p-down"/></svg></a>{% endif %}
+</div></div>
+{% endblock %}
+
+{% block content %}
+{% if not acc.is_owner %}
+<div class="note"><svg class="ic sm"><use href="#p-info"/></svg>
+    <div>{{ folder.owner.name }}'s folder.
+        {% if acc.can_write %}You can add and void entries in it.{% else %}You can read it, not change it.{% endif %}</div></div>
+{% endif %}
+
+<div class="tiles">
+    <div class="tile"><span class="lb">Owed to you</span>
+        <div class="vl sm in">{{ money }}{{ totals.owed_to_you|floatformat:0 }}</div>
+        <div class="mt">{{ totals.open }} open</div></div>
+    <div class="tile"><span class="lb">You owe</span>
+        <div class="vl sm out">{{ money }}{{ totals.you_owe|floatformat:0 }}</div></div>
+</div>
+
+<div class="sechead">{{ totals.people }} {{ totals.people|pluralize:"person,people" }}</div>
+<div class="rows">
+    {% for person in people %}
+    <a class="row{% if person.is_archived %} off{% endif %}"
+       href="{% url 'pocket_person' folder.pk person.pk %}">
+        <span class="av" style="background:{{ person.colour }}">{{ person.initials }}</span>
+        <span class="mn">
+            <span class="t1">{{ person.name }}
+                {% if person.is_linked %}<span class="pill good">
+                    <svg class="ic sm" style="width:11px;height:11px"><use href="#p-check"/></svg>on Pocket Money</span>
+                {% elif person.is_invited %}<span class="pill">
+                    <svg class="ic sm" style="width:11px;height:11px"><use href="#p-clock"/></svg>invited</span>{% endif %}
+            </span>
+            <span class="t2">{{ person.entries.count }} entr{{ person.entries.count|pluralize:"y,ies" }}{% if person.note %} · {{ person.note }}{% endif %}</span>
+        </span>
+        <span class="rt">
+            {% if person.balance > 0 %}<span class="v in">{{ money }}{{ person.balance|floatformat:0 }}</span><span class="l">owes you</span>
+            {% elif person.balance < 0 %}<span class="v out">{{ money }}{{ person.balance|floatformat:0|cut:"-" }}</span><span class="l">you owe</span>
+            {% else %}<span class="v">{{ money }}0</span><span class="l">clear</span>{% endif %}
+        </span>
+    </a>
+    {% empty %}
+    <div class="empty">Nobody in this folder yet.</div>
+    {% endfor %}
+</div>
+
+{% if acc.can_write and acc.role != 'person' %}
+<details class="card">
+    <summary style="cursor:pointer;font-weight:700;list-style:none">
+        <span class="row-h"><span class="av sq sm" style="background:var(--me)">
+            <svg class="ic sm" style="stroke:#fff"><use href="#p-plus"/></svg></span>Add a person</span></summary>
+    <form method="POST" action="{% url 'pocket_person_add' folder.pk %}" style="margin-top:12px">
+        {% csrf_token %}
+        <label class="label" for="pname" style="margin-top:0">Name</label>
+        <input class="input" id="pname" name="name" maxlength="40" required>
+
+        <label class="label" for="pphone">Phone <span class="faint" style="text-transform:none">optional</span></label>
+        <input class="input" id="pphone" name="phone" inputmode="tel" maxlength="15">
+        <p class="tiny" style="margin-top:6px">If they sign up with this number you will be asked
+            whether to link them — never automatically.</p>
+
+        <label class="label" for="pupi">UPI ID <span class="faint" style="text-transform:none">optional</span></label>
+        <div class="field">
+            <input class="input" id="pupi" name="upi_id" placeholder="name@bank" autocapitalize="off"
+                   spellcheck="false" data-upi>
+            <button class="btn ghost sm" type="button" data-scan hidden>
+                <svg class="ic sm"><use href="#p-qr"/></svg>Scan</button>
+        </div>
+        <p class="tiny" style="margin-top:6px">Scan their UPI QR or type it. Gives you a <b>Pay</b>
+            button on their page whenever you owe them. Anyone you share this folder with can see it too.</p>
+
+        <label class="label" for="pnote">Note</label>
+        <input class="input" id="pnote" name="note" maxlength="200">
+        <div class="note dashed" style="margin-top:12px">
+            <svg class="ic sm"><use href="#p-info"/></svg>
+            <div>A person belongs to this one folder. The same human in two folders is two rows
+                with two balances — which is usually what people mean by "office money" and
+                "family money".</div></div>
+        <div style="margin-top:12px"><button class="btn" type="submit">Add them</button></div>
+    </form>
+</details>
+{% endif %}
+{% endblock %}

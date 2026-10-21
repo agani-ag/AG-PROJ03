@@ -14,6 +14,7 @@ urlpatterns = [
     # Feature modules, each one self-contained:
     path('hibiscus/', include('hibiscus.urls')),
     path('j6/', include('j6.urls')),
+    path('pocket/', include('pocket.urls')),
 ]
 
 if settings.DEBUG:

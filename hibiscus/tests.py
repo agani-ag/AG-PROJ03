@@ -820,7 +820,7 @@ class TestPushTests(TestCase):
         hub.save()
 
     def _send(self, fake):
-        with patch('hibiscus.push.urllib.request.urlopen', fake):
+        with patch('core.push.urllib.request.urlopen', fake):
             return self.client.post(self.url, follow=True)
 
     # ---- the button
@@ -910,7 +910,7 @@ class TestPushTests(TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 405)
         self.client.logout()
         fake = FakeSyncUp()
-        with patch('hibiscus.push.urllib.request.urlopen', fake):
+        with patch('core.push.urllib.request.urlopen', fake):
             self.assertEqual(self.client.post(self.url).status_code, 302)
         self.assertIsNone(fake.url)
 
@@ -943,7 +943,7 @@ class DiaryLinkTests(TestCase):
         PeriodDay.objects.create(person=person, date=config.today, flow=Flow.MEDIUM)
         slot = NotifySlot.objects.filter(is_enabled=True).first()
         fake = FakeSyncUp()
-        with patch('hibiscus.push.urllib.request.urlopen', fake):
+        with patch('core.push.urllib.request.urlopen', fake):
             push.run_slot(slot, config, base_url=push.diary_url(config))
         self.assertIsNotNone(fake.payload, 'nothing was sent at all')
         self.assertEqual(fake.payload['url'],
@@ -973,7 +973,7 @@ class SyncUpAddressTests(TestCase):
     def test_a_self_pointing_address_is_refused_before_anything_is_sent(self):
         self._set('https://testserver')
         fake = FakeSyncUp()
-        with patch('hibiscus.push.urllib.request.urlopen', fake):
+        with patch('core.push.urllib.request.urlopen', fake):
             r = self.client.post(self.url, follow=True)
         self.assertIsNone(fake.url, 'it tried to send anyway')
         self.assertContains(r, 'this same site')
@@ -990,7 +990,7 @@ class SyncUpAddressTests(TestCase):
         self.assertNotContains(self.client.get(reverse('hibiscus_settings')),
                                'The SyncUp address is this same site')
         fake = FakeSyncUp()
-        with patch('hibiscus.push.urllib.request.urlopen', fake):
+        with patch('core.push.urllib.request.urlopen', fake):
             self.client.post(self.url, follow=True)
         self.assertEqual(fake.url, 'https://syncup.example.com/app/v1/partner/notify')
 
@@ -1002,7 +1002,7 @@ class SyncUpAddressTests(TestCase):
 
     def _timeout(self):
         fake = FakeSyncUp(raises=TimeoutError('The read operation timed out'))
-        with patch('hibiscus.push.urllib.request.urlopen', fake):
+        with patch('core.push.urllib.request.urlopen', fake):
             return self.client.post(self.url, follow=True)
 
     def test_the_manual_test_waits_longer_than_the_cron(self):
@@ -1014,6 +1014,6 @@ class SyncUpAddressTests(TestCase):
             seen['timeout'] = timeout
             raise TimeoutError('The read operation timed out')
 
-        with patch('hibiscus.push.urllib.request.urlopen', capture):
+        with patch('core.push.urllib.request.urlopen', capture):
             self.client.post(self.url)
         self.assertEqual(seen['timeout'], push.TEST_TIMEOUT)

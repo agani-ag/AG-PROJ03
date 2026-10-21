@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}{{ folder.name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <p class="page-sub"><a href="{% url 'pocket_accounts' %}">Pocket Money</a> ›
+            <a href="{% url 'pocket_admin_account' folder.owner.pk %}">{{ folder.owner.name }}</a> ›
+            {{ folder.name }}</p>
+        <h1>{{ folder.name }}
+            <span class="badge">{{ count }} entr{{ count|pluralize:"y,ies" }} · showing {{ page.rows|length }}</span>
+            <span class="badge badge-success">owner {{ folder.owner.name }}</span></h1>
+    </div>
+    <div class="page-actions">
+        {% if is_window %}<a class="btn" href="{% url 'pocket_admin_folder' folder.pk %}">Jump to latest</a>{% endif %}
+        {% if page.has_more %}<a class="btn" href="?before={{ page.last_id }}">{% icon "arrow-left" %}Older</a>{% endif %}
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat"><span class="stat-label">{% icon "users-round" %}People</span>
+        <span class="stat-value">{{ totals.people }}</span>
+        <span class="stat-meta">{{ totals.open }} with something open</span></div>
+    <div class="stat"><span class="stat-label">{% icon "arrow-down" %}Owed to the owner</span>
+        <span class="stat-value">{{ config.currency_symbol }}{{ totals.owed_to_you|floatformat:0 }}</span></div>
+    <div class="stat"><span class="stat-label">{% icon "arrow-up" %}The owner owes</span>
+        <span class="stat-value">{{ config.currency_symbol }}{{ totals.you_owe|floatformat:0 }}</span></div>
+</div>
+
+<div class="card" style="margin-top:16px" data-table>
+    <div class="card-head">{% icon "users-round" %}<h2>People</h2></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Person</th><th>Linked to</th><th>May</th><th>UPI</th>
+                <th class="num">Entries</th><th class="num">Balance</th></tr></thead>
+            <tbody>
+                {% for item in people %}
+                <tr>
+                    <td class="t-primary" data-label="Person"><b>{{ item.person.name }}</b>
+                        {% if item.person.phone %}<div class="small faint">{{ item.person.phone }}</div>{% endif %}</td>
+                    <td data-label="Linked to">
+                        {% if item.person.linked_account %}<code class="small">{{ item.person.linked_account.sign_in_id }}</code>
+                        {% elif item.person.is_invited %}<span class="badge">invited {{ item.person.link_made_at|date:"d M" }}</span>
+                        {% else %}—{% endif %}</td>
+                    <td data-label="May">{% if item.person.is_linked %}
+                        {% if item.person.can_edit %}add entries{% else %}look{% endif %}{% else %}—{% endif %}</td>
+                    <td data-label="UPI">{% if item.person.upi_id %}<code class="small">{{ item.person.upi_id }}</code>{% else %}—{% endif %}</td>
+                    <td data-label="Entries" class="num">{{ item.entries }}</td>
+                    <td data-label="Balance" class="num">
+                        {% if item.balance > 0 %}+{{ config.currency_symbol }}{{ item.balance|floatformat:0 }}
+                        {% elif item.balance < 0 %}−{{ config.currency_symbol }}{{ item.balance|floatformat:0|cut:"-" }}
+                        {% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card" style="margin-top:14px" data-table>
+    <div class="card-head">{% icon "scroll-text" %}<h2>Entries</h2></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Date</th><th>Kind</th><th>Person</th><th>What for</th><th>Source</th>
+                <th class="num">Amount</th><th class="num">Their balance</th><th>Entered by</th><th></th></tr></thead>
+            <tbody>
+                {% for entry in page.rows %}
+                <tr>
+                    <td data-label="Date">{{ entry.date|date:"d M" }}
+                        <div class="small faint">{{ entry.created_at|date:"H:i" }}</div></td>
+                    <td data-label="Kind">{{ entry.get_kind_display }}
+                        {% if entry.is_void %}<span class="badge">voided</span>{% endif %}
+                        {% if entry.due_on %}<div class="small faint">due {{ entry.due_on|date:"d M" }}</div>{% endif %}</td>
+                    <td data-label="Person">{{ entry.person.name }}</td>
+                    <td data-label="What for">{{ entry.category.name|default:"—" }}
+                        {% if entry.note %}<div class="small faint">{{ entry.note }}</div>{% endif %}</td>
+                    <td data-label="Source">{{ entry.source|default:"—" }}</td>
+                    <td data-label="Amount" class="num">{{ config.currency_symbol }}{{ entry.amount|floatformat:0 }}</td>
+                    <td data-label="Their balance" class="num">
+                        {% if entry.running < 0 %}−{{ config.currency_symbol }}{{ entry.running|floatformat:0|cut:"-" }}
+                        {% else %}{{ config.currency_symbol }}{{ entry.running|floatformat:0 }}{% endif %}</td>
+                    <td data-label="Entered by">{{ entry.created_by.name|default:"—" }}
+                        {% if entry.created_by and entry.created_by.pk != folder.owner.pk %}
+                        <span class="badge badge-success">linked</span>{% endif %}</td>
+                    <td data-label="">
+                        <form method="POST" action="{% url 'pocket_admin_entry_delete' folder.pk entry.pk %}"
+                              onsubmit="return confirm('Delete this entry for good? It leaves no row behind.')">
+                            {% csrf_token %}
+                            <button class="btn btn-danger btn-sm" type="submit">{% icon "trash" %}</button></form></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9"><div class="empty">{% icon "scroll-text" %}<b>No entries</b></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-foot bordered">
+        <span class="small muted">The red button is a hard delete — the one action in this module
+            that leaves nothing behind. On the people's own side an entry can only be voided.</span>
+    </div>
+</div>
+
+<div class="card" style="margin-top:14px" data-table>
+    <div class="card-head">{% icon "clock" %}<h2>What changed here</h2></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>When</th><th>Who</th><th>Did what</th><th class="num">Before</th><th class="num">After</th></tr></thead>
+            <tbody>
+                {% for row in logs %}
+                <tr><td data-label="When">{{ row.at|date:"d M H:i" }}</td>
+                    <td data-label="Who">{{ row.actor_name|default:"—" }}</td>
+                    <td data-label="Did what">{{ row.action }}
+                        {% if row.detail %}<div class="small faint">{{ row.detail }}</div>{% endif %}</td>
+                    <td data-label="Before" class="num">{{ row.before|default:"—" }}</td>
+                    <td data-label="After" class="num">{{ row.after|default:"—" }}</td></tr>
+                {% empty %}
+                <tr><td colspan="5"><div class="empty">{% icon "clock" %}<b>Nothing yet</b></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

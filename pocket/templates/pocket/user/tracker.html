@@ -1,0 +1,165 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}Tracker{% endblock %}
+{% block tab_tracker %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar">
+    <a class="rb" href="?m={{ prev_month }}" aria-label="The month before">
+        <svg class="ic sm"><use href="#p-left"/></svg></a>
+    <span class="nm">{{ shown|date:"F Y" }}</span><span class="sp"></span>
+    {% if next_month %}<a class="rb" href="?m={{ next_month }}" aria-label="The month after">
+        <svg class="ic sm"><use href="#p-right"/></svg></a>{% endif %}
+    <a class="rb" href="{% url 'pocket_categories' %}" aria-label="Categories">
+        <svg class="ic sm"><use href="#p-tag"/></svg></a>
+    <a class="rb" href="{% url 'pocket_tracker_csv' %}?m={{ shown|date:'Y-m' }}" aria-label="Download">
+        <svg class="ic sm"><use href="#p-down"/></svg></a>
+</div></div>
+{% endblock %}
+
+{% block content %}
+<div class="tiles">
+    <div class="tile"><span class="lb"><svg class="ic sm" style="color:var(--in)"><use href="#p-in"/></svg>In</span>
+        <div class="vl sm in">{{ money }}{{ summary.in|floatformat:0 }}</div></div>
+    <div class="tile"><span class="lb"><svg class="ic sm" style="color:var(--out)"><use href="#p-out"/></svg>Out</span>
+        <div class="vl sm out">{{ money }}{{ summary.out|floatformat:0 }}</div></div>
+    <div class="tile full"><span class="lb">Kept this month</span>
+        <div class="vl">{{ money }}{{ summary.kept|floatformat:0 }}</div>
+        <div class="mt">{{ summary.kept_percent }}% of what came in · {{ summary.count }} entr{{ summary.count|pluralize:"y,ies" }}</div></div>
+</div>
+
+<details class="card" {% if request.GET.add %}open{% endif %}>
+    <summary style="cursor:pointer;font-weight:700;list-style:none">
+        <span class="row-h"><span class="av sq sm" style="background:var(--me)">
+            <svg class="ic sm" style="stroke:#fff"><use href="#p-plus"/></svg></span>
+            Add an entry</span></summary>
+    <form method="POST" action="{% url 'pocket_tracker_add' %}" style="margin-top:12px">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <div class="seg">
+            <label class="kind"><input type="radio" name="flow" value="in">
+                <span class="ch in"><svg class="ic sm"><use href="#p-in"/></svg></span>
+                <span><span class="k1">Money in</span><span class="k2">came to me</span></span></label>
+            <label class="kind"><input type="radio" name="flow" value="out" checked>
+                <span class="ch out"><svg class="ic sm"><use href="#p-out"/></svg></span>
+                <span><span class="k1">Money out</span><span class="k2">I spent it</span></span></label>
+        </div>
+
+        <div class="amount"><span class="cur">{{ money }}</span><input name="amount" inputmode="decimal"
+            placeholder="0" aria-label="Amount" required></div>
+
+        <span class="label">Category</span>
+        <div class="chips" data-for="out">
+            {% for c in out_categories %}
+            <label class="chip"><input type="radio" name="category" value="{{ c.pk }}">
+                <span class="cdot" style="background:{{ c.colour }}"></span>{{ c.name }}</label>
+            {% endfor %}
+        </div>
+        <div class="chips hidden" data-for="in">
+            {% for c in in_categories %}
+            <label class="chip"><input type="radio" name="category" value="{{ c.pk }}">
+                <span class="cdot" style="background:{{ c.colour }}"></span>{{ c.name }}</label>
+            {% endfor %}
+        </div>
+        <p class="tiny" style="margin-top:6px">Only the categories that belong on this side are
+            offered — <i>Salary</i> can never land on money going out.</p>
+
+        <span class="label">Where from</span>
+        <div class="chips">
+            <label class="chip"><input type="radio" name="source" value="Cash" checked>Cash</label>
+            <label class="chip"><input type="radio" name="source" value="Bank">Bank</label>
+            <label class="chip"><input type="radio" name="source" value="UPI">UPI</label>
+        </div>
+
+        <label class="label" for="note">Note</label>
+        <input class="input" id="note" name="note" maxlength="200" placeholder="What it was for">
+        <label class="label" for="date">Date</label>
+        <input class="input" id="date" name="date" type="date" value="{{ today|date:'Y-m-d' }}">
+        <div style="margin-top:12px"><button class="btn" type="submit">Save</button></div>
+    </form>
+</details>
+
+{% if summary.out_bars %}
+<div class="card">
+    <h4>Where it went</h4>
+    <div class="bars" style="margin-top:10px">
+        {% for bar in summary.out_bars %}
+        <div class="barrow">
+            <span class="nm"><span class="cdot" style="background:{{ bar.colour }}"></span>{{ bar.name }}</span>
+            <span class="track"><span class="fill" style="width:{{ bar.percent }}%;background:var(--out)"></span></span>
+            <span class="v">{{ bar.amount|floatformat:0 }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if summary.in_bars %}
+<div class="card">
+    <h4>Where it came from</h4>
+    <div class="bars" style="margin-top:10px">
+        {% for bar in summary.in_bars %}
+        <div class="barrow">
+            <span class="nm"><span class="cdot" style="background:{{ bar.colour }}"></span>{{ bar.name }}</span>
+            <span class="track"><span class="fill" style="width:{{ bar.percent }}%;background:var(--in)"></span></span>
+            <span class="v">{{ bar.amount|floatformat:0 }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% regroup page.rows by date as days %}
+{% for day in days %}
+<div class="day"><span>{{ day.grouper|date:"j F" }}</span><span class="sp"></span></div>
+<div class="rows">
+    {% for entry in day.list %}
+    <div class="ent{% if entry.is_void %} void{% endif %}">
+        <span class="ch {{ entry.flow }}"><svg class="ic sm"><use href="#p-{{ entry.flow }}"/></svg></span>
+        <span class="mn">
+            <span class="t1">{% if entry.note %}{{ entry.note }}{% elif entry.category %}{{ entry.category.name }}{% else %}Entry{% endif %}</span>
+            <span class="t2">
+                {% if entry.category %}<span class="cdot" style="background:{{ entry.category.colour }}"></span>{{ entry.category.name }}{% endif %}
+                {% if entry.source %}· {{ entry.source }}{% endif %}
+                {% if entry.is_void %}· voided{% endif %}
+            </span>
+        </span>
+        <span class="am {{ entry.flow }}">{% if entry.flow == 'in' %}+{% else %}−{% endif %}{{ money }}{{ entry.amount|floatformat:0 }}</span>
+        {% if not entry.is_void %}
+        <form method="POST" action="{% url 'pocket_tracker_void' entry.pk %}">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button class="rb flat" type="submit" title="Void this"><svg class="ic sm"><use href="#p-x"/></svg></button>
+        </form>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% empty %}
+<div class="rows"><div class="empty">Nothing this month yet. The first entry is one tap above.</div></div>
+{% endfor %}
+
+{% if page.has_more %}
+<a class="btn ghost sm" style="width:100%" href="?m={{ shown|date:'Y-m' }}&before={{ page.last_id }}">Load earlier</a>
+{% endif %}
+{% endblock %}
+
+{% block script %}
+<script>
+// The category chips follow the in/out choice. Two lists, one visible.
+(function () {
+  var lists = {}, radios = document.querySelectorAll('input[name="flow"]');
+  document.querySelectorAll('[data-for]').forEach(function (el) { lists[el.dataset.for] = el; });
+  function show() {
+    var flow = document.querySelector('input[name="flow"]:checked');
+    if (!flow) return;
+    Object.keys(lists).forEach(function (key) {
+      lists[key].classList.toggle('hidden', key !== flow.value);
+      if (key !== flow.value) {
+        lists[key].querySelectorAll('input').forEach(function (i) { i.checked = false; });
+      }
+    });
+  }
+  radios.forEach(function (r) { r.addEventListener('change', show); });
+  show();
+})();
+</script>
+{% endblock %}

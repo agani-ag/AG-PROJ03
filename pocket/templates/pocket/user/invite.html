@@ -1,0 +1,92 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}Invite {{ person.name }}{% endblock %}
+{% block tab_ledger %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar">
+    <a class="rb flat" href="{% url 'pocket_person' folder.pk person.pk %}" aria-label="Back">
+        <svg class="ic sm"><use href="#p-left"/></svg></a>
+    <span class="nm" style="font-size:17px">{% if person.is_linked %}{{ person.name }}'s link{% else %}Invite {{ person.name }}{% endif %}</span>
+</div></div>
+{% endblock %}
+
+{% block content %}
+{% if person.is_linked %}
+<div class="lnkstate on"><svg class="ic sm"><use href="#p-check"/></svg>
+    <span>Linked since {{ person.linked_at|date:"j M" }} to
+        <b>{{ person.linked_account.sign_in_id }}</b></span></div>
+
+<form method="POST" class="card">
+    {% csrf_token %}
+    <input type="hidden" name="what" value="permission">
+    <h4>What {{ person.name }} can do</h4>
+    <div class="chips" style="margin-top:8px">
+        <label class="chip"><input type="radio" name="can_edit" value="0" {% if not person.can_edit %}checked{% endif %}>
+            <svg class="ic sm"><use href="#p-eye"/></svg>Just look</label>
+        <label class="chip"><input type="radio" name="can_edit" value="1" {% if person.can_edit %}checked{% endif %}>
+            <svg class="ic sm"><use href="#p-pen"/></svg>Add entries too</label>
+    </div>
+    <p class="tiny" style="margin-top:8px">{{ person.name }} cannot edit or void anything — only add.
+        Corrections stay yours.</p>
+    <div style="margin-top:12px"><button class="btn ghost sm" type="submit">Save</button></div>
+</form>
+
+{% if added %}
+<div class="card">
+    <h4>What {{ person.name }} has added</h4>
+    <div class="rows" style="border:0;margin-top:6px">
+        {% for entry in added %}
+        <div class="row" style="padding:8px 0">
+            <span class="mn"><span class="t1">{{ entry.date|date:"j M" }} · {{ money }}{{ entry.amount|floatformat:0 }}</span>
+                <span class="t2">{{ entry.get_kind_display }}{% if entry.source %} · {{ entry.source }}{% endif %}</span></span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="note dashed"><svg class="ic sm"><use href="#p-info"/></svg>
+    <div>Cutting the link keeps every entry — they are your records. {{ person.name }} loses sight
+        of them, and the row goes back to being a name in your book.</div></div>
+<form method="POST">{% csrf_token %}<input type="hidden" name="what" value="unlink">
+    <button class="btn danger" type="submit">Cut the link</button></form>
+
+{% else %}
+<div class="card">
+    <h4>{{ person.name }} is just a name in your book</h4>
+    <p class="sub">Invite them and the two of you keep one line instead of two — they see what
+        passes between you, and you both stop arguing from different notebooks.</p>
+    {% if link %}
+    <div class="idbox" style="margin-top:10px">{{ link }}
+        <button class="cp" type="button" data-copy="{{ link }}" aria-label="Copy">
+            <svg class="ic sm"><use href="#p-copy"/></svg></button></div>
+    <p class="tiny" style="margin-top:7px">The link works once, and expires in {{ config.link_days }} days.</p>
+    {% endif %}
+</div>
+
+<form method="POST" class="card">
+    {% csrf_token %}
+    <input type="hidden" name="what" value="invite">
+    <h4>What {{ person.name }} will be able to do</h4>
+    <div class="chips" style="margin-top:8px">
+        <label class="chip"><input type="radio" name="can_edit" value="0">
+            <svg class="ic sm"><use href="#p-eye"/></svg>Just look</label>
+        <label class="chip"><input type="radio" name="can_edit" value="1" checked>
+            <svg class="ic sm"><use href="#p-pen"/></svg>Add entries too</label>
+    </div>
+    <p class="tiny" style="margin-top:8px">With <b>add entries</b>, {{ person.name }} can record
+        "paid you back" from their own phone and it lands here with their name on it. You can
+        change this or cut the link whenever you like.</p>
+    <div style="margin-top:12px"><button class="btn" type="submit">
+        <svg class="ic lg" style="stroke:#fff"><use href="#p-share"/></svg>
+        {% if link %}Make a new link{% else %}Make the invitation{% endif %}</button></div>
+</form>
+
+<div class="note"><svg class="ic sm"><use href="#p-eye"/></svg>
+    <div><b>{{ person.name }} will see</b><br>
+        Only your line with them — the {{ entries }} entr{{ entries|pluralize:"y,ies" }}, the
+        {{ money }}{{ balance|floatformat:0|cut:"-" }} balance, and that it lives in a folder
+        called <b>{{ folder.name }}</b>. <b>Not</b> the other {{ others }} people in it, not the
+        folder's totals, and nothing in your Tracker.</div></div>
+{% endif %}
+{% endblock %}

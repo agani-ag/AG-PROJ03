@@ -1,0 +1,78 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en"{% if account.theme and account.theme != 'system' %} data-theme="{{ account.theme }}"{% endif %}>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    {% comment %}
+    A saved choice, applied before first paint so there is no flash. Inside the SyncUp app the
+    phone's own dark setting never reaches the page, which is why the switch on Me matters.
+    {% endcomment %}
+    <script>try{var t=localStorage.getItem("pocket-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    {% include "_theme_color.html" with light="#ffffff" dark="#16202a" %}
+    <title>{% block title %}Pocket Money{% endblock %} · Pocket Money</title>
+    <link rel="icon" href="{% static 'images/app-icon.svg' %}" type="image/svg+xml">
+    <link rel="stylesheet" href="{% static_v 'pocket/user.css' %}">
+</head>
+<body{% if account %} data-token-url="{% url 'pocket_token' %}" data-scan-url="{% url 'pocket_scan' %}"{% endif %}>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="p-wallet" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 8V7a2 2 0 0 1 2-2h10"/><path d="M19 11h2v4h-2a2 2 0 0 1 0-4z"/></symbol>
+  <symbol id="p-in" viewBox="0 0 24 24"><path d="M12 5v13"/><path d="m6 12 6 6 6-6"/></symbol>
+  <symbol id="p-out" viewBox="0 0 24 24"><path d="M12 19V6"/><path d="m6 12 6-6 6 6"/></symbol>
+  <symbol id="p-lent" viewBox="0 0 24 24"><path d="M5 12h13"/><path d="m12 6 6 6-6 6"/><path d="M3 5v14"/></symbol>
+  <symbol id="p-back" viewBox="0 0 24 24"><path d="M19 12H6"/><path d="m12 6-6 6 6 6"/><path d="M21 5v14"/></symbol>
+  <symbol id="p-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M16 4.5a4 4 0 0 1 0 7"/><path d="M22 21a6 6 0 0 0-4.5-5.8"/></symbol>
+  <symbol id="p-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="p-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="p-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="p-bell" viewBox="0 0 24 24"><path d="M10.3 21a2 2 0 0 0 3.4 0"/><path d="M3.3 15.3A1 1 0 0 0 4 17h16a1 1 0 0 0 .7-1.7C19.4 14 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.4 6-2.7 7.3"/></symbol>
+  <symbol id="p-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="p-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="m6 7 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></symbol>
+  <symbol id="p-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.8-1.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.4 14H3a2 2 0 1 1 0-4h.3a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.4V3a2 2 0 1 1 4 0v.4a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.4a1.7 1.7 0 0 0-1.2 1z"/></symbol>
+  <symbol id="p-left" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="p-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="p-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4"/><path d="m15.4 6.5-6.8 4"/></symbol>
+  <symbol id="p-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="3.5"/><path d="m10 13 9-9"/><path d="m16 7 2 2"/><path d="m19 4 2 2"/></symbol>
+  <symbol id="p-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="p-warn" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="p-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="p-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="p-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="p-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4"/><path d="M16 3v4"/><path d="M3 10h18"/></symbol>
+  <symbol id="p-down" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></symbol>
+  <symbol id="p-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="p-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+  <symbol id="p-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="p-tag" viewBox="0 0 24 24"><path d="M3 11V4a1 1 0 0 1 1-1h7l9 9-8 8z"/><path d="M7.5 7.5h.01"/></symbol>
+  <symbol id="p-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3"/><path d="M21 21h-3v-3"/><path d="M21 14v.01"/><path d="M14 21v.01"/></symbol>
+  <symbol id="p-upi" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="p-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="p-out-door" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+</svg>
+
+{% block top %}{% endblock %}
+
+<main class="wrap{% block wrap_class %}{% endblock %}">
+    {% if messages %}{% for m in messages %}
+    <div class="flash {{ m.level_tag }}">{{ m }}</div>
+    {% endfor %}{% endif %}
+    {% block content %}{% endblock %}
+</main>
+
+{% if account %}{% block tabs %}
+<nav class="tabbar"><div class="in">
+    <a href="{% url 'pocket_tracker' %}" class="{% block tab_tracker %}{% endblock %}">
+        <svg class="ic"><use href="#p-wallet"/></svg>Tracker</a>
+    <a href="{% url 'pocket_ledger' %}" class="{% block tab_ledger %}{% endblock %}">
+        <svg class="ic"><use href="#p-users"/></svg>Ledger</a>
+    <a href="{% url 'pocket_shared' %}" class="{% block tab_shared %}{% endblock %}">
+        <svg class="ic"><use href="#p-share"/></svg>Shared{% if pending %}<span class="bdg">{{ pending }}</span>{% endif %}</a>
+    <a href="{% url 'pocket_me' %}" class="{% block tab_me %}{% endblock %}">
+        <svg class="ic"><use href="#p-user"/></svg>Me</a>
+</div></nav>
+{% endblock %}{% endif %}
+
+<script src="{% static_v 'pocket/user.js' %}"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}{{ account.name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <p class="page-sub"><a href="{% url 'pocket_accounts' %}">Pocket Money</a> › {{ account.name }}</p>
+        <h1>{{ account.name }}
+            {% if account.syncup_token %}<span class="badge badge-success">SyncUp registered</span>
+            {% else %}<span class="badge">no device token</span>{% endif %}
+            {% if account.is_archived %}<span class="badge badge-danger">archived</span>{% endif %}</h1>
+    </div>
+    <div class="page-actions">
+        <form method="POST" action="{% url 'pocket_admin_push' account.pk %}">{% csrf_token %}
+            <button class="btn" type="submit">{% icon "bell" %}Test push</button></form>
+        <form method="POST" action="{% url 'pocket_admin_state' account.pk 'link' %}">{% csrf_token %}
+            <button class="btn" type="submit">{% icon "key" %}Sign-in link</button></form>
+        <form method="POST" action="{% url 'pocket_admin_state' account.pk 'archive' %}">{% csrf_token %}
+            <button class="btn" type="submit">{% icon "archive" %}{% if account.is_archived %}Bring back{% else %}Archive{% endif %}</button></form>
+    </div>
+</div>
+
+{% if link %}
+<div class="card" style="margin-top:14px">
+    <div class="card-body">
+        <b>One-hour sign-in link</b>
+        <p class="small muted">Hand this over yourself — this server sends no mail. It dies on
+            first use, or in an hour.</p>
+        <code class="small">{{ link }}</code>
+    </div>
+</div>
+{% endif %}
+
+<div class="grid-2" style="margin-top:14px">
+    <div class="card">
+        <div class="card-head">{% icon "user" %}<h2>Account</h2></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Signs in with</dt><dd><code class="small">{{ account.sign_in_id }}</code></dd>
+                <dt>UPI ID</dt><dd>{% if account.upi_id %}<code class="small">{{ account.upi_id }}</code>
+                    {% else %}<span class="muted">none</span>{% endif %}</dd>
+                <dt>Joined</dt><dd>{{ account.created_at|date:"d M Y" }}</dd>
+                <dt>Last opened</dt><dd>{{ account.last_opened_at|ago }} · {{ account.open_count }} times</dd>
+                <dt>Device token</dt><dd>{% if account.syncup_token %}
+                    <code class="small">{{ account.syncup_token|slice:":12" }}…</code>{% else %}
+                    <span class="muted">not captured — they have to open Pocket Money inside the
+                    SyncUp app once</span>{% endif %}</dd>
+                <dt>Notifications</dt><dd>{{ account.notify|yesno:"on,off" }}</dd>
+                <dt>Theme</dt><dd>{{ account.get_theme_display }}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "wallet" %}<h2>Tracker · this month</h2></div>
+        <div class="card-body">
+            <div class="stats">
+                <div class="stat"><span class="stat-label">In</span>
+                    <span class="stat-value">{{ config.currency_symbol }}{{ month.in|floatformat:0 }}</span></div>
+                <div class="stat"><span class="stat-label">Out</span>
+                    <span class="stat-value">{{ config.currency_symbol }}{{ month.out|floatformat:0 }}</span></div>
+                <div class="stat"><span class="stat-label">Kept</span>
+                    <span class="stat-value">{{ config.currency_symbol }}{{ month.kept|floatformat:0 }}</span></div>
+                <div class="stat"><span class="stat-label">Entries</span>
+                    <span class="stat-value">{{ month.count }}</span></div>
+            </div>
+            <p class="small muted" style="margin-top:10px">Ledger, separately:
+                <b>{{ config.currency_symbol }}{{ position.owed_to_you|floatformat:0 }}</b> owed to them,
+                <b>{{ config.currency_symbol }}{{ position.you_owe|floatformat:0 }}</b> they owe. The two
+                halves are never added together.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:14px" data-table>
+    <div class="card-head">{% icon "folder" %}<h2>Ledger folders</h2></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Folder</th><th>Role</th><th class="num">People</th><th>Linked</th>
+                <th>Shared with</th><th class="num">Owed to them</th><th class="num">They owe</th><th></th></tr></thead>
+            <tbody>
+                {% for item in folders %}
+                <tr>
+                    <td class="t-primary" data-label="Folder"><b>{{ item.folder.name }}</b>
+                        <div class="small faint">{{ item.entries }} entr{{ item.entries|pluralize:"y,ies" }}</div></td>
+                    <td data-label="Role">{{ item.role }}{% if item.role == 'Shared in' %}
+                        <div class="small faint">owned by {{ item.folder.owner.name }}</div>{% endif %}</td>
+                    <td data-label="People" class="num">{{ item.totals.people }}</td>
+                    <td data-label="Linked">
+                        {% for person in item.linked %}{{ person.name }}
+                            <span class="badge {% if person.can_edit %}badge-success{% endif %}">{% if person.can_edit %}can add{% else %}view{% endif %}</span>
+                        {% empty %}—{% endfor %}
+                        {% for person in item.invited %}{{ person.name }} <span class="badge">invited</span>{% endfor %}</td>
+                    <td data-label="Shared with">
+                        {% for share in item.shares %}{{ share.account.name }}
+                            <span class="badge">{% if share.can_edit %}can edit{% else %}view{% endif %}</span>
+                        {% empty %}—{% endfor %}</td>
+                    <td data-label="Owed to them" class="num">
+                        {% if item.totals.owed_to_you %}{{ config.currency_symbol }}{{ item.totals.owed_to_you|floatformat:0 }}{% else %}—{% endif %}</td>
+                    <td data-label="They owe" class="num">
+                        {% if item.totals.you_owe %}{{ config.currency_symbol }}{{ item.totals.you_owe|floatformat:0 }}{% else %}—{% endif %}</td>
+                    <td data-label=""><a class="btn btn-ghost btn-sm"
+                        href="{% url 'pocket_admin_folder' item.folder.pk %}">Open</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8"><div class="empty">{% icon "folder" %}<b>No folders</b>
+                    <span>This account keeps a Tracker and nothing else.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if lines %}
+<div class="card" style="margin-top:14px" data-table>
+    <div class="card-head">{% icon "link" %}<h2>Lines in other people's folders</h2></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>As</th><th>In</th><th>Owner</th><th>May</th><th>Since</th></tr></thead>
+            <tbody>
+                {% for person in lines %}
+                <tr><td data-label="As"><b>{{ person.name }}</b></td>
+                    <td data-label="In">{{ person.folder.name }}</td>
+                    <td data-label="Owner">{{ person.folder.owner.name }}</td>
+                    <td data-label="May">{% if person.can_edit %}add entries{% else %}look{% endif %}</td>
+                    <td data-label="Since">{{ person.linked_at|date:"d M Y" }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:14px">
+    <div class="card-head">{% icon "triangle-alert" %}<h2>Deleting</h2></div>
+    <div class="card-body">
+        <p class="small muted"><b>Archive</b> blocks sign-in and leaves everything readable — shared
+            folders stay open to the people who have them, and linked lines keep working in the
+            other direction. <b>Delete</b> is the destructive path: say who should get the folders
+            this account owns, or leave it empty to remove them with their entries. There is no
+            option where somebody else's book quietly disappears.</p>
+        <form method="POST" action="{% url 'pocket_admin_delete' account.pk %}" class="row"
+              style="margin-top:10px;gap:10px;align-items:flex-end"
+              onsubmit="return confirm('Delete {{ account.name|escapejs }}? This cannot be undone.')">
+            {% csrf_token %}
+            <label class="field" style="max-width:280px">
+                <span class="label">Hand their folders to</span>
+                <select class="input input-sm" name="hand_to">
+                    <option value="">Nobody — delete the folders too</option>
+                    {% for other in accounts_for_handover %}
+                    <option value="{{ other.pk }}">{{ other.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button class="btn btn-danger" type="submit">{% icon "trash" %}Delete account</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

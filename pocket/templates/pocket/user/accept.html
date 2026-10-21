@@ -1,0 +1,73 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}An invitation{% endblock %}
+{% block wrap_class %} plain{% endblock %}
+
+{% block content %}
+{% if gone %}
+<div class="card center">
+    <h4>That {{ what }} has expired</h4>
+    <p class="sub">It may have been used already, or it is older than the limit. Ask for a new one.</p>
+    <div style="margin-top:12px"><a class="btn ghost" href="{% url 'pocket_shared' %}">Back</a></div>
+</div>
+
+{% elif person %}
+<div class="center stack" style="gap:6px">
+    <span class="av lg" style="background:var(--me);margin:0 auto">{{ owner.initials }}</span>
+    <h1 style="font-size:18px">{{ owner.name }} wants to share a ledger with you</h1>
+    <p class="tiny">You are <b>{{ person.name }}</b> in {{ owner.name }}'s folder
+        <b>{{ folder.name }}</b>.</p>
+</div>
+
+<div class="card">
+    <div class="row" style="padding:0 0 10px">
+        <span class="mn"><span class="t1">{% if balance < 0 %}What you would owe{% elif balance > 0 %}What they owe you{% else %}Where it stands{% endif %}</span>
+            <span class="t2">as {{ owner.name }} has recorded it</span></span>
+        <span class="rt"><span class="v {% if balance < 0 %}out{% elif balance > 0 %}in{% endif %}">
+            {{ money }}{{ balance|floatformat:0|cut:"-" }}</span></span>
+    </div>
+    <div class="row" style="padding:10px 0 0;border:0;border-top:1px solid var(--bd)">
+        <span class="mn"><span class="t1">{{ entries }} entr{{ entries|pluralize:"y,ies" }}</span></span>
+    </div>
+</div>
+
+<div class="note dashed"><svg class="ic sm"><use href="#p-info"/></svg>
+    <div><b>If you accept</b><br>
+        · You see this one line — not the other {{ others }} people in {{ owner.name }}'s folder<br>
+        · {% if person.can_edit %}You can add entries to it, and {{ owner.name }} sees your name on them
+          {% else %}You can read it; only {{ owner.name }} can add to it{% endif %}<br>
+        · {{ owner.name }} keeps the folder; you can leave at any time</div></div>
+
+<form method="POST" class="pair">
+    {% csrf_token %}
+    <button class="btn" name="answer" value="yes" type="submit">Accept</button>
+    <button class="btn ghost" name="answer" value="no" type="submit">Not me</button>
+</form>
+<p class="tiny center">“Not me” tells {{ owner.name }} the number is wrong, and nothing is shared.</p>
+
+{% else %}
+<div class="center stack" style="gap:6px">
+    <span class="av sq lg" style="background:{{ folder.colour }};margin:0 auto">
+        <svg class="ic" style="width:26px;height:26px;stroke:#fff"><use href="#p-folder"/></svg></span>
+    <h1 style="font-size:18px">{{ owner.name }} shared “{{ folder.name }}”</h1>
+    <p class="tiny">The whole folder — {{ totals.people }} people, every entry, and the totals.</p>
+</div>
+
+<div class="card">
+    <div class="tiles">
+        <div class="tile"><span class="lb">Owed to them</span>
+            <div class="vl sm in">{{ money }}{{ totals.owed_to_you|floatformat:0 }}</div></div>
+        <div class="tile"><span class="lb">They owe</span>
+            <div class="vl sm out">{{ money }}{{ totals.you_owe|floatformat:0 }}</div></div>
+    </div>
+    <p class="tiny" style="margin-top:10px">You would be able to
+        {% if share.can_edit %}<b>add, edit and void</b> entries{% else %}<b>read</b> it, not change it{% endif %}.
+        Only {{ owner.name }} can rename it, re-share it or delete it.</p>
+</div>
+
+<form method="POST" class="pair">
+    {% csrf_token %}
+    <button class="btn" name="answer" value="yes" type="submit">Accept</button>
+    <button class="btn ghost" name="answer" value="no" type="submit">Decline</button>
+</form>
+{% endif %}
+{% endblock %}

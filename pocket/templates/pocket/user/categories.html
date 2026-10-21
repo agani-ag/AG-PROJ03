@@ -1,0 +1,51 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}Categories{% endblock %}
+{% block tab_me %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar">
+    <a class="rb flat" href="{% url 'pocket_me' %}" aria-label="Back">
+        <svg class="ic sm"><use href="#p-left"/></svg></a>
+    <span class="nm" style="font-size:17px">Categories</span>
+</div></div>
+{% endblock %}
+
+{% block content %}
+<div class="chips">
+    {% for value, label in flows %}
+    <a class="chip" href="?flow={{ value }}"
+       style="{% if flow == value %}background:var(--me-soft);border-color:var(--me);color:var(--me-dark);font-weight:650{% endif %}">{{ label }}</a>
+    {% endfor %}
+</div>
+
+<div class="rows">
+    {% for row in rows %}
+    <div class="row{% if row.is_archived %} off{% endif %}">
+        <span class="cdot" style="background:{{ row.colour }};width:14px;height:14px"></span>
+        <span class="mn"><span class="t1">{{ row.name }}
+            {% if row.is_archived %}<span class="pill">archived</span>{% endif %}</span>
+            <span class="t2">used {{ row.used }} time{{ row.used|pluralize }}</span></span>
+        <form method="POST" action="{% url 'pocket_category_archive' row.pk %}">{% csrf_token %}
+            <button class="btn ghost sm" type="submit">{% if row.is_archived %}Bring back{% else %}Archive{% endif %}</button>
+        </form>
+    </div>
+    {% empty %}
+    <div class="empty">No categories on this side yet.</div>
+    {% endfor %}
+</div>
+
+<form method="POST" class="card">
+    {% csrf_token %}
+    <input type="hidden" name="flow" value="{{ flow }}">
+    <label class="label" for="cname" style="margin-top:0">A new one</label>
+    <div class="field">
+        <input class="input" id="cname" name="name" maxlength="30" placeholder="What is it called?" required>
+        <button class="btn sm" type="submit">Add</button>
+    </div>
+</form>
+
+<div class="note dashed"><svg class="ic sm"><use href="#p-info"/></svg>
+    <div>A category in use is never deleted, only <b>archived</b> — it disappears from the chips
+        and stays on the entries that already carry it. Deleting it would quietly rewrite months
+        of history.</div></div>
+{% endblock %}

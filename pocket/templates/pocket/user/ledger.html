@@ -1,0 +1,90 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}Ledger{% endblock %}
+{% block tab_ledger %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar"><span class="nm">Ledger</span><span class="sp"></span></div></div>
+{% endblock %}
+
+{% block content %}
+{% for person in suggestions %}
+<div class="card" style="background:var(--me-soft);border-color:#c7c9f7">
+    <div class="row-h" style="align-items:flex-start">
+        <span class="av" style="background:{{ person.colour }}">{{ person.initials }}</span>
+        <div class="mn"><b>Is this your {{ person.name }}?</b>
+            <div class="tiny">Somebody signed up with <b>{{ person.phone }}</b> — the number on
+                <b>{{ person.name }}</b> in <b>{{ person.folder.name }}</b>.</div></div>
+    </div>
+    <div class="pair" style="margin-top:12px">
+        <form method="POST" action="{% url 'pocket_suggestion' person.pk 'yes' %}">{% csrf_token %}
+            <button class="btn sm" style="width:100%" type="submit">Yes, invite them</button></form>
+        <form method="POST" action="{% url 'pocket_suggestion' person.pk 'no' %}">{% csrf_token %}
+            <button class="btn ghost sm" style="width:100%" type="submit">No</button></form>
+    </div>
+    <p class="tiny" style="margin-top:9px">Nothing has been shared yet. {{ person.name }} will
+        also have to accept before either of you sees anything.</p>
+</div>
+{% endfor %}
+
+<div class="tiles">
+    <div class="tile"><span class="lb">Owed to you</span>
+        <div class="vl sm in">{{ money }}{{ position.owed_to_you|floatformat:0 }}</div></div>
+    <div class="tile"><span class="lb">You owe</span>
+        <div class="vl sm out">{{ money }}{{ position.you_owe|floatformat:0 }}</div></div>
+</div>
+
+<div class="sechead">Your folders</div>
+<div class="rows">
+    {% for item in folders %}
+    <a class="row{% if item.folder.is_archived %} off{% endif %}" href="{% url 'pocket_folder' item.folder.pk %}">
+        <span class="av sq" style="background:{{ item.folder.colour }}">
+            <svg class="ic sm" style="stroke:#fff"><use href="#p-folder"/></svg></span>
+        <span class="mn">
+            <span class="t1">{{ item.folder.name }}
+                {% if item.folder.is_archived %}<span class="pill">archived</span>{% endif %}
+                {% for who in item.shared_with %}<span class="pill on">
+                    <svg class="ic sm" style="width:11px;height:11px"><use href="#p-share"/></svg>{{ who.name }}</span>{% endfor %}
+            </span>
+            <span class="t2">{{ item.totals.people }} {{ item.totals.people|pluralize:"person,people" }}{% if item.linked %} · {{ item.linked }} on Pocket Money{% endif %}</span>
+        </span>
+        <span class="rt">
+            {% if item.totals.owed_to_you %}<span class="v in">{{ money }}{{ item.totals.owed_to_you|floatformat:0 }}</span><span class="l">owed to you</span>
+            {% elif item.totals.you_owe %}<span class="v out">{{ money }}{{ item.totals.you_owe|floatformat:0 }}</span><span class="l">you owe</span>
+            {% else %}<span class="v">{{ money }}0</span><span class="l">clear</span>{% endif %}
+        </span>
+    </a>
+    {% empty %}
+    <div class="empty">No folders yet. A folder is a drawer of people — <i>Office</i>, <i>Family</i>, <i>Chit</i>.</div>
+    {% endfor %}
+</div>
+
+<details class="card">
+    <summary style="cursor:pointer;font-weight:700;list-style:none">
+        <span class="row-h"><span class="av sq sm" style="background:var(--me)">
+            <svg class="ic sm" style="stroke:#fff"><use href="#p-plus"/></svg></span>New folder</span></summary>
+    <form method="POST" action="{% url 'pocket_folder_new' %}" style="margin-top:12px">
+        {% csrf_token %}
+        <label class="label" for="fname" style="margin-top:0">What is it called?</label>
+        <input class="input" id="fname" name="name" maxlength="40" placeholder="Office" required>
+        <label class="label" for="fnote">Note</label>
+        <input class="input" id="fnote" name="note" maxlength="200" placeholder="Optional">
+        <div style="margin-top:12px"><button class="btn" type="submit">Make it</button></div>
+    </form>
+</details>
+
+{% if shared_rows %}
+<div class="sechead">Shared with you</div>
+<div class="rows">
+    {% for item in shared_rows %}
+    <a class="row" href="{% url 'pocket_folder' item.folder.pk %}">
+        <span class="av sq" style="background:{{ item.folder.colour }}">
+            <svg class="ic sm" style="stroke:#fff"><use href="#p-folder"/></svg></span>
+        <span class="mn"><span class="t1">{{ item.folder.name }}</span>
+            <span class="t2">{{ item.folder.owner.name }}'s folder · {{ item.totals.people }} people</span></span>
+        <svg class="ic sm faint"><use href="#p-right"/></svg>
+    </a>
+    {% endfor %}
+</div>
+<p class="tiny">These are somebody else's books, so they stay out of your two totals above.</p>
+{% endif %}
+{% endblock %}

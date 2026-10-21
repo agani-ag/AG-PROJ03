@@ -13,7 +13,7 @@
 <form method="POST" novalidate>
     {% csrf_token %}
     <div class="card">
-        <div class="card-head">{% icon "bell" %}<h2>Notifications</h2>
+        <div class="card-head">{% icon "plug" %}<h2>This site and SyncUp</h2>
             <span class="small muted ml-auto">used by every module</span></div>
         <div class="card-body form">
             {% for f in form %}
@@ -56,6 +56,62 @@
     </div>
 </form>
 
+<div class="card" style="margin-top:16px" id="syncup-links">
+    <div class="card-head">{% icon "smartphone" %}<h2>Tools in SyncUp</h2>
+        {% if syncup_links.rows %}
+        <form method="POST" action="{% url 'syncup_links_send_all' %}" class="ml-auto">
+            {% csrf_token %}
+            <button class="btn btn-sm" type="submit" {% if not syncup_links.any_ready %}disabled{% endif %}>{% icon "send" %}Send all</button>
+        </form>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <p class="small muted" style="margin:0 0 10px">Each tool can be a link in the SyncUp app, for everyone — under
+            "For everyone", with its own icon. Nothing goes until you press Send; press it again after a change here.
+            SyncUp's admin can switch a link off, and then it stays off whatever SyncHub sends.</p>
+        {% if syncup_links.problem %}
+        <div class="alert alert-warning">
+            {% icon "info" %}
+            <div class="alert-body"><b>Not ready to send</b>{{ syncup_links.problem }}</div>
+        </div>
+        {% endif %}
+        <ul class="list">
+            {% for r in syncup_links.rows %}
+            <li class="list-item">
+                <span class="list-icon">{% icon r.module.icon %}</span>
+                <div class="main-col">
+                    <div class="title">{{ r.module.title }} <span class="badge {{ r.badge }}">{{ r.label }}</span></div>
+                    <div class="sub">{{ r.url|default:r.module.syncup_path }}{% if r.sent_at %} · sent {{ r.sent_at|ago }}{% endif %}</div>
+                    {% if r.admin_off %}<div class="sub">SyncUp's admin turned it off — only they can turn it back on.</div>{% endif %}
+                    {% if r.error %}<div class="sub" style="color:var(--danger)">Last try: {{ r.error }}</div>{% endif %}
+                </div>
+                <div class="row gap-sm ml-auto">
+                    {% if r.can_hide %}
+                    <form method="POST" action="{% url 'syncup_link_visibility' r.module.key %}">
+                        {% csrf_token %}<input type="hidden" name="show" value="0">
+                        <button class="btn btn-sm btn-ghost" type="submit">{% icon "eye-off" %}Hide</button>
+                    </form>
+                    {% elif r.can_show %}
+                    <form method="POST" action="{% url 'syncup_link_visibility' r.module.key %}">
+                        {% csrf_token %}<input type="hidden" name="show" value="1">
+                        <button class="btn btn-sm btn-ghost" type="submit">{% icon "eye" %}Show</button>
+                    </form>
+                    {% endif %}
+                    {% if r.can_send %}
+                    <form method="POST" action="{% url 'syncup_link_send' r.module.key %}">
+                        {% csrf_token %}
+                        <button class="btn btn-sm" type="submit">{% icon "send" %}{% if r.sent %}Send{% else %}Add to SyncUp{% endif %}</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </li>
+            {% empty %}
+            <li class="list-item"><div class="main-col"><div class="sub">No module has a SyncUp link.</div></div></li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
 <div class="card" style="margin-top:16px">
     <div class="card-head">{% icon "package" %}<h2>Who uses these</h2></div>
     <div class="card-body">
@@ -74,7 +130,7 @@
             {% endfor %}
         </ul>
         <p class="small muted" style="margin-top:10px">Each module keeps its own rules — how many messages a day, what
-            they say, how long anything is kept — and reads the three values above when it is time to send. Change them
+            they say, how long anything is kept — and reads the values above when it is time to send. Change them
             here and every module follows from its next send.</p>
     </div>
 </div>
@@ -82,7 +138,7 @@
 <div class="card" style="margin-top:16px">
     <div class="card-head">{% icon "clock" %}<h2>When sending happens</h2></div>
     <div class="card-body">
-        <p class="muted">Nothing is pushed from a page. SyncHub's <b>15-minute tick</b> does the sending for every
+        <p class="muted">No notification is pushed from a page. SyncHub's <b>15-minute tick</b> does the sending for every
             module, and the nightly <b>cleanup</b> trims what has aged out — which is why a module never gets a cron
             URL of its own.</p>
         <div class="row" style="margin-top:10px">

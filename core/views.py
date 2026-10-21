@@ -25,7 +25,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
-from . import cron_views, cronhub
+from . import cron_views, cronhub, syncup_links
 from .forms import AuthForm, HubSettingsForm, ProfileForm
 from .models import AdminPin, CronRun, HubSettings
 from .modules import MODULES, MODULES_BY_KEY
@@ -218,7 +218,58 @@ def system_settings(request):
         'here': here,
         'points_at_self': config.points_at(request.get_host()),
         'modules': [m for m in MODULES if m.is_live],
+        'syncup_links': syncup_links.rows(),
     })
+
+
+def _say(request, title, ok, error):
+    if ok:
+        messages.success(request, f'{title}: done.')
+    else:
+        messages.error(request, f'{title}: {error}')
+
+
+@admin_required
+@require_POST
+def syncup_link_send(request, key):
+    """Send one module's link to SyncUp: added the first time, updated after that."""
+    module = MODULES_BY_KEY.get(key)
+    if module is None or not module.has_syncup_link:
+        raise Http404('No such module')
+    ok, error = syncup_links.send(module, timeout=syncup_links.PAGE_TIMEOUT)
+    _say(request, f'{module.title} → SyncUp', ok, error)
+    return redirect(reverse('system_settings') + '#syncup-links')
+
+
+@admin_required
+@require_POST
+def syncup_link_visibility(request, key):
+    """Hide a module's link in SyncUp, or show it again. SyncUp's admin can still keep it off."""
+    module = MODULES_BY_KEY.get(key)
+    if module is None:
+        raise Http404('No such module')
+    show = request.POST.get('show') == '1'
+    if show:
+        ok, error = syncup_links.send(module, active=True, timeout=syncup_links.PAGE_TIMEOUT)
+    else:
+        ok, error = syncup_links.hide(module, timeout=syncup_links.PAGE_TIMEOUT)
+    _say(request, f'{module.title} {"shown" if show else "hidden"} in SyncUp', ok, error)
+    return redirect(reverse('system_settings') + '#syncup-links')
+
+
+@admin_required
+@require_POST
+def syncup_links_send_all(request):
+    """Send every ready module's link, keeping each one shown or hidden as it was."""
+    results = syncup_links.send_all(timeout=syncup_links.PAGE_TIMEOUT)
+    failed = [(m.title, error) for m, ok, error in results if not ok]
+    if not results:
+        messages.warning(request, 'No module is ready to send yet.')
+    elif failed:
+        messages.error(request, 'Not sent: ' + '; '.join(f'{t} ({e})' for t, e in failed))
+    else:
+        messages.success(request, f'Sent {len(results)} link(s) to SyncUp.')
+    return redirect(reverse('system_settings') + '#syncup-links')
 
 
 @admin_required

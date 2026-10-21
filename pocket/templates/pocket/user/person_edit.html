@@ -1,0 +1,44 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}{{ person.name }}{% endblock %}
+{% block tab_ledger %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar">
+    <a class="rb flat" href="{% url 'pocket_person' folder.pk person.pk %}" aria-label="Back">
+        <svg class="ic sm"><use href="#p-left"/></svg></a>
+    <span class="nm" style="font-size:17px">Edit {{ person.name }}</span>
+</div></div>
+{% endblock %}
+
+{% block content %}
+<form method="POST" class="card">
+    {% csrf_token %}
+    <label class="label" for="name" style="margin-top:0">Name</label>
+    <input class="input" id="name" name="name" maxlength="40" value="{{ person.name }}" required>
+
+    <label class="label" for="phone">Phone <span class="faint" style="text-transform:none">optional</span></label>
+    <input class="input" id="phone" name="phone" inputmode="tel" maxlength="15" value="{{ person.phone }}">
+
+    <label class="label" for="upi">UPI ID <span class="faint" style="text-transform:none">optional</span></label>
+    <div class="field">
+        <input class="input" id="upi" name="upi_id" value="{{ person.upi_id }}" placeholder="name@bank"
+               autocapitalize="off" spellcheck="false" data-upi>
+        <button class="btn ghost sm" type="button" data-scan hidden>
+            <svg class="ic sm"><use href="#p-qr"/></svg>Scan</button>
+    </div>
+    <p class="tiny" style="margin-top:6px">Puts a <b>Pay</b> button on their page whenever you owe
+        them. Anyone you share this folder with can see it.</p>
+
+    <label class="label" for="note">Note</label>
+    <input class="input" id="note" name="note" maxlength="200" value="{{ person.note }}">
+
+    <div style="margin-top:14px"><button class="btn" type="submit">Save</button></div>
+</form>
+
+{% if person.is_linked %}
+<div class="note"><svg class="ic sm"><use href="#p-info"/></svg>
+    <div>{{ person.name }} is linked to a real account, so they see this line. Their permission
+        and the link itself are on the <a href="{% url 'pocket_person_invite' folder.pk person.pk %}">link
+        page</a>.</div></div>
+{% endif %}
+{% endblock %}

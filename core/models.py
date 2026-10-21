@@ -55,6 +55,10 @@ class HubSettings(models.Model):
         help_text='Where SyncUp lives, e.g. https://syncup.example.com — a different machine '
                   'from this one.')
     syncup_notify_key = models.CharField(max_length=80, blank=True)
+    syncup_links_key = models.CharField(
+        max_length=80, blank=True,
+        help_text="From SyncUp's admin → General links → SyncUp links key. Lets the buttons below "
+                  "put this hub's tools in the SyncUp app, for everyone.")
 
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
@@ -97,6 +101,29 @@ class HubSettings(models.Model):
         if not self.site_base:
             return ''
         return self.site_base.rstrip('/') + path
+
+
+class SyncUpLink(models.Model):
+    """What SyncHub last told SyncUp about one module's link in the SyncUp app.
+
+    SyncUp keeps the link itself (a General link, for everyone); this only remembers what was
+    sent and what came back, so the System page can say "changed since you sent it" or "switched
+    off in SyncUp" without asking SyncUp every time it is opened.
+
+    Nothing is sent on its own: the admin presses Send. A module keeps its row when it stops
+    offering a link, so the page can still offer to hide it.
+    """
+    module = models.CharField(max_length=32, unique=True)
+    sent_hash = models.CharField(max_length=64, blank=True)      # of the details last sent
+    sent_at = models.DateTimeField(null=True, blank=True)
+    hidden = models.BooleanField(default=False)                  # SyncHub asked SyncUp to hide it
+    admin_off = models.BooleanField(default=False)               # SyncUp's admin switched it off
+    syncup_id = models.CharField(max_length=40, blank=True)
+    last_error = models.CharField(max_length=200, blank=True)
+    error_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.module} in SyncUp"
 
 
 class CronLock(models.Model):

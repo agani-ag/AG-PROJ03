@@ -1,0 +1,35 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block wrap_class %} plain{% endblock %}
+
+{% block content %}
+<div class="center stack" style="gap:4px">
+    <span class="av sq lg" style="background:var(--me);margin:0 auto">
+        <svg class="ic" style="width:28px;height:28px;stroke:#fff"><use href="#p-wallet"/></svg></span>
+    <h1 style="font-size:24px;margin-top:8px">Welcome back</h1>
+</div>
+
+<form method="POST" class="card" novalidate>
+    {% csrf_token %}
+    <label class="label" for="sign_in_id" style="margin-top:0">Email or phone</label>
+    <input class="input" id="sign_in_id" name="sign_in_id" autofocus autocomplete="username"
+           value="{{ request.POST.sign_in_id|default:'' }}">
+    <label class="label" for="password">Password</label>
+    <input class="input" id="password" name="password" type="password" autocomplete="current-password">
+    {% if error %}<p class="err" style="margin-top:10px">{{ error }}</p>{% endif %}
+    <div style="margin-top:14px"><button class="btn" type="submit">Sign in</button></div>
+</form>
+
+<form method="POST" action="{% url 'pocket_magic_send' %}" class="card" style="border-style:dashed">
+    {% csrf_token %}
+    <input type="hidden" name="sign_in_id" value="{{ request.POST.sign_in_id|default:'' }}">
+    <div class="row-h">
+        <svg class="ic sm faint"><use href="#p-key"/></svg>
+        <div class="mn"><b style="font-size:13.5px">Send me a link instead</b>
+            <div class="tiny">One tap, no password. The link lasts an hour.</div></div>
+        <button class="link" type="submit">Ask</button>
+    </div>
+</form>
+
+<p class="center"><a class="link" href="{% url 'pocket_signup' %}">I am new here</a></p>
+{% endblock %}

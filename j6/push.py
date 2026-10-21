@@ -16,25 +16,23 @@ Delivery itself is SyncUp's partner endpoint, which is what turns this into an F
 on the person's phone. No token means no push: a browser on its own can only be told while a tab
 is open, which is what the Notification API in the page is for.
 """
-import json
 import logging
 import threading
-import urllib.error
-import urllib.request
 
 from django.db import connection
 from django.urls import reverse
 from django.utils import timezone
 
+from core import push as core_push
 from core.models import HubSettings
 
 from .models import Member, Settings
 
 logger = logging.getLogger(__name__)
 
-SEND_TIMEOUT = 5
-TITLE_MAX = 100
-BODY_MAX = 200
+SEND_TIMEOUT = core_push.SEND_TIMEOUT
+TITLE_MAX = core_push.TITLE_MAX
+BODY_MAX = core_push.BODY_MAX
 # Somebody whose page polled this recently is reading it; a buzz would be noise.
 AWAY_SECONDS = 60
 
@@ -45,22 +43,11 @@ def chat_url():
 
 
 def send_via_syncup(account, title, body, url, timeout=SEND_TIMEOUT):
-    """Post to SyncUp's partner endpoint. Returns (delivered, error)."""
-    hub = HubSettings.load()
-    if not hub.syncup_base or not account.syncup_token:
-        return 0, 'no syncup token' if hub.syncup_base else 'syncup not configured'
-    payload = json.dumps({'token': account.syncup_token, 'title': title[:TITLE_MAX],
-                          'body': body[:BODY_MAX], 'url': url,
-                          'key': hub.syncup_notify_key}).encode()
-    endpoint = hub.syncup_base.rstrip('/') + '/app/v1/partner/notify'
-    request = urllib.request.Request(endpoint, data=payload,
-                                     headers={'Content-Type': 'application/json'})
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.loads(response.read() or b'{}')
-        return int(data.get('delivered') or 0), ''
-    except (urllib.error.URLError, ValueError, TimeoutError) as exc:
-        return 0, f'{type(exc).__name__}: {exc}'[:200]
+    """Post to SyncUp's partner endpoint. Returns (delivered, error).
+
+    The transport itself lives in `core.push` — three modules were about to own a copy of it.
+    """
+    return core_push.send(account.syncup_token, title, body, url, timeout)
 
 
 def can_push_to(account, config=None):

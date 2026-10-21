@@ -1,0 +1,50 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}Sign up{% endblock %}
+{% block wrap_class %} plain{% endblock %}
+
+{% block content %}
+<div class="center stack" style="gap:4px">
+    <span class="av sq lg" style="background:var(--me);margin:0 auto">
+        <svg class="ic" style="width:28px;height:28px;stroke:#fff"><use href="#p-wallet"/></svg></span>
+    <h1 style="font-size:24px;margin-top:8px">Pocket Money</h1>
+    <p class="tiny">What came in, what went out, who owes whom.</p>
+</div>
+
+{% if config.signup_open %}
+<form method="POST" class="card" novalidate>
+    {% csrf_token %}
+    <label class="label" for="name" style="margin-top:0">Your name</label>
+    <input class="input" id="name" name="name" maxlength="40" autofocus autocomplete="name"
+           value="{{ request.POST.name|default:'' }}">
+
+    <label class="label" for="sign_in_id">Email or phone</label>
+    <input class="input" id="sign_in_id" name="sign_in_id" autocomplete="username"
+           value="{{ request.POST.sign_in_id|default:'' }}">
+    <p class="tiny" style="margin-top:6px">Either one. It is how you get back in if you forget the
+        password — nothing is sent to it otherwise.</p>
+
+    <label class="label" for="password">Password</label>
+    <input class="input" id="password" name="password" type="password" minlength="6"
+           autocomplete="new-password">
+
+    {% if config.invite_code %}
+    <label class="label" for="invite">Invite code</label>
+    <input class="input" id="invite" name="invite" value="{{ request.POST.invite|default:'' }}">
+    {% endif %}
+
+    {% if error %}<p class="err" style="margin-top:10px">{{ error }}</p>{% endif %}
+    <div style="margin-top:14px"><button class="btn" type="submit">
+        <svg class="ic lg" style="stroke:#fff"><use href="#p-check"/></svg>Create my account</button></div>
+</form>
+{% else %}
+<div class="card">
+    <h4>New accounts are closed</h4>
+    <p class="sub">The admin has stopped sign-ups on this server. If you already have an account
+        you can still get in.</p>
+</div>
+{% endif %}
+
+<p class="center"><a class="link" href="{% url 'pocket_login' %}">I already have an account</a></p>
+<p class="tiny center">Your books can be read by this server's admin. Nothing here is encrypted
+    end to end, and no figure is sent anywhere else.</p>
+{% endblock %}

@@ -567,7 +567,7 @@ class CronTests(TestCase):
             sent.append(json.loads(request.data))
             return Fake()
 
-        with patch('j6.push.urllib.request.urlopen', fake_open):
+        with patch('core.push.urllib.request.urlopen', fake_open):
             first = push(_ctx('tick'))
             second = push(_ctx('tick'))
 
@@ -584,7 +584,7 @@ class CronTests(TestCase):
         service.send(self.anand, self.chat, 'hello')
         Account.objects.filter(pk=self.mani.pk).update(syncup_token='tok',
                                                        last_seen_at=timezone.now())
-        with patch('j6.push.urllib.request.urlopen', side_effect=AssertionError('sent anyway')):
+        with patch('core.push.urllib.request.urlopen', side_effect=AssertionError('sent anyway')):
             result = push(_ctx('tick'))
         self.assertEqual(result['items'], 0)
 
@@ -810,7 +810,7 @@ class AccountTestPushTests(TestCase):
         hub.save()
 
     def _send(self, fake):
-        with patch('j6.push.urllib.request.urlopen', fake):
+        with patch('core.push.urllib.request.urlopen', fake):
             return self.client.post(self.url, follow=True)
 
     def test_the_button_is_on_the_account_page_when_there_is_a_token(self):
@@ -870,7 +870,7 @@ class AccountTestPushTests(TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 405)
         self.client.logout()
         fake = FakeSyncUp()
-        with patch('j6.push.urllib.request.urlopen', fake):
+        with patch('core.push.urllib.request.urlopen', fake):
             self.assertEqual(self.client.post(self.url).status_code, 302)
         self.assertIsNone(fake.url)
 
@@ -914,7 +914,7 @@ class PushAtSendTests(TestCase):
     def _send(self, body='are you there?'):
         fake = FakeSyncUp()
         with patch('j6.push.threading.Thread', RunInline), \
-             patch('j6.push.urllib.request.urlopen', fake):
+             patch('core.push.urllib.request.urlopen', fake):
             message = service.send(self.anand, self.chat, body)
         return fake, message
 
@@ -957,7 +957,7 @@ class PushAtSendTests(TestCase):
     def test_the_tick_does_not_repeat_what_was_already_pushed(self):
         self._send()
         fake = FakeSyncUp()
-        with patch('j6.push.urllib.request.urlopen', fake):
+        with patch('core.push.urllib.request.urlopen', fake):
             result = push(_ctx('tick'))
         self.assertIsNone(fake.url, 'the backstop buzzed again for the same message')
         self.assertEqual(result['sent'], 0)
@@ -965,12 +965,12 @@ class PushAtSendTests(TestCase):
     def test_the_tick_still_catches_what_the_send_missed(self):
         """A send that failed leaves the message unread, so the next tick tries again."""
         with patch('j6.push.threading.Thread', RunInline), \
-             patch('j6.push.urllib.request.urlopen',
+             patch('core.push.urllib.request.urlopen',
                    FakeSyncUp(raises=TimeoutError('timed out'))):
             service.send(self.anand, self.chat, 'first try fails')
         Member.objects.filter(chat=self.chat, account=self.mani).update(last_push_seq=0)
         fake = FakeSyncUp()
-        with patch('j6.push.urllib.request.urlopen', fake):
+        with patch('core.push.urllib.request.urlopen', fake):
             result = push(_ctx('tick'))
         self.assertIsNotNone(fake.url)
         self.assertEqual(result['sent'], 1)
@@ -1209,7 +1209,7 @@ class UppercaseNameTests(TestCase):
         hub.save()
         fake = FakeSyncUp()
         with patch('j6.push.threading.Thread', RunInline), \
-             patch('j6.push.urllib.request.urlopen', fake):
+             patch('core.push.urllib.request.urlopen', fake):
             service.send(anand, chat, 'hello')
         self.assertEqual(fake.payload['title'], 'ANAND')
 

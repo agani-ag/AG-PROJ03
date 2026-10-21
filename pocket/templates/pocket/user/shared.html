@@ -1,0 +1,70 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}Shared{% endblock %}
+{% block tab_shared %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar"><span class="nm">Shared</span><span class="sp"></span></div></div>
+{% endblock %}
+
+{% block content %}
+{% for person in invites %}
+<div class="card" style="border-style:dashed">
+    <div class="row-h" style="align-items:flex-start">
+        <span class="av" style="background:var(--me)">{{ person.folder.owner.initials }}</span>
+        <div class="mn"><b>{{ person.folder.owner.name }} wants to share a ledger with you</b>
+            <div class="tiny">You are <b>{{ person.name }}</b> in their folder
+                <b>{{ person.folder.name }}</b>.</div></div>
+    </div>
+    <div style="margin-top:12px">
+        <a class="btn sm" style="width:100%"
+           href="{% url 'pocket_accept_person' person.link_code %}">Have a look</a></div>
+</div>
+{% endfor %}
+
+{% if lines %}
+<div class="sechead">People who share a line with you</div>
+<div class="rows">
+    {% for item in lines %}
+    <a class="row" href="{% url 'pocket_line' item.person.pk %}">
+        <span class="av" style="background:var(--me)">{{ item.owner.initials }}</span>
+        <span class="mn"><span class="t1">{{ item.owner.name }}</span>
+            <span class="t2">in their folder “{{ item.person.folder.name }}” ·
+                {% if item.person.can_edit %}you can add{% else %}view only{% endif %}</span></span>
+        <span class="rt">
+            {% if item.balance > 0 %}<span class="v in">{{ money }}{{ item.balance|floatformat:0 }}</span><span class="l">owes you</span>
+            {% elif item.balance < 0 %}<span class="v out">{{ money }}{{ item.balance|floatformat:0|cut:"-" }}</span><span class="l">you owe</span>
+            {% else %}<span class="v">{{ money }}0</span><span class="l">clear</span>{% endif %}
+        </span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if folders %}
+<div class="sechead">Folders shared with you</div>
+<div class="rows">
+    {% for item in folders %}
+    <a class="row" href="{% url 'pocket_folder' item.folder.pk %}">
+        <span class="av sq" style="background:{{ item.folder.colour }}">
+            <svg class="ic sm" style="stroke:#fff"><use href="#p-folder"/></svg></span>
+        <span class="mn"><span class="t1">{{ item.folder.name }}</span>
+            <span class="t2">{{ item.folder.owner.name }}'s folder · {{ item.totals.people }} people</span></span>
+        <svg class="ic sm faint"><use href="#p-right"/></svg>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if not invites and not lines and not folders %}
+<div class="rows"><div class="empty">Nothing shared with you yet. When somebody invites you to a
+    line or hands you a folder, it lands here.</div></div>
+{% endif %}
+
+{% if clash %}
+<div class="note dashed"><svg class="ic sm"><use href="#p-info"/></svg>
+    <div>You also keep
+        {% for name in clash %}<b>{{ name }}</b>{% if not forloop.last %}, {% endif %}{% endfor %}
+        as a person in your own folders. That is a separate record with its own figures — Pocket
+        Money will not merge the two, and neither of you can see the other's.</div></div>
+{% endif %}
+{% endblock %}

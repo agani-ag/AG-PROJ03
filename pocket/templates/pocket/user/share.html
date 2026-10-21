@@ -1,0 +1,72 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}Share {{ folder.name }}{% endblock %}
+{% block tab_ledger %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar">
+    <a class="rb flat" href="{% url 'pocket_folder' folder.pk %}" aria-label="Back">
+        <svg class="ic sm"><use href="#p-left"/></svg></a>
+    <span class="nm" style="font-size:17px">Share “{{ folder.name }}”</span>
+</div></div>
+{% endblock %}
+
+{% block content %}
+<form method="POST" class="card">
+    {% csrf_token %}
+    <h4>The whole folder</h4>
+    <p class="sub">Every person in it, every entry, and the totals. For somebody who keeps this
+        book with you — not for somebody who is in it.</p>
+    {% if link %}
+    <div class="idbox" style="margin-top:10px">{{ link }}
+        <button class="cp" type="button" data-copy="{{ link }}" aria-label="Copy">
+            <svg class="ic sm"><use href="#p-copy"/></svg></button></div>
+    <p class="tiny" style="margin-top:7px">Made {{ open_link.created_at|date:"j M" }} ·
+        {% if open_link.can_edit %}can edit{% else %}view only{% endif %} ·
+        stops working once it is used, or after {{ config.link_days }} days.</p>
+    {% endif %}
+    <div class="chips" style="margin-top:10px">
+        <label class="chip"><input type="radio" name="can_edit" value="1" checked>
+            <svg class="ic sm"><use href="#p-pen"/></svg>Can edit</label>
+        <label class="chip"><input type="radio" name="can_edit" value="0">
+            <svg class="ic sm"><use href="#p-eye"/></svg>View only</label>
+    </div>
+    <p class="tiny" style="margin-top:8px">Edit means two-way: they add, you add, and every row
+        says who wrote it. Neither can re-share, rename or delete — that stays with you.</p>
+    <div style="margin-top:12px"><button class="btn" type="submit">
+        <svg class="ic lg" style="stroke:#fff"><use href="#p-share"/></svg>
+        {% if link %}Make a new link{% else %}Make a share link{% endif %}</button></div>
+</form>
+
+<div class="sechead">Who has this folder</div>
+<div class="rows">
+    <div class="row"><span class="av" style="background:var(--me)">{{ folder.owner.initials }}</span>
+        <span class="mn"><span class="t1">You</span><span class="t2">owner</span></span></div>
+    {% for share in shares %}
+    <div class="row">
+        <span class="av" style="background:#db2777">{{ share.account.initials }}</span>
+        <span class="mn"><span class="t1">{{ share.account.name }}</span>
+            <span class="t2">{% if share.can_edit %}can edit{% else %}view only{% endif %}
+                · joined {{ share.accepted_at|date:"j M" }}</span></span>
+        <form method="POST">{% csrf_token %}
+            <input type="hidden" name="stop" value="{{ share.pk }}">
+            <button class="btn danger sm" type="submit">Stop</button></form>
+    </div>
+    {% empty %}
+    <div class="empty">Nobody else has this folder.</div>
+    {% endfor %}
+</div>
+
+{% if in_folder %}
+<div class="note warn"><svg class="ic sm" style="color:var(--warn)"><use href="#p-warn"/></svg>
+    <div><b>Careful with people who are in it</b><br>
+        {% for person in in_folder %}{{ person.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        {{ in_folder|length|pluralize:"is,are" }} already in this folder. Share the <b>whole
+        folder</b> with them and they see all {{ folder.people.count }} people and what each one
+        owes you. To show one person only their own line, use <b>Invite</b> on their page instead.</div></div>
+{% else %}
+<div class="note warn"><svg class="ic sm" style="color:var(--warn)"><use href="#p-warn"/></svg>
+    <div>If you share this with somebody who is also a <i>person</i> in it, they will see every
+        other person here and what each one owes you. The per-person invitation is the narrow
+        answer — it is on each person's page.</div></div>
+{% endif %}
+{% endblock %}

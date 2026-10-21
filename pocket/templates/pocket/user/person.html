@@ -1,0 +1,164 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}{{ person.name }}{% endblock %}
+{% block tab_ledger %}on{% endblock %}
+
+{% block top %}
+<div class="top"><div class="bar">
+    <a class="rb flat" href="{% url 'pocket_folder' folder.pk %}" aria-label="Back">
+        <svg class="ic sm"><use href="#p-left"/></svg></a>
+    <span class="av sm" style="background:{{ person.colour }}">{{ person.initials }}</span>
+    <span class="nm" style="font-size:17px">{{ person.name }}</span><span class="sp"></span>
+    {% if acc.can_manage %}
+    <a class="rb" href="{% url 'pocket_person_invite' folder.pk person.pk %}" aria-label="Invite or link">
+        <svg class="ic sm"><use href="#p-share"/></svg></a>
+    <a class="rb" href="{% url 'pocket_person_edit' folder.pk person.pk %}" aria-label="Edit">
+        <svg class="ic sm"><use href="#p-pen"/></svg></a>{% endif %}
+</div></div>
+{% endblock %}
+
+{% block content %}
+<div class="head {% if page.they_owe %}they{% elif page.you_owe %}you{% endif %}">
+    <div class="lb">{% if page.they_owe %}{{ person.name }} owes you
+        {% elif page.you_owe %}You owe {{ person.name }}
+        {% else %}You two are square{% endif %}</div>
+    <div class="vl">{{ money }}{{ page.balance|floatformat:0|cut:"-" }}</div>
+    <div class="mt">{{ money }}{{ page.gave|floatformat:0 }} given · {{ money }}{{ page.got|floatformat:0 }} back</div>
+</div>
+
+{% if person.is_linked %}
+<div class="lnkstate on"><svg class="ic sm"><use href="#p-check"/></svg>
+    <span>Linked to {{ person.name }}'s account{% if person.can_edit %} · <b>can add entries</b>{% else %} · view only{% endif %}</span></div>
+{% elif person.is_invited %}
+<div class="lnkstate"><svg class="ic sm"><use href="#p-clock"/></svg>
+    <span>Invited — waiting for {{ person.name }} to accept</span></div>
+{% endif %}
+
+{% if page.you_owe and person.upi_id %}
+<a class="btn" href="{{ upi }}" data-pay><svg class="ic lg" style="stroke:#fff"><use href="#p-upi"/></svg>Pay {{ person.name }} by UPI</a>
+<p class="tiny center" style="margin-top:-4px">Opens your UPI app with {{ person.name }} filled in —
+    you type the amount there</p>
+{% endif %}
+{% if person.upi_id %}
+<div class="idbox">{{ person.upi_id }}
+    <button class="cp" type="button" data-copy="{{ person.upi_id }}" aria-label="Copy">
+        <svg class="ic sm"><use href="#p-copy"/></svg></button></div>
+{% endif %}
+
+{% if acc.can_write %}
+<details class="card" id="record" {% if request.GET.add %}open{% endif %}>
+    <summary style="cursor:pointer;font-weight:700;list-style:none">
+        <span class="row-h"><span class="av sq sm" style="background:var(--me)">
+            <svg class="ic sm" style="stroke:#fff"><use href="#p-plus"/></svg></span>
+            Record something</span></summary>
+    <form method="POST" action="{% url 'pocket_ledger_add' folder.pk person.pk %}" style="margin-top:12px">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <div class="seg">
+            <label class="kind"><input type="radio" name="kind" value="lent" checked>
+                <span class="ch out"><svg class="ic sm"><use href="#p-lent"/></svg></span>
+                <span><span class="k1">I gave</span><span class="k2">comes back</span></span></label>
+            <label class="kind"><input type="radio" name="kind" value="collected">
+                <span class="ch in"><svg class="ic sm"><use href="#p-back"/></svg></span>
+                <span><span class="k1">Got back</span><span class="k2">they repaid</span></span></label>
+            <label class="kind"><input type="radio" name="kind" value="borrowed">
+                <span class="ch in"><svg class="ic sm"><use href="#p-in"/></svg></span>
+                <span><span class="k1">I took</span><span class="k2">I return it</span></span></label>
+            <label class="kind"><input type="radio" name="kind" value="repaid">
+                <span class="ch out"><svg class="ic sm"><use href="#p-back"/></svg></span>
+                <span><span class="k1">Paid back</span><span class="k2">I returned it</span></span></label>
+        </div>
+
+        <div class="amount"><span class="cur">{{ money }}</span>
+            <input name="amount" inputmode="decimal" placeholder="0" aria-label="Amount" required></div>
+
+        <span class="label">What for</span>
+        <div class="chips">
+            {% for c in categories %}
+            <label class="chip"><input type="radio" name="category" value="{{ c.pk }}">
+                <span class="cdot" style="background:{{ c.colour }}"></span>{{ c.name }}</label>
+            {% endfor %}
+        </div>
+
+        <span class="label">Where from</span>
+        <div class="chips">
+            <label class="chip"><input type="radio" name="source" value="Cash" checked>Cash</label>
+            <label class="chip"><input type="radio" name="source" value="Bank">Bank</label>
+            <label class="chip"><input type="radio" name="source" value="UPI">UPI</label>
+        </div>
+
+        <label class="label" for="note">Note</label>
+        <input class="input" id="note" name="note" maxlength="200">
+        <div class="pair" style="margin-top:10px">
+            <div><label class="label" for="date" style="margin-top:0">Date</label>
+                <input class="input" id="date" name="date" type="date" value="{{ today|date:'Y-m-d' }}"></div>
+            <div><label class="label" for="due" style="margin-top:0">Due <span class="faint" style="text-transform:none">optional</span></label>
+                <input class="input" id="due" name="due_on" type="date"></div>
+        </div>
+        {% if person.is_linked %}
+        <div class="note" style="margin-top:12px"><svg class="ic sm"><use href="#p-bell"/></svg>
+            <div>{{ person.name }} is linked, so this will show on their phone too.</div></div>
+        {% endif %}
+        <div style="margin-top:12px"><button class="btn" type="submit">Save</button></div>
+    </form>
+</details>
+{% endif %}
+
+<div class="stmt">
+    <div class="hd"><span>What happened</span>
+        <span style="text-align:right">{% if page.you_owe %}Taken{% else %}Given{% endif %}</span>
+        <span style="text-align:right">{% if page.you_owe %}Paid{% else %}Back{% endif %}</span></div>
+    {% for row in page.rows %}
+    <div class="ln{% if row.entry.is_void %} void{% endif %}">
+        <span>{{ row.entry.date|date:"j M" }}{% if row.entry.source %} · {{ row.entry.source }}{% endif %}
+            {% if row.entry.due_on %}<span class="pill due">due {{ row.entry.due_on|date:"j M" }}</span>{% endif %}
+            {% if row.who and row.who.pk != folder.owner.pk %}<span class="who">{{ row.who.name }}</span>{% endif %}
+            {% if row.entry.category or row.entry.note %}<br><span class="tiny">
+                {% if row.entry.category %}<span class="cdot" style="background:{{ row.entry.category.colour }}"></span>{{ row.entry.category.name }}{% endif %}
+                {% if row.entry.note %}{% if row.entry.category %} · {% endif %}{{ row.entry.note }}{% endif %}</span>{% endif %}
+            {% if row.entry.is_void %}<br><span class="tiny">voided{% if row.entry.void_reason %} — {{ row.entry.void_reason }}{% endif %}</span>{% endif %}
+        </span>
+        <span class="n out">{% if row.gave %}{{ row.gave|floatformat:0 }}{% else %}—{% endif %}</span>
+        <span class="n in">{% if row.got %}{{ row.got|floatformat:0 }}{% else %}—{% endif %}</span>
+    </div>
+    {% empty %}
+    <div class="empty">Nothing between you yet.</div>
+    {% endfor %}
+    {% if page.rows %}
+    <div class="ln tot"><span>Net</span>
+        <span class="n">{{ page.gave|floatformat:0 }}</span>
+        <span class="n">{{ page.got|floatformat:0 }}</span></div>
+    {% endif %}
+</div>
+
+{% if page.has_more %}
+<a class="btn ghost sm" style="width:100%" href="?before={{ page.last_id }}">Load earlier</a>
+{% endif %}
+
+{% if acc.can_write and page.balance %}
+<form method="POST" action="{% url 'pocket_settle' folder.pk person.pk %}">
+    {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+    <button class="btn ghost" type="submit"><svg class="ic sm"><use href="#p-check"/></svg>
+        Settle up — mark {{ money }}{{ page.balance|floatformat:0|cut:"-" }}
+        {% if page.they_owe %}received{% else %}paid{% endif %}</button>
+</form>
+{% endif %}
+
+{% if acc.whole_folder and acc.can_write %}
+<details class="card">
+    <summary style="cursor:pointer;list-style:none" class="tiny">Take an entry back</summary>
+    <div class="stack" style="margin-top:10px">
+        {% for row in page.rows %}{% if not row.entry.is_void %}
+        <form method="POST" action="{% url 'pocket_ledger_void' folder.pk row.entry.pk %}" class="row-h">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+            <span class="mn tiny">{{ row.entry.date|date:"j M" }} · {{ row.label }} ·
+                {{ money }}{{ row.entry.amount|floatformat:0 }}</span>
+            <input class="input" name="reason" placeholder="Why" maxlength="120" style="max-width:140px">
+            <button class="btn danger sm" type="submit">Void</button>
+        </form>
+        {% endif %}{% endfor %}
+        <p class="tiny">A voided entry leaves the sums and stays here, struck through. Nothing is
+            deleted on this side.</p>
+    </div>
+</details>
+{% endif %}
+{% endblock %}

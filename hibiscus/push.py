@@ -8,16 +8,14 @@ Delivery uses the token a page is handed inside the SyncUp app (`window.SyncUp.t
 SyncUp's partner endpoint. No token, or no SyncUp base configured, means nothing is sent and the
 run says so — the person still sees the same line at the top of Today.
 """
-import json
 import logging
-import urllib.error
-import urllib.request
 from datetime import datetime, timedelta
 
 from django.db import IntegrityError
 from django.urls import reverse
 from django.utils import timezone
 
+from core import push as core_push
 from core.models import HubSettings
 
 from . import cycle
@@ -25,9 +23,9 @@ from .models import Flow, NotifyLine, NotifyMute, NotifySent, NotifySlot, Person
 
 logger = logging.getLogger(__name__)
 
-TITLE_MAX = 100
-BODY_MAX = 200
-SEND_TIMEOUT = 5
+TITLE_MAX = core_push.TITLE_MAX
+BODY_MAX = core_push.BODY_MAX
+SEND_TIMEOUT = core_push.SEND_TIMEOUT
 # A person pressed a button and is watching the page, so this one may wait longer than the cron.
 TEST_TIMEOUT = 12
 
@@ -135,24 +133,10 @@ def send_via_syncup(config, person, title, body, url, timeout=SEND_TIMEOUT):
     """Post to SyncUp's partner endpoint. Returns (delivered, error).
 
     `timeout` is short for the cron — it has a whole run to get through and a slow host must not
-    hold it up — and longer for the Test push, where somebody is watching the page.
+    hold it up — and longer for the Test push, where somebody is watching the page. The transport
+    itself lives in `core.push`, shared with every other module.
     """
-    hub = HubSettings.load()
-    if not hub.syncup_base or not person.syncup_token:
-        return 0, 'no syncup token' if hub.syncup_base else 'syncup not configured'
-    payload = json.dumps({
-        'token': person.syncup_token, 'title': title, 'body': body, 'url': url,
-        'key': hub.syncup_notify_key,
-    }).encode()
-    endpoint = hub.syncup_base.rstrip('/') + '/app/v1/partner/notify'
-    request = urllib.request.Request(endpoint, data=payload,
-                                     headers={'Content-Type': 'application/json'})
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.loads(response.read() or b'{}')
-        return int(data.get('delivered') or 0), ''
-    except (urllib.error.URLError, ValueError, TimeoutError) as exc:
-        return 0, f'{type(exc).__name__}: {exc}'[:200]
+    return core_push.send(person.syncup_token, title, body, url, timeout)
 
 
 def arrival_message(person, config, today=None):
