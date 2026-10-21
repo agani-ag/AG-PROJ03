@@ -80,4 +80,50 @@
         </div>
     </div>
 </div>
+
+<div class="card" style="margin-top:14px">
+    <div class="card-head">{% icon "triangle-alert" %}<h2>Delete this person</h2></div>
+    <div class="card-body">
+        <p class="small muted">This takes the hub account and everything the modules hold for
+            them. It cannot be undone, and there is no copy anywhere else.</p>
+
+        <ul class="small" style="margin-top:10px">
+            <li><b>The SyncHub account</b> — name, sign-in, password, SyncUp link, device token</li>
+            {% for item in would_go %}
+            <li><b>{{ item.module }}</b> — {{ item.detail }}</li>
+            {% empty %}
+            <li class="muted">They have not started any module, so there is nothing else to take.</li>
+            {% endfor %}
+        </ul>
+
+        {% if chat %}
+        <div class="alert" style="margin-top:12px">
+            {% icon "info" %}
+            <div class="alert-body"><b>Their J6 chat account is separate</b>
+                <b>{{ chat.name }}</b>{% if chat_chats %}, {{ chat_chats }} conversation{{ chat_chats|pluralize }}{% endif %}.
+                A chat account is anonymous and its Self-ID is its real way in — the link to this
+                person is only a convenience laid over it. Leave it and it carries on, unlinked
+                and reachable by whoever holds that Self-ID. Tick the box to take it as well.</div>
+        </div>
+        {% endif %}
+
+        <form method="POST" action="{% url 'person_delete' member.pk %}" class="form"
+              style="margin-top:12px">
+            {% csrf_token %}
+            {% if chat %}
+            <label class="switch-row" style="margin-bottom:10px">
+                <input type="checkbox" name="with_chat" value="1">
+                <span>Also delete the J6 chat account <b>{{ chat.name }}</b></span>
+            </label>
+            {% endif %}
+            <div class="field">
+                <label class="label" for="confirm">Type <b>{{ member.name }}</b> to confirm</label>
+                <input class="input" id="confirm" name="confirm" autocomplete="off"
+                       placeholder="{{ member.name }}">
+            </div>
+            <button class="btn btn-danger" type="submit">{% icon "trash" %}Delete {{ member.name }}</button>
+        </form>
+    </div>
+</div>
+
 {% endblock %}

@@ -31,6 +31,7 @@ urlpatterns = [
     path('download/sqlite', views.download_sqlite, name='download_sqlite'),
     path('people/', views_people.people, name='people'),
     path('people/<int:pk>/', views_people.person, name='person'),
+    path('people/<int:pk>/delete', views_people.person_delete, name='person_delete'),
     path('people/<int:pk>/<slug:what>', views_people.person_action, name='person_action'),
     path('system/', views.system_settings, name='system_settings'),
     path('system/syncup-links/send-all', views.syncup_links_send_all, name='syncup_links_send_all'),

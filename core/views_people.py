@@ -85,6 +85,32 @@ def _unmerged_counts():
     return {name: n for name, n in counts.items() if n}
 
 
+def _what_would_go(member):
+    """A plain list of what deleting this person actually destroys.
+
+    Worth counting rather than saying "and their data": an admin about to press this should
+    see that it is four years of a diary, not an empty account.
+    """
+    out = []
+    diary = getattr(member, 'hibiscus', None)
+    if diary:
+        out.append({'module': 'Hibiscus', 'detail':
+                    f'{diary.days.count()} day(s) logged, and the stocks and notes with them'})
+    money = getattr(member, 'pocket', None)
+    if money:
+        from pocket.models import Folder, LedgerEntry, TrackerEntry
+        out.append({'module': 'Pocket Money', 'detail':
+                    f'{TrackerEntry.objects.filter(account=money).count()} tracker entries, '
+                    f'{Folder.objects.filter(owner=money).count()} folder(s) and '
+                    f'{LedgerEntry.objects.filter(folder__owner=money).count()} ledger entries'})
+    return out
+
+
+def _j6_of(member):
+    """Their chat account, if they ever linked one. It is the one thing that can survive."""
+    return getattr(member, 'j6', None)
+
+
 @admin_required
 def person(request, pk):
     member = get_object_or_404(Member, pk=pk)
@@ -92,9 +118,13 @@ def person(request, pk):
     if member.login_key:
         from django.urls import reverse
         link = request.build_absolute_uri(reverse('member_magic', args=[member.login_key]))
+    chat = _j6_of(member)
     return render(request, 'core/person.html', {
         'member': member, 'profiles': _profiles_of(member), 'link': link,
         'ways': _how_they_sign_in(member),
+        'would_go': _what_would_go(member),
+        'chat': chat,
+        'chat_chats': chat.chats.count() if chat and hasattr(chat, 'chats') else 0,
     })
 
 
@@ -128,3 +158,39 @@ def person_action(request, pk, what):
             else:
                 messages.error(request, f'Nothing went out — {error or "SyncUp said zero"}.')
     return redirect('person', pk=member.pk)
+
+
+@require_POST
+@admin_required
+def person_delete(request, pk):
+    """Delete a person and everything of theirs. Typing the name is the confirmation.
+
+    The same bar the diary's own delete uses, because this one is wider: it takes the diary,
+    the money books and the hub account in one go, and none of it comes back.
+
+    Their J6 chat account is the exception, and it is asked about rather than assumed. The
+    link is a convenience laid over an anonymous account whose Self-ID is its real credential,
+    so deleting the person does not have to mean deleting the chat — `j6.Account.member` is
+    SET_NULL for exactly this reason. An admin who means to take that too can say so.
+    """
+    member = get_object_or_404(Member, pk=pk)
+    typed = (request.POST.get('confirm') or '').strip().lower()
+    if typed != member.name.strip().lower():
+        messages.error(request, 'Type the name exactly to delete somebody.')
+        return redirect('person', pk=member.pk)
+
+    name = member.name
+    chat = _j6_of(member)
+    took_chat = False
+    if chat and request.POST.get('with_chat') == '1':
+        chat.delete()
+        took_chat = True
+
+    member.delete()        # cascades the diary and the money books, and everything under them
+
+    if chat and not took_chat:
+        messages.info(request, f"Their J6 chat account is still there, anonymous again — its "
+                               f"Self-ID is the only way into it now.")
+    messages.success(request, f'{name} is gone'
+                              f'{", with their chat account" if took_chat else ""}.')
+    return redirect('people')

@@ -469,3 +469,78 @@ class AppsPageLinksTests(TestCase):
             if module.is_live:
                 self.assertTrue(module.user_url_name, f'{module.key} has no user_url_name')
                 self.assertTrue(module.join_url_name, f'{module.key} has no join_url_name')
+
+
+class DeletingAPersonTests(TestCase):
+    """Deleting from System → People takes the person and what the modules hold for them."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from pocket import service as pocket_service
+        from hibiscus.models import Person
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.member = Member.objects.create(name='Riya', email='riya@example.com')
+        Person.objects.create(member=self.member, name='Riya')
+        pocket_service.join(self.member)
+        self.url = reverse('person_delete', args=[self.member.pk])
+
+    def test_the_page_says_what_would_go(self):
+        r = self.client.get(reverse('person', args=[self.member.pk]))
+        self.assertContains(r, 'Delete this person')
+        self.assertContains(r, 'Hibiscus')
+        self.assertContains(r, 'Pocket Money')
+        self.assertContains(r, 'Type <b>Riya</b> to confirm', html=False)
+
+    def test_the_name_has_to_be_typed(self):
+        from hibiscus.models import Person
+        r = self.client.post(self.url, {'confirm': 'riy'}, follow=True)
+        self.assertContains(r, 'Type the name exactly')
+        self.assertTrue(Member.objects.filter(pk=self.member.pk).exists())
+        self.assertTrue(Person.objects.exists())
+
+    def test_the_right_name_takes_the_person_and_both_modules(self):
+        from hibiscus.models import Person
+        from pocket.models import Account
+        r = self.client.post(self.url, {'confirm': '  riya '}, follow=True)
+        self.assertContains(r, 'Riya is gone')
+        self.assertFalse(Member.objects.filter(pk=self.member.pk).exists())
+        self.assertFalse(Person.objects.exists())
+        self.assertFalse(Account.objects.exists())
+
+    def test_a_chat_account_survives_unless_it_is_asked_for(self):
+        """It is anonymous and its Self-ID is the real credential, so it is not assumed."""
+        from j6 import service as j6_service
+        from j6.models import Account as Chat
+        chat = j6_service.create_account('GANNY')
+        Chat.objects.filter(pk=chat.pk).update(member=self.member)
+        self.client.post(self.url, {'confirm': 'Riya'}, follow=True)
+        chat.refresh_from_db()
+        self.assertIsNone(chat.member, 'anonymous again, and still reachable by its Self-ID')
+        self.assertTrue(Chat.objects.filter(pk=chat.pk).exists())
+
+    def test_but_it_goes_when_it_is(self):
+        from j6 import service as j6_service
+        from j6.models import Account as Chat
+        chat = j6_service.create_account('GANNY')
+        Chat.objects.filter(pk=chat.pk).update(member=self.member)
+        r = self.client.post(self.url, {'confirm': 'Riya', 'with_chat': '1'}, follow=True)
+        self.assertFalse(Chat.objects.filter(pk=chat.pk).exists())
+        self.assertContains(r, 'with their chat account')
+
+    def test_the_page_warns_that_the_chat_is_separate(self):
+        from j6 import service as j6_service
+        from j6.models import Account as Chat
+        chat = j6_service.create_account('GANNY')
+        Chat.objects.filter(pk=chat.pk).update(member=self.member)
+        r = self.client.get(reverse('person', args=[self.member.pk]))
+        self.assertContains(r, 'chat account is separate')
+        self.assertContains(r, 'GANNY')
+
+    def test_only_an_admin_can(self):
+        self.client.logout()
+        self.assertEqual(self.client.post(self.url, {'confirm': 'Riya'}).status_code, 302)
+        self.assertTrue(Member.objects.filter(pk=self.member.pk).exists())
+
+    def test_it_is_post_only(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
