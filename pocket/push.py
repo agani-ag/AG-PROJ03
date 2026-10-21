@@ -46,24 +46,30 @@ def money(amount, config=None):
     return f'{config.currency_symbol}{amount:,.0f}'
 
 
+def token_for(account):
+    """One device token per person, held on the member — not one per module."""
+    member = getattr(account, 'member', None)
+    return (member.syncup_token if member else '') or account.syncup_token
+
+
 def can_push(account, config=None):
     config = config or Settings.load()
-    return bool(config.push_enabled and account and account.can_be_pushed
-                and HubSettings.load().syncup_base)
+    return bool(config.push_enabled and account and account.notify and account.is_active
+                and token_for(account) and HubSettings.load().syncup_base)
 
 
 def send_now(account, title, body, url=None, timeout=SEND_TIMEOUT):
     """One notification, synchronously. Returns (delivered, error)."""
-    return core_push.send(account.syncup_token, title, body, url or home_url(), timeout)
+    return core_push.send(token_for(account), title, body, url or home_url(), timeout)
 
 
 def _deliver(account_pk, title, body, url):
     """In a thread, so writing an entry never waits on SyncUp being slow."""
     from .models import Account
     try:
-        account = Account.objects.filter(pk=account_pk).first()
+        account = Account.objects.filter(pk=account_pk).select_related('member').first()
         if account:
-            core_push.send(account.syncup_token, title, body, url)
+            core_push.send(token_for(account), title, body, url)
     except Exception:                                    # pragma: no cover - belt and braces
         logger.exception('pocket: push failed')
     finally:

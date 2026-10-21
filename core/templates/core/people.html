@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}People{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>People</h1>
+        <p class="page-sub">Everybody who signs in to anything here · {{ total }} account{{ total|pluralize }}</p>
+    </div>
+</div>
+
+{% if unmerged %}
+<div class="card" style="margin-top:14px">
+    <div class="card-body">
+        <b>Some module rows have no person yet</b>
+        <p class="small muted">
+            {% for name, n in unmerged.items %}{{ n }} in {{ name }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+            Until <code>python manage.py merge_identities --apply</code> has been run on this
+            server, those people cannot sign in — their diary or their books exist, but nothing
+            owns them. Run <code>--dry-run</code> first and read it.</p>
+    </div>
+</div>
+{% endif %}
+
+<div class="stats">
+    <div class="stat"><span class="stat-label">{% icon "users-round" %}People</span>
+        <span class="stat-value">{{ total }}</span>
+        <span class="stat-meta">across {{ module_count }} module{{ module_count|pluralize }}</span></div>
+    <div class="stat"><span class="stat-label">{% icon "lock" %}With a password</span>
+        <span class="stat-value">{{ with_password }}</span>
+        <span class="stat-meta">can sign in from any browser</span></div>
+    <div class="stat"><span class="stat-label">{% icon "refresh-cw" %}With SyncUp</span>
+        <span class="stat-value">{{ with_syncup }}</span>
+        <span class="stat-meta">one tap, no password</span></div>
+    <div class="stat"><span class="stat-label">{% icon "bell" %}Reachable</span>
+        <span class="stat-value">{{ push_ready }}</span>
+        <span class="stat-meta">a device token, for every module at once</span></div>
+</div>
+
+<div class="card" style="margin-top:16px" data-table>
+    <div class="card-head">
+        {% icon "users-round" %}<h2>Everybody</h2>
+        <form class="table-tools ml-auto" method="GET">
+            <div class="input-icon">{% icon "search" "icon-sm" %}
+                <input class="input input-sm" type="search" name="q" value="{{ search }}"
+                       placeholder="Search a name, email or phone"></div>
+        </form>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Name</th><th>Signs in with</th><th>Signs in as</th>
+                <th>In</th><th>Last opened</th><th>Phone</th><th></th></tr></thead>
+            <tbody>
+                {% for row in rows %}
+                <tr data-href="{% url 'person' row.member.pk %}">
+                    <td class="t-primary" data-label="Name"><b>{{ row.member.name }}</b>
+                        {% if row.member.is_archived %}<span class="badge">archived</span>{% endif %}
+                        <div class="small faint">joined {{ row.member.created_at|date:"d M Y" }}</div></td>
+                    <td data-label="Signs in with">
+                        {% for way in row.ways %}<span class="badge">{{ way }}</span> {% endfor %}</td>
+                    <td data-label="Signs in as"><code class="small">{{ row.member.sign_in_id|default:"—" }}</code></td>
+                    <td data-label="In">
+                        {% for item in row.profiles %}{% if item.profile %}
+                        <span class="badge badge-success">{{ item.module.title }}</span>
+                        {% endif %}{% endfor %}
+                        {% if not row.count %}<span class="small muted">nothing yet</span>{% endif %}</td>
+                    <td data-label="Last opened">{{ row.member.last_opened_at|ago }}</td>
+                    <td data-label="Phone">{% if row.member.syncup_token %}
+                        <span class="badge badge-success">SyncUp</span>{% else %}
+                        <span class="badge">no token</span>{% endif %}</td>
+                    <td data-label=""><a class="btn btn-ghost btn-sm"
+                        href="{% url 'person' row.member.pk %}">Open</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7"><div class="empty">{% icon "users-round" %}<b>Nobody yet</b>
+                    <span>People appear here when they make a SyncHub account.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-foot bordered">
+        <span class="small muted">Archiving here stops somebody signing in at all. Whether they
+            may use a particular module is a separate switch, on that module's own page.</span>
+    </div>
+</div>
+{% endblock %}

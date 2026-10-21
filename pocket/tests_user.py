@@ -12,62 +12,79 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import service
+from core import auth as hub
+from core.models import Member
+
 from .models import Account, Flow, Kind, LedgerEntry, Person, Settings, TrackerEntry
-from .tests import entry, make_account, make_folder, make_person
+from .tests import entry, make_account, make_folder, make_person, sign_in
 
 D = Decimal
 
 
 class GettingInTests(TestCase):
-    def test_signing_up_and_landing_on_the_tracker(self):
-        r = self.client.post(reverse('pocket_signup'), {
-            'name': 'Anand', 'sign_in_id': 'anand@example.com', 'password': 'pw-for-tests'})
+    """Pocket Money has no sign-in of its own any more — only "have you started it"."""
+
+    def _member(self, name='Anand', email='anand@example.com'):
+        member = Member.objects.create(name=name, email=email)
+        hub.set_password(member, 'pw-for-tests')
+        return member
+
+    def test_a_stranger_is_sent_to_the_hub_carrying_where_they_were_going(self):
+        r = self.client.get(reverse('pocket_tracker'))
+        self.assertRedirects(r, f'{reverse("member_login")}?next={reverse("pocket_tracker")}',
+                             target_status_code=200)
+
+    def test_a_member_who_has_never_opened_it_is_offered_the_start(self):
+        self._member()
+        sign_in(self.client, 'anand@example.com')
+        self.assertRedirects(self.client.get(reverse('pocket_tracker')), reverse('pocket_join'))
+        self.assertContains(self.client.get(reverse('pocket_join')), 'Start Pocket Money')
+
+    def test_starting_it_asks_for_nothing(self):
+        """The hub already knows the name, the email and the password."""
+        member = self._member()
+        sign_in(self.client, 'anand@example.com')
+        r = self.client.post(reverse('pocket_join'))
         self.assertRedirects(r, reverse('pocket_tracker'))
-        self.assertTrue(Account.objects.filter(email='anand@example.com').exists())
+        account = Account.objects.get()
+        self.assertEqual(account.member, member)
+        self.assertEqual(account.name, 'Anand')
+        self.assertTrue(account.categories.exists(), 'the starter categories come with it')
 
-    def test_the_sign_up_page_says_who_can_read_your_books(self):
-        r = self.client.get(reverse('pocket_signup'))
-        self.assertContains(r, "read by this server's admin")
+    def test_starting_twice_is_the_same_as_starting_once(self):
+        self._member()
+        sign_in(self.client, 'anand@example.com')
+        self.client.post(reverse('pocket_join'))
+        self.client.post(reverse('pocket_join'))
+        self.assertEqual(Account.objects.count(), 1)
 
-    def test_a_bad_password_is_refused_without_saying_which_half_was_wrong(self):
+    def test_the_join_page_still_says_who_can_read_your_books(self):
+        self._member()
+        sign_in(self.client, 'anand@example.com')
+        self.assertContains(self.client.get(reverse('pocket_join')),
+                            "read by this server's admin")
+
+    def test_the_old_sign_in_address_still_leads_somewhere_sensible(self):
+        """Bookmarks and old notification links should not dead-end."""
+        self.assertRedirects(self.client.get(reverse('pocket_login')),
+                             f'{reverse("member_login")}?next={reverse("pocket_tracker")}',
+                             target_status_code=200)
+
+    def test_a_bad_password_is_refused_at_the_hub(self):
         make_account()
-        r = self.client.post(reverse('pocket_login'),
-                             {'sign_in_id': 'anand@example.com', 'password': 'nope'})
+        r = sign_in(self.client, 'anand@example.com', 'nope')
         self.assertContains(r, 'do not go together')
 
-    def test_an_invite_code_is_enforced_when_one_is_set(self):
-        config = Settings.load()
-        config.invite_code = 'POCKET26'
-        config.save()
-        r = self.client.post(reverse('pocket_signup'), {
-            'name': 'Anand', 'sign_in_id': 'anand@example.com', 'password': 'pw-for-tests'})
-        self.assertContains(r, 'invite code')
-        self.assertFalse(Account.objects.exists())
-
-    def test_closed_sign_ups_say_so(self):
-        config = Settings.load()
-        config.signup_open = False
-        config.save()
-        self.assertContains(self.client.get(reverse('pocket_signup')), 'closed')
-
-    def test_a_magic_link_signs_you_in_once(self):
-        from . import auth
-        account = make_account()
-        key = auth.new_login_key(account)
-        self.assertRedirects(self.client.get(reverse('pocket_magic', args=[key])),
-                             reverse('pocket_tracker'))
-        self.client.get(reverse('pocket_logout'))
-        self.assertEqual(self.client.get(reverse('pocket_magic', args=[key])).status_code, 404)
-
-    def test_the_tracker_needs_a_session(self):
-        self.assertRedirects(self.client.get(reverse('pocket_tracker')), reverse('pocket_login'))
+    def test_signing_in_once_reaches_pocket_money(self):
+        make_account()
+        sign_in(self.client, 'anand@example.com')
+        self.assertEqual(self.client.get(reverse('pocket_tracker')).status_code, 200)
 
 
 class TrackerPageTests(TestCase):
     def setUp(self):
         self.account = make_account()
-        self.client.post(reverse('pocket_login'),
-                         {'sign_in_id': 'anand@example.com', 'password': 'pw-for-tests'})
+        sign_in(self.client, 'anand@example.com', 'pw-for-tests')
         self.food = self.account.categories.get(flow=Flow.OUT, name='Food')
 
     def test_the_page_shows_the_month_and_the_categories(self):
@@ -128,8 +145,7 @@ class TrackerPageTests(TestCase):
 class LedgerPageTests(TestCase):
     def setUp(self):
         self.anand = make_account()
-        self.client.post(reverse('pocket_login'),
-                         {'sign_in_id': 'anand@example.com', 'password': 'pw-for-tests'})
+        sign_in(self.client, 'anand@example.com', 'pw-for-tests')
         self.folder = make_folder(self.anand)
         self.mani = make_person(self.folder)
 
@@ -210,8 +226,7 @@ class PayTests(TestCase):
 
     def setUp(self):
         self.anand = make_account()
-        self.client.post(reverse('pocket_login'),
-                         {'sign_in_id': 'anand@example.com', 'password': 'pw-for-tests'})
+        sign_in(self.client, 'anand@example.com', 'pw-for-tests')
         self.folder = make_folder(self.anand)
         self.riya = make_person(self.folder, 'Riya', upi_id='riya@okaxis')
 
@@ -265,8 +280,7 @@ class PromotionPageTests(TestCase):
         # Sign out first: the sign-in page redirects an already-signed-in visitor rather than
         # swapping accounts under them, which is right for people and a trap for tests.
         self.client.get(reverse('pocket_logout'))
-        self.client.post(reverse('pocket_login'),
-                         {'sign_in_id': who, 'password': 'pw-for-tests'})
+        sign_in(self.client, who, 'pw-for-tests')
 
     def _as_anand(self):
         self._sign_in('anand@example.com')
@@ -283,7 +297,7 @@ class PromotionPageTests(TestCase):
 
     def test_a_suggestion_is_shown_but_nothing_is_shared(self):
         person = make_person(self.folder, 'Suresh', phone='9000012345')
-        service.create_account('Suresh', '9000012345', 'pw-for-tests')
+        make_account('Suresh', '9000012345')
         self._as_anand()
         r = self.client.get(reverse('pocket_ledger'))
         self.assertContains(r, 'Is this your Suresh?')
@@ -292,7 +306,7 @@ class PromotionPageTests(TestCase):
 
     def test_confirming_a_suggestion_only_sends_an_invitation(self):
         person = make_person(self.folder, 'Suresh', phone='9000012345')
-        suresh = service.create_account('Suresh', '9000012345', 'pw-for-tests')
+        suresh = make_account('Suresh', '9000012345')
         self._as_anand()
         self.client.post(reverse('pocket_suggestion', args=[person.pk, 'yes']))
         person.refresh_from_db()
@@ -386,8 +400,7 @@ class FolderSharePageTests(TestCase):
         self.divya = make_account('Divya', 'divya@example.com')
         self.folder = make_folder(self.anand)
         self.mani = make_person(self.folder)
-        self.client.post(reverse('pocket_login'),
-                         {'sign_in_id': 'anand@example.com', 'password': 'pw-for-tests'})
+        sign_in(self.client, 'anand@example.com', 'pw-for-tests')
 
     def test_the_share_page_warns_about_people_who_are_in_the_folder(self):
         mani_account = make_account('Mani', 'mani@example.com')
@@ -401,8 +414,7 @@ class FolderSharePageTests(TestCase):
         self.client.post(reverse('pocket_folder_share', args=[self.folder.pk]), {'can_edit': '1'})
         share = self.folder.shares.get()
         self.client.get(reverse('pocket_logout'))
-        self.client.post(reverse('pocket_login'),
-                         {'sign_in_id': 'divya@example.com', 'password': 'pw-for-tests'})
+        sign_in(self.client, 'divya@example.com', 'pw-for-tests')
         self.client.post(reverse('pocket_accept_folder', args=[share.code]), {'answer': 'yes'})
         self.assertIsNotNone(service.access(self.divya, self.folder))
 
@@ -410,8 +422,7 @@ class FolderSharePageTests(TestCase):
         share = service.share_folder(self.folder, can_edit=True, by=self.anand)
         service.accept_share(share, self.divya)
         self.client.get(reverse('pocket_logout'))
-        self.client.post(reverse('pocket_login'),
-                         {'sign_in_id': 'divya@example.com', 'password': 'pw-for-tests'})
+        sign_in(self.client, 'divya@example.com', 'pw-for-tests')
         self.assertEqual(
             self.client.get(reverse('pocket_folder', args=[self.folder.pk])).status_code, 200)
         self.assertEqual(
@@ -422,8 +433,7 @@ class FolderSharePageTests(TestCase):
         share = service.share_folder(self.folder, can_edit=False, by=self.anand)
         service.accept_share(share, self.divya)
         self.client.get(reverse('pocket_logout'))
-        self.client.post(reverse('pocket_login'),
-                         {'sign_in_id': 'divya@example.com', 'password': 'pw-for-tests'})
+        sign_in(self.client, 'divya@example.com', 'pw-for-tests')
         self.client.post(reverse('pocket_ledger_add', args=[self.folder.pk, self.mani.pk]),
                          {'kind': 'lent', 'amount': '500'})
         self.assertFalse(LedgerEntry.objects.exists())
@@ -432,18 +442,18 @@ class FolderSharePageTests(TestCase):
 class MePageTests(TestCase):
     def setUp(self):
         self.account = make_account()
-        self.client.post(reverse('pocket_login'),
-                         {'sign_in_id': 'anand@example.com', 'password': 'pw-for-tests'})
+        sign_in(self.client, 'anand@example.com', 'pw-for-tests')
 
     def test_the_page_says_who_can_see_the_upi_id(self):
         r = self.client.get(reverse('pocket_me'))
         self.assertContains(r, 'Who sees this')
         self.assertContains(r, 'collect request')
 
-    def test_the_theme_is_remembered(self):
-        self.client.post(reverse('pocket_me'), {'what': 'theme', 'theme': 'dark'})
-        self.account.refresh_from_db()
-        self.assertEqual(self.account.theme, 'dark')
+    def test_the_name_and_theme_belong_to_the_hub(self):
+        """They are the same in every app here, so the Me page points at the hub profile."""
+        r = self.client.get(reverse('pocket_me'))
+        self.assertContains(r, reverse('member_you'))
+        self.assertContains(r, 'your SyncHub profile')
 
     def test_the_device_token_is_taken_once(self):
         r = self.client.post(reverse('pocket_token'), data=json.dumps({'token': 'abc'}),
@@ -454,5 +464,7 @@ class MePageTests(TestCase):
         self.assertFalse(again.json()['saved'])
 
     def test_signing_out_ends_the_session(self):
-        self.client.get(reverse('pocket_logout'))
-        self.assertRedirects(self.client.get(reverse('pocket_tracker')), reverse('pocket_login'))
+        self.client.post(reverse('member_logout'))
+        self.assertRedirects(
+            self.client.get(reverse('pocket_tracker')),
+            f'{reverse("member_login")}?next={reverse("pocket_tracker")}', target_status_code=200)

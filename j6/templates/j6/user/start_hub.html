@@ -1,0 +1,36 @@
+{% extends "j6/user/base.html" %}
+{% block title %}Start chatting{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <div class="wordmark">J6</div>
+    <p class="muted">Chat without signing up.</p>
+</div>
+
+<form method="POST" class="card stack" novalidate>
+    {% csrf_token %}
+    <div>
+        <b>What should people call you here?</b>
+        <p class="sub">Shown to whoever you chat with, in capitals. This is <b>not</b> your
+            SyncHub name — change it to anything you like. Two letters is enough.</p>
+    </div>
+    <input class="input" type="text" name="name" maxlength="24" autofocus autocomplete="off"
+           style="text-transform:uppercase" value="{{ request.POST.name|default:suggested }}">
+    {% if error %}<span class="err">{{ error }}</span>{% endif %}
+
+    <div class="card" style="padding:11px 13px;background:var(--bg)">
+        <b style="font-size:13px">Who sees what</b>
+        <ul class="tiny" style="margin:6px 0 0;padding-left:18px;line-height:1.6">
+            <li>The people you chat with: this name and an Account ID. <b>Never</b> your real
+                name, email or phone, and not that you have a SyncHub account at all.</li>
+            <li>This server's admin: that this chat account is yours. They can already read
+                every chat here; linking joins one to a name.</li>
+            <li>You get a way back in if the Self-ID is lost — which is the point of the link.</li>
+        </ul>
+    </div>
+
+    <button class="btn" type="submit"><svg class="ic"><use href="#j-send"/></svg>Start chatting</button>
+</form>
+
+<p class="center"><a class="link" href="{% url 'j6_welcome' %}">No thanks — keep it unlinked</a></p>
+{% endblock %}

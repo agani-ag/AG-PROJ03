@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}{{ member.name }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <p class="page-sub"><a href="{% url 'people' %}">People</a> › {{ member.name }}</p>
+        <h1>{{ member.name }}
+            {% if member.is_archived %}<span class="badge badge-danger">archived</span>{% endif %}
+            {% if member.syncup_token %}<span class="badge badge-success">SyncUp registered</span>{% endif %}</h1>
+    </div>
+    <div class="page-actions">
+        <form method="POST" action="{% url 'person_action' member.pk 'push' %}">{% csrf_token %}
+            <button class="btn" type="submit">{% icon "bell" %}Test push</button></form>
+        <form method="POST" action="{% url 'person_action' member.pk 'link' %}">{% csrf_token %}
+            <button class="btn" type="submit">{% icon "key" %}Sign-in link</button></form>
+        <form method="POST" action="{% url 'person_action' member.pk 'archive' %}">{% csrf_token %}
+            <button class="btn" type="submit">{% icon "archive" %}{% if member.is_archived %}Bring back{% else %}Archive{% endif %}</button></form>
+    </div>
+</div>
+
+{% if link %}
+<div class="card" style="margin-top:14px"><div class="card-body">
+    <b>Sign-in link</b>
+    <p class="small muted">Hand it over yourself — this server sends no mail. One hour, one use,
+        unless the diary made it (those are meant to be bookmarked and do not expire).</p>
+    <code class="small">{{ link }}</code>
+</div></div>
+{% endif %}
+
+<div class="grid-2" style="margin-top:14px">
+    <div class="card">
+        <div class="card-head">{% icon "user" %}<h2>Who they are</h2></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Signs in as</dt><dd><code class="small">{{ member.sign_in_id|default:"—" }}</code></dd>
+                <dt>Signs in with</dt><dd>{% for way in ways %}<span class="badge">{{ way }}</span> {% endfor %}</dd>
+                <dt>SyncUp account</dt><dd>{% if member.syncup_id %}
+                    <code class="small">{{ member.syncup_id|slice:":14" }}…</code>
+                    <form method="POST" action="{% url 'person_action' member.pk 'unlink-syncup' %}"
+                          style="display:inline">{% csrf_token %}
+                        <button class="btn btn-ghost btn-sm" type="submit">Disconnect</button></form>
+                    {% else %}<span class="muted">not connected</span>{% endif %}</dd>
+                <dt>Device token</dt><dd>{% if member.syncup_token %}
+                    <code class="small">{{ member.syncup_token|slice:":12" }}…</code>
+                    <div class="small faint">One token, used by every module</div>
+                    {% else %}<span class="muted">none — they have to open something inside the
+                    SyncUp app once</span>{% endif %}</dd>
+                <dt>Joined</dt><dd>{{ member.created_at|date:"d M Y" }}</dd>
+                <dt>Last opened</dt><dd>{{ member.last_opened_at|ago }} · {{ member.open_count }} times</dd>
+                <dt>Two passwords</dt><dd>{% if member.legacy_password_hash %}
+                    <span class="badge badge-warning">yes — either still works</span>
+                    <div class="small faint">They came from two modules. The next sign-in settles it.</div>
+                    {% else %}no{% endif %}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "layout-dashboard" %}<h2>What they have here</h2></div>
+        <div class="card-body">
+            <div class="apps-list">
+            {% for item in profiles %}
+                <div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)">
+                    <div style="flex:1">
+                        <b>{{ item.module.title }}</b>
+                        <div class="small muted">{% if item.profile %}
+                            {% if item.profile.is_active %}active{% else %}suspended in this module{% endif %}
+                            {% else %}not started{% endif %}</div>
+                    </div>
+                    {% if item.profile %}
+                    <a class="btn btn-ghost btn-sm" href="{% url item.module.url_name %}">Open console</a>
+                    {% endif %}
+                </div>
+            {% endfor %}
+            </div>
+            <p class="small muted" style="margin-top:10px">Suspending somebody inside a module is
+                done on that module's page. <b>Archive</b> above stops them signing in to
+                anything at all.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

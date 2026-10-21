@@ -19,6 +19,8 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from core import auth as hub
+
 from . import auth, push, service
 from .models import (Account, Category, Flow, Folder, LedgerEntry, Person, Settings,
                      TrackerEntry, pretty_code, validate_name, validate_upi)
@@ -38,7 +40,8 @@ def _no_store(response):
 def _page(request, template, context, status=200):
     config = Settings.load()
     account = getattr(request, 'account', None) or auth.current(request)
-    base = {'config': config, 'account': account, 'money': config.currency_symbol}
+    base = {'config': config, 'account': account, 'money': config.currency_symbol,
+            'member': getattr(request, 'member', None) or hub.current(request)}
     if account:
         base['pending'] = (service.pending_person_invites(account).count()
                            + service.suggestions_for(account).count())
@@ -76,76 +79,50 @@ def _back(request, fallback='pocket_tracker'):
 # --------------------------------------------------------------------------- #
 @never_cache
 def home(request):
-    return redirect('pocket_tracker' if auth.current(request) else 'pocket_login')
+    """`/pocket/` — wherever this person actually belongs."""
+    member = hub.current(request)
+    if not member:
+        return redirect(f'{reverse("member_login")}?next={reverse("pocket_tracker")}')
+    return redirect('pocket_tracker' if auth.profile_for(member) else 'pocket_join')
 
 
 @never_cache
-def signup(request):
-    if auth.current(request):
+def join(request):
+    """Starting Pocket Money, for somebody the hub already knows.
+
+    There is nothing to ask. The old sign-up form wanted a name, an email and a password, and
+    the hub has all three — so this is a sentence and a button.
+    """
+    member = hub.current(request)
+    if not member:
+        return redirect(f'{reverse("member_login")}?next={reverse("pocket_join")}')
+    if auth.profile_for(member):
         return redirect('pocket_tracker')
     config = Settings.load()
     error = ''
     if request.method == 'POST':
         if not config.signup_open:
-            error = 'New accounts are closed on this server.'
+            error = 'Pocket Money is closed to new people on this server.'
         elif config.invite_code and request.POST.get('invite', '').strip() != config.invite_code:
             error = 'That invite code is not right.'
-        else:
-            try:
-                account = service.create_account(request.POST.get('name'),
-                                                 request.POST.get('sign_in_id'),
-                                                 request.POST.get('password'), config)
-            except ValidationError as exc:
-                error = exc.messages[0]
-            else:
-                for person in Person.objects.filter(suggested_account=account):
-                    push.notify_suggestion(person, config)
-                auth.sign_in(request, account)
-                return redirect('pocket_tracker')
-    return _page(request, 'pocket/user/signup.html', {'error': error, 'config': config})
-
-
-@never_cache
-def login(request):
-    if auth.current(request):
+        if error:
+            return _page(request, 'pocket/user/join.html',
+                         {'member': member, 'config': config, 'error': error})
+        account = service.join(member)
+        for person in Person.objects.filter(suggested_account=account):
+            push.notify_suggestion(person, Settings.load())
         return redirect('pocket_tracker')
-    error = ''
-    if request.method == 'POST':
-        account = auth.find_account(request.POST.get('sign_in_id'))
-        if account and account.is_active and not account.is_archived \
-                and auth.check_account_password(account, request.POST.get('password')):
-            auth.sign_in(request, account)
-            return redirect('pocket_tracker')
-        error = 'That email or phone and password do not go together.'
-    return _page(request, 'pocket/user/login.html', {'error': error})
+    return _page(request, 'pocket/user/join.html',
+                 {'member': member, 'config': config, 'error': ''})
 
 
-@require_POST
-def send_magic_link(request):
-    """A one-hour link. There is no mail server here, so the console hands it over."""
-    account = auth.find_account(request.POST.get('sign_in_id'))
-    if account and account.is_active and not account.is_archived:
-        auth.new_login_key(account)
-        service.log('link', 'Asked for a sign-in link', account=account)
-    messages.info(request, 'If that account exists, a sign-in link is waiting with the admin.')
-    return redirect('pocket_login')
-
-
-@never_cache
-def magic(request, key):
-    account = auth.account_by_login_key(key)
-    if not account:
-        return _page(request, 'pocket/user/login.html',
-                     {'error': 'That link has been used, or it is more than an hour old.'},
-                     status=404)
-    auth.spend_login_key(account)
-    auth.sign_in(request, account)
-    return redirect('pocket_tracker')
+def login(request):
+    """Pocket Money has no sign-in of its own any more. One hub, one password."""
+    return redirect(f'{reverse("member_login")}?next={reverse("pocket_tracker")}')
 
 
 def logout(request):
-    auth.sign_out(request)
-    return redirect('pocket_login')
+    return redirect('member_apps')
 
 
 # --------------------------------------------------------------------------- #
@@ -629,21 +606,9 @@ def me(request):
     account = request.account
     if request.method == 'POST':
         what = request.POST.get('what')
-        if what == 'theme':
-            theme = request.POST.get('theme')
-            if theme in dict(Account.THEMES):
-                account.theme = theme
-                account.save(update_fields=['theme'])
-        elif what == 'notify':
+        if what == 'notify':
             account.notify = request.POST.get('notify') == '1'
             account.save(update_fields=['notify'])
-        elif what == 'name':
-            try:
-                account.name = validate_name(request.POST.get('name'))
-            except ValidationError as exc:
-                messages.error(request, exc.messages[0])
-            else:
-                account.save(update_fields=['name'])
         return redirect('pocket_me')
     return _page(request, 'pocket/user/me.html', {
         'position': service.account_position(account),
@@ -693,7 +658,10 @@ def save_syncup_token(request):
     except ValueError:
         return JsonResponse({'saved': False}, status=400)
     token = (payload.get('token') or '').strip()
-    if not token or token == request.account.syncup_token:
+    member = request.member
+    if not token or token == member.syncup_token:
         return JsonResponse({'saved': False})
-    Account.objects.filter(pk=request.account.pk).update(syncup_token=token)
+    # One token per person, not one per module: opening any module inside SyncUp now makes all
+    # of them reachable.
+    type(member).objects.filter(pk=member.pk).update(syncup_token=token)
     return JsonResponse({'saved': True})

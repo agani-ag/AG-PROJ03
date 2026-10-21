@@ -37,8 +37,16 @@
 
 <div class="card dashed row">
     <svg class="ic sm fade"><use href="#j-eye"/></svg>
+    {% if account.member %}
+    <p class="tiny">You can read both IDs again any time from <b>Profile</b>. This account is
+        remembered on <b>{{ account.member.name }}</b>'s SyncHub sign-in, so losing the Self-ID
+        is survivable — sign in to SyncHub and you are back in. Cut that link from
+        <b>Profile</b> and the Self-ID becomes the only way in again.</p>
+    {% else %}
     <p class="tiny">You can read both IDs again any time from <b>Profile</b>. Lose the Self-ID and sign out, and the
-        account is gone — you would start a new one.</p>
+        account is gone — you would start a new one. <a class="link" href="{% url 'j6_profile' %}">Remember it
+        on SyncHub</a> if you would rather have a way back.</p>
+    {% endif %}
 </div>
 
 <a class="btn" href="{% url 'j6_inbox' %}"><svg class="ic"><use href="#j-check"/></svg>{% if fresh %}I have saved them{% else %}Back to chats{% endif %}</a>

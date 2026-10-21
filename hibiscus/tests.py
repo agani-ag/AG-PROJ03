@@ -15,6 +15,8 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from core import auth as hub
+from core.models import Member
 from core.models import HubSettings
 
 from . import auth, cycle, defaults, push
@@ -32,6 +34,36 @@ def days(*pairs):
 def run_of(start, length, flow=Flow.MEDIUM):
     first = D.fromisoformat(start)
     return [(first + timedelta(days=i), flow) for i in range(length)]
+
+
+def make_person(name='Divya', email='d@example.com', phone=None, password='swan7tide',
+                syncup_token='', **fields):
+    """A hub member who keeps a diary — which is what a Person is now.
+
+    The identity lives on the member; the Person row is the diary's own part of them. The old
+    columns are still filled while the move settles, so nothing that reads them breaks.
+    """
+    member = Member.objects.create(name=name, email=email, phone=phone,
+                                   syncup_token=syncup_token)
+    if password:
+        hub.set_password(member, password)
+    return Person.objects.create(member=member, name=name, email=email, phone=phone,
+                                 **fields)
+
+
+def refreshed(person):
+    """Re-read both halves: the diary row, and the member that now holds the identity."""
+    Person.refresh_from_db(person)
+    if person.member_id:
+        person.member.refresh_from_db()
+    return person
+
+
+def sign_in(client, contact='d@example.com', password='swan7tide'):
+    """Through the hub's one door, signing out first so the account actually swaps."""
+    client.post(reverse('member_logout'))
+    return client.post(reverse('member_login'),
+                       {'sign_in_id': contact, 'password': password})
 
 
 class WorkedExamplesTests(TestCase):
@@ -190,7 +222,7 @@ class MonthMapTests(TestCase):
 
 class ModelTests(TestCase):
     def setUp(self):
-        self.person = Person.objects.create(name='Divya', email='d@example.com')
+        self.person = make_person()
 
     def test_one_row_per_day_per_person(self):
         PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1))
@@ -198,7 +230,7 @@ class ModelTests(TestCase):
             PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1))
 
     def test_two_people_can_log_the_same_day(self):
-        other = Person.objects.create(name='Meena', phone='9876543210')
+        other = make_person('Meena', email=None, phone='9876543210')
         PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1))
         PeriodDay.objects.create(person=other, date=D(2026, 10, 1))
         self.assertEqual(PeriodDay.objects.count(), 2)
@@ -269,7 +301,7 @@ class SettingsTests(TestCase):
 
 class PasswordTests(TestCase):
     def setUp(self):
-        self.person = Person.objects.create(name='Divya', email='d@example.com')
+        self.person = make_person()
 
     def test_generated_passwords_avoid_look_alike_characters(self):
         for _ in range(20):
@@ -279,7 +311,7 @@ class PasswordTests(TestCase):
 
     def test_password_is_stored_hashed_and_checks_out(self):
         auth.set_password(self.person, 'swan7tide')
-        self.person.refresh_from_db()
+        refreshed(self.person)
         self.assertNotIn('swan7tide', self.person.password_hash)
         self.assertTrue(auth.check_person_password(self.person, 'swan7tide'))
         self.assertFalse(auth.check_person_password(self.person, 'wrong'))
@@ -288,7 +320,7 @@ class PasswordTests(TestCase):
         self.assertFalse(auth.check_person_password(self.person, ''))
 
     def test_people_are_found_by_email_or_phone(self):
-        other = Person.objects.create(name='Meena', phone='9876543210')
+        other = make_person('Meena', email=None, phone='9876543210')
         self.assertEqual(auth.find_person('D@Example.com'), self.person)
         self.assertEqual(auth.find_person('9876543210'), other)
         self.assertEqual(auth.find_person('+91 98765 43210'), other)   # typed with spaces
@@ -300,7 +332,7 @@ class AdminSideTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
         self.client.force_login(self.admin)
-        self.person = Person.objects.create(name='Divya', email='d@example.com')
+        self.person = make_person()
 
     # ---- access
     def test_every_page_needs_the_admin(self):
@@ -338,10 +370,11 @@ class AdminSideTests(TestCase):
         self.assertEqual(meena.phone, '9876543210')
         self.assertEqual(meena.signed_up_with, 'admin')
         self.assertEqual(meena.created_by, self.admin)
-        self.assertTrue(meena.password_hash)
+        self.assertTrue(meena.member.password_hash, 'the hash belongs to the hub member')
+        self.assertEqual(meena.password_hash, '', 'and not to the diary row any more')
         shown = r.context['password']
         self.assertTrue(auth.check_person_password(meena, shown))      # the one on screen works
-        self.assertNotContains(r, meena.password_hash)                 # the hash is not on screen
+        self.assertNotContains(r, meena.member.password_hash)          # the hash is not on screen
 
     def test_an_account_needs_an_email_or_a_phone(self):
         r = self.client.post(reverse('hibiscus_person_add'), {'name': 'Nobody'})
@@ -362,16 +395,16 @@ class AdminSideTests(TestCase):
     def test_new_password_replaces_the_old_one(self):
         auth.set_password(self.person, 'old7pass')
         r = self.client.post(reverse('hibiscus_person_password', args=[self.person.pk]))
-        self.person.refresh_from_db()
+        refreshed(self.person)
         self.assertFalse(auth.check_person_password(self.person, 'old7pass'))
         self.assertTrue(auth.check_person_password(self.person, r.context['password']))
 
     def test_suspend_and_resume(self):
         self.client.post(reverse('hibiscus_person_state', args=[self.person.pk, 'suspend']))
-        self.person.refresh_from_db()
+        refreshed(self.person)
         self.assertFalse(self.person.is_active)
         self.client.post(reverse('hibiscus_person_state', args=[self.person.pk, 'resume']))
-        self.person.refresh_from_db()
+        refreshed(self.person)
         self.assertTrue(self.person.is_active)
 
     def test_unknown_state_action_is_404(self):
@@ -564,7 +597,7 @@ class MagicLinkAdminTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
         self.client.force_login(self.admin)
-        self.person = Person.objects.create(name='Divya', email='d@example.com')
+        self.person = make_person()
 
     def _make(self):
         return self.client.post(reverse('hibiscus_person_link', args=[self.person.pk, 'make']))
@@ -576,36 +609,36 @@ class MagicLinkAdminTests(TestCase):
 
     def test_making_one_shows_the_whole_link_with_the_host(self):
         self._make()
-        self.person.refresh_from_db()
+        refreshed(self.person)
         r = self.client.get(reverse('hibiscus_person', args=[self.person.pk]))
-        self.assertContains(r, f'http://testserver/hibiscus/k/{self.person.login_key}')
+        self.assertContains(r, f'http://testserver/hibiscus/k/{self.person.member.login_key}')
         self.assertContains(r, 'New link')
         self.assertContains(r, 'Switch it off')
 
     def test_making_one_records_it(self):
         self._make()
-        self.person.refresh_from_db()
+        refreshed(self.person)
         self.assertTrue(self.person.has_login_link)
-        self.assertIsNotNone(self.person.login_key_made_at)
+        self.assertIsNotNone(self.person.member.login_key_made_at)
         row = Audit.objects.filter(person=self.person, action='made_login_link').first()
         self.assertEqual(row.actor, self.admin)
         self.assertEqual(row.detail, 'first link')
 
     def test_making_a_second_one_says_it_replaced_the_first(self):
         self._make()
-        self.person.refresh_from_db()
-        first = self.person.login_key
+        refreshed(self.person)
+        first = self.person.member.login_key
         self._make()
-        self.person.refresh_from_db()
-        self.assertNotEqual(self.person.login_key, first)
+        refreshed(self.person)
+        self.assertNotEqual(self.person.member.login_key, first)
         self.assertEqual(Audit.objects.filter(person=self.person, action='made_login_link',
                                               detail='replaced the old link').count(), 1)
 
     def test_switching_it_off_clears_the_key(self):
         self._make()
         self.client.post(reverse('hibiscus_person_link', args=[self.person.pk, 'off']))
-        self.person.refresh_from_db()
-        self.assertIsNone(self.person.login_key)
+        refreshed(self.person)
+        self.assertIsNone(self.person.member.login_key)
         self.assertTrue(Audit.objects.filter(person=self.person,
                                              action='removed_login_link').exists())
 
@@ -623,8 +656,8 @@ class MagicLinkAdminTests(TestCase):
                                      args=[self.person.pk, 'nonsense'])).status_code, 404)
         self.client.logout()
         self.assertEqual(self.client.post(url).status_code, 302)
-        self.person.refresh_from_db()
-        self.assertIsNone(self.person.login_key)
+        refreshed(self.person)
+        self.assertIsNone(self.person.member.login_key)
 
 class PersonTabsTests(TestCase):
     """Every page about a person shows the same four tabs.
@@ -638,7 +671,7 @@ class PersonTabsTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
         self.client.force_login(self.admin)
-        self.person = Person.objects.create(name='Divya', email='d@example.com')
+        self.person = make_person()
         PeriodDay.objects.create(person=self.person, date=D(2026, 9, 15), flow=Flow.MEDIUM)
         StockItem.objects.create(person=self.person, name='Pads', low_at=2)
 
@@ -670,7 +703,7 @@ class FlowColourTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
         self.client.force_login(self.admin)
-        self.person = Person.objects.create(name='Divya', email='d@example.com')
+        self.person = make_person()
         for offset, flow in enumerate([Flow.SPOTTING, Flow.MEDIUM, Flow.HEAVY, Flow.LIGHT]):
             PeriodDay.objects.create(person=self.person,
                                      date=D(2026, 9, 15) + timedelta(days=offset), flow=flow)
@@ -715,7 +748,7 @@ class StockItemEditTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
         self.client.force_login(self.admin)
-        self.person = Person.objects.create(name='Divya', email='d@example.com')
+        self.person = make_person()
         self.item = StockItem.objects.create(person=self.person, name='Pads', low_at=2)
         self.url = reverse('hibiscus_item_edit', args=[self.person.pk, self.item.pk])
 
@@ -759,7 +792,7 @@ class StockItemEditTests(TestCase):
             reverse('hibiscus_person_stocks', args=[self.person.pk])), self.url)
 
     def test_someone_elses_item_is_a_404(self):
-        other = Person.objects.create(name='Meena', email='m@example.com')
+        other = make_person('Meena', 'm@example.com')
         self.assertEqual(self.client.get(
             reverse('hibiscus_item_edit', args=[other.pk, self.item.pk])).status_code, 404)
 
@@ -810,8 +843,7 @@ class TestPushTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
         self.client.force_login(self.admin)
-        self.person = Person.objects.create(name='Riya', email='r@example.com',
-                                            syncup_token='tok-123')
+        self.person = make_person(name='Riya', email='r@example.com', syncup_token='tok-123')
         self.url = reverse('hibiscus_person_test_push', args=[self.person.pk])
         hub = HubSettings.load()
         hub.syncup_base = 'https://syncup.example.com'
@@ -830,8 +862,8 @@ class TestPushTests(TestCase):
         self.assertContains(r, self.url)
 
     def test_no_token_means_no_button_but_an_explanation(self):
-        self.person.syncup_token = ''
-        self.person.save()
+        self.person.member.syncup_token = ''
+        self.person.member.save(update_fields=['syncup_token'])
         r = self.client.get(reverse('hibiscus_person', args=[self.person.pk]))
         self.assertNotContains(r, 'Test push')
         self.assertContains(r, 'No token yet')
@@ -877,8 +909,8 @@ class TestPushTests(TestCase):
         self.assertContains(r, 'No SyncUp address yet')
 
     def test_the_person_has_no_token(self):
-        self.person.syncup_token = ''
-        self.person.save()
+        self.person.member.syncup_token = ''
+        self.person.member.save(update_fields=['syncup_token'])
         fake = FakeSyncUp()
         r = self._send(fake)
         self.assertIsNone(fake.url)
@@ -938,8 +970,7 @@ class DiaryLinkTests(TestCase):
         hub.syncup_base = 'https://syncup.example.com'
         hub.save()
         defaults.ensure_slots()
-        person = Person.objects.create(name='Riya', email='r@example.com',
-                                       syncup_token='tok-123')
+        person = make_person(name='Riya', email='r@example.com', syncup_token='tok-123')
         PeriodDay.objects.create(person=person, date=config.today, flow=Flow.MEDIUM)
         slot = NotifySlot.objects.filter(is_enabled=True).first()
         fake = FakeSyncUp()
@@ -960,8 +991,7 @@ class SyncUpAddressTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
         self.client.force_login(self.admin)
-        self.person = Person.objects.create(name='Riya', email='r@example.com',
-                                            syncup_token='tok-123')
+        self.person = make_person(name='Riya', email='r@example.com', syncup_token='tok-123')
         self.url = reverse('hibiscus_person_test_push', args=[self.person.pk])
 
     def _set(self, address):

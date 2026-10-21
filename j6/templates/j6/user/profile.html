@@ -1,5 +1,27 @@
 {% extends "j6/user/base.html" %}
-{% block title %}Profile{% endblock %}
+{% block title %}Profile
+<div class="card stack">
+    {% if account.member %}
+    <b>Remembered on SyncHub</b>
+    <p class="sub">Linked to <b>{{ account.member.name }}</b>. If you lose the Self-ID, signing
+        in to SyncHub gets you back into this account.</p>
+    <p class="tiny">Whoever you chat with still sees only your J6 name and Account ID.</p>
+    <form method="POST" action="{% url 'j6_unclaim' %}">{% csrf_token %}
+        <button class="btn ghost" type="submit">Forget it — keep this account unlinked</button>
+    </form>
+    {% else %}
+    <b>Lose the Self-ID and this account is gone</b>
+    <p class="sub">That is the deal J6 makes, and it has not changed. If you would rather have a
+        way back, you can remember this account on your SyncHub sign-in.</p>
+    <p class="tiny">Nobody you chat with learns anything new — they see a name and an Account ID,
+        as they do now. What changes is that this server's admin can see the account is yours.</p>
+    <form method="POST" action="{% url 'j6_claim' %}">{% csrf_token %}
+        <button class="btn ghost" type="submit">Remember this on SyncHub</button>
+    </form>
+    {% endif %}
+</div>
+
+{% endblock %}
 
 {% block content %}
 <div class="head-sm">

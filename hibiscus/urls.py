@@ -13,7 +13,8 @@ from . import views_admin, views_user
 
 urlpatterns = [
     # ---- the diary itself. Listed first so none of these can look like a console path.
-    path('signup', views_user.sign_up, name='hibiscus_me_signup'),
+    path('join', views_user.join, name='hibiscus_join'),
+    path('signup', views_user.join, name='hibiscus_me_signup'),   # old address, kept
     path('login', views_user.sign_in_view, name='hibiscus_me_login'),
     path('logout', views_user.sign_out_view, name='hibiscus_me_logout'),
     # The magic link the admin hands out. Short path on purpose: this gets pasted about.

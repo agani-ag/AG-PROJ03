@@ -63,7 +63,7 @@
                     <dt>Opened</dt><dd>{{ person.open_count }} time{{ person.open_count|pluralize }}</dd>
                     <dt>SyncUp push</dt>
                     <dd>
-                        {% if person.syncup_token %}
+                        {% if person.member.syncup_token %}
                         <div class="row" style="gap:8px">
                             <span class="badge badge-success"><span class="dot"></span>Ready</span>
                             <form method="POST" action="{% url 'hibiscus_person_test_push' person.pk %}"
@@ -78,7 +78,7 @@
                         <div class="small muted">One arrives the first time the diary is opened inside the SyncUp app.</div>
                         {% endif %}
                     </dd>
-                    <dt>Magic link</dt><dd>{% if person.login_key %}<span class="badge badge-success"><span class="dot"></span>On</span> <span class="small muted">used {{ person.login_key_uses }} time{{ person.login_key_uses|pluralize }}</span>{% else %}<span class="badge"><span class="dot"></span>Off</span>{% endif %}</dd>
+                    <dt>Magic link</dt><dd>{% if person.has_login_link %}<span class="badge badge-success"><span class="dot"></span>On</span> <span class="small muted">used {{ person.member.login_key_uses }} time{{ person.member.login_key_uses|pluralize }}</span>{% else %}<span class="badge"><span class="dot"></span>Off</span>{% endif %}</dd>
                 </dl>
             </div>
             <div class="card-foot bordered">
@@ -137,20 +137,20 @@
 <div style="margin-top:16px">
     <div class="card">
         <div class="card-head">{% icon "link" %}<h2>Magic link</h2>
-            {% if person.login_key %}<span class="badge badge-success ml-auto"><span class="dot"></span>On</span>
+            {% if person.has_login_link %}<span class="badge badge-success ml-auto"><span class="dot"></span>On</span>
             {% else %}<span class="badge ml-auto"><span class="dot"></span>Off</span>{% endif %}
         </div>
         <div class="card-body">
-            {% if person.login_key %}
+            {% if person.has_login_link %}
             <p class="small muted" style="margin-top:0">Opening this signs {{ person.name }} in straight away — no password screen, and it never expires. Send it to them once; they can bookmark it or keep it in their chat.</p>
             <div class="input-group" style="max-width:720px">
                 <input class="input" id="magic" value="{{ magic_url }}" readonly style="font-family:var(--mono);font-size:13px">
                 <button class="btn btn-icon" type="button" data-copy-target="#magic" aria-label="Copy the link">{% icon "copy" %}</button>
             </div>
             <dl class="kv" style="margin-top:12px">
-                <dt>Made</dt><dd>{{ person.login_key_made_at|date:"d M Y, H:i" }} · {{ person.login_key_made_at|ago }}</dd>
+                <dt>Made</dt><dd>{{ person.member.login_key_made_at|date:"d M Y, H:i" }} · {{ person.member.login_key_made_at|ago }}</dd>
                 <dt>Used</dt>
-                <dd>{% if person.login_key_uses %}{{ person.login_key_uses }} time{{ person.login_key_uses|pluralize }} · last {{ person.login_key_used_at|ago }}{% else %}not yet{% endif %}</dd>
+                <dd>{% if person.member.login_key_uses %}{{ person.member.login_key_uses }} time{{ person.member.login_key_uses|pluralize }} · last {{ person.member.login_key_used_at|ago }}{% else %}not yet{% endif %}</dd>
             </dl>
             <div class="alert alert-warning">
                 {% icon "triangle-alert" %}
@@ -162,7 +162,7 @@
         </div>
         <div class="card-foot bordered">
             <div class="row">
-                {% if person.login_key %}
+                {% if person.has_login_link %}
                 <form method="POST" action="{% url 'hibiscus_person_link' person.pk 'make' %}" data-confirm="Make a new link?" data-confirm-text="The link they have now stops working at once, so you will need to send them the new one.">{% csrf_token %}
                     <button class="btn btn-sm" type="submit">{% icon "refresh-cw" %}New link</button>
                 </form>

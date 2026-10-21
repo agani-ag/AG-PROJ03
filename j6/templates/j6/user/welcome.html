@@ -30,6 +30,10 @@
 {% endif %}
 
 <p class="center"><a class="link" href="{% url 'j6_login' %}">I already have a Self-ID</a></p>
+<p class="center"><a class="link" href="{% url 'j6_start_hub' %}">Use my SyncHub account instead</a></p>
+<p class="tiny center fade">Two doors. The one above asks for nothing and gives you no way back
+    if the Self-ID is lost. The other remembers this chat account on your SyncHub sign-in — your
+    chat name stays separate and nobody you chat with sees any difference.</p>
 
 <p class="tiny center fade">Messages are kept on this server for {{ config.keep_days }} days and can be read by its
     admin. Nothing here is end-to-end encrypted.</p>

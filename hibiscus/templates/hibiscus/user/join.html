@@ -1,0 +1,28 @@
+{% extends "hibiscus/user/base.html" %}
+{% block title %}Start a diary{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1 class="h1">Start a diary, {{ member.name }}?</h1>
+    <p class="muted">You are already signed in to SyncHub, so there is nothing to fill in.
+        The diary is yours alone — the admin of this server can see it, and nobody else here can.</p>
+
+    <form method="POST" class="stack" style="margin-top:16px">
+        {% csrf_token %}
+        <label class="label" for="cycle_hint">How long is your cycle, usually?</label>
+        <input class="input" id="cycle_hint" name="cycle_hint" type="number" min="15" max="60"
+               inputmode="numeric" placeholder="28">
+        <p class="help">Optional, and only used until two periods are logged — after that the
+            diary works it out from what actually happened.</p>
+        {% if config.invite_code %}
+        <label class="label" for="invite_code">Invite code</label>
+        <input class="input" id="invite_code" name="invite_code">
+        {% endif %}
+        {% if error %}<p class="error">{{ error }}</p>{% endif %}
+        <button class="btn btn-primary" type="submit">Start my diary</button>
+    </form>
+</div>
+
+<p class="center muted small" style="margin-top:14px">
+    <a href="{% url 'member_apps' %}">Back to your apps</a></p>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "core/member/base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block wrap_class %} plain{% endblock %}
+
+{% block content %}
+<div class="brand">
+    <span class="mark"><svg class="ic" style="width:27px;height:27px;stroke:#fff"><use href="#m-hub"/></svg></span>
+    <h1>Sign in to SyncHub</h1>
+    <p>One sign-in for everything here.</p>
+</div>
+
+<form method="POST" class="card" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="label" for="sign_in_id">Email or phone</label>
+    <input class="input" id="sign_in_id" name="sign_in_id" autofocus autocomplete="username"
+           value="{{ request.POST.sign_in_id|default:'' }}">
+    <label class="label" for="password">Password</label>
+    <input class="input" id="password" name="password" type="password"
+           autocomplete="current-password">
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+    <div style="margin-top:14px"><button class="btn" type="submit">Sign in</button></div>
+</form>
+
+{% comment %}
+Hidden unless the page is genuinely inside the SyncUp app *and* an SSO key is configured here.
+A button that cannot work is worse than no button, so member.js reveals it rather than the
+template guessing.
+{% endcomment %}
+<div class="or" data-sso-wrap hidden>or</div>
+<button class="btn ghost" type="button" data-sso hidden>
+    <svg class="ic lg"><use href="#m-sync"/></svg>Continue with SyncUp</button>
+{% if sso_url %}
+<form method="POST" action="{{ sso_url }}" id="sso-form" hidden>
+    {% csrf_token %}<input type="hidden" name="code"><input type="hidden" name="next" value="{{ next }}">
+</form>
+{% endif %}
+
+<form method="POST" action="{% url 'member_link' %}" class="card" style="border-style:dashed">
+    {% csrf_token %}
+    <input type="hidden" name="sign_in_id" value="{{ request.POST.sign_in_id|default:'' }}">
+    <div class="row">
+        <svg class="ic sm" style="color:var(--mut)"><use href="#m-key"/></svg>
+        <div class="mn"><b style="font-size:13.5px">Send me a link instead</b>
+            <div class="tiny">One tap, no password. The link lasts an hour and works once.</div></div>
+        <button class="link" type="submit">Ask</button>
+    </div>
+</form>
+
+<p class="center"><a class="link" href="{% url 'member_join' %}">I am new here</a></p>
+<p class="tiny center">Each app here keeps its own data. Signing in once opens the ones you are in.</p>
+{% endblock %}

@@ -1,27 +1,32 @@
-"""Passwords and sessions for the people who keep a diary here.
+"""Who is using the diary.
 
-They are not Django users — they never reach the admin console — so Hibiscus keeps its own
-password hash and its own session key. Hashing still goes through Django's hashers, so these
-passwords are stored exactly as well as the admin's.
+Identity — the password, the magic link, the session — belongs to `core.auth` now. The same
+people keep a diary and a set of money books, and used to have two of everything.
 
-The user-side sign-in views arrive in step 4; what is here is what the admin side needs.
+What stays here is the diary's own *profile*, the `Person` row: the cycle hint, the audit trail
+and the five foreign keys that point at it. Plus the audit log itself, which is the diary's and
+nobody else's.
+
+The console still says "set this person's password" and "make them a link", so those names are
+kept as thin shims onto the member. The console does not need to know where identity moved, and
+`Person` is still what every one of its pages is about.
 """
 import secrets
 from functools import wraps
 
-from django.contrib.auth.hashers import check_password, make_password
-from django.db.models import F
 from django.shortcuts import redirect
-from django.utils import timezone
+from django.urls import reverse
+
+from core import auth as hub
 
 from .models import Audit, Person
 
-SESSION_KEY = 'hibiscus_person_id'
-# Set the moment a session starts — by password, by magic link, or at sign-up — and popped by the
-# first page that asks. That is what makes the greeting fire on arrival and not on every page.
-GREET_KEY = 'hibiscus_greet'
+# No look-alike characters: somebody reads this off a screen and types it on a phone.
+# Re-exported so the diary's own views and tests keep their names while the session itself
+# belongs to the hub.
+SESSION_KEY = hub.SESSION_KEY
+GREET_KEY = hub.GREET_KEY
 
-# No look-alike characters: someone reads this off a screen and types it on a phone.
 PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
 PASSWORD_LENGTH = 8
 
@@ -30,105 +35,81 @@ def generate_password():
     return ''.join(secrets.choice(PASSWORD_ALPHABET) for _ in range(PASSWORD_LENGTH))
 
 
+# --------------------------------------------------------------------------- #
+# Shims, so the console keeps speaking about people
+# --------------------------------------------------------------------------- #
 def set_password(person, raw_password):
-    person.password_hash = make_password(raw_password)
-    person.save(update_fields=['password_hash'])
+    if person.member:
+        hub.set_password(person.member, raw_password)
 
 
 def check_person_password(person, raw_password):
-    return bool(person.password_hash) and check_password(raw_password or '', person.password_hash)
-
-
-# 32 random bytes, url-safe: 43 characters, nothing to guess. The whole link is the credential,
-# so it is made long rather than readable — nobody types this one, they tap it.
-LOGIN_KEY_BYTES = 32
+    return bool(person.member) and hub.check_member_password(person.member, raw_password)
 
 
 def new_login_key(person):
-    """Give this person a fresh magic link and return the key.
+    """The diary's link is made to be bookmarked: no expiry, and it keeps working.
 
-    Any previous key is overwritten, so handing out a new link kills the old one at once — the
-    only way to take a leaked link out of circulation, since the links never expire.
+    That was a deliberate decision here long before the hub existed — the admin hands somebody
+    a link and they never type a password again. Replacing it is what pulls an old one.
     """
-    person.login_key = secrets.token_urlsafe(LOGIN_KEY_BYTES)
-    person.login_key_made_at = timezone.now()
-    person.login_key_used_at = None
-    person.login_key_uses = 0
-    person.save(update_fields=['login_key', 'login_key_made_at', 'login_key_used_at',
-                               'login_key_uses'])
-    return person.login_key
+    return hub.new_login_key(person.member, hours=None, one_shot=False) if person.member else None
 
 
 def clear_login_key(person):
-    """Switch the magic link off. The link stops working the moment this runs."""
-    person.login_key = None
-    person.login_key_made_at = None
-    person.login_key_used_at = None
-    person.login_key_uses = 0
-    person.save(update_fields=['login_key', 'login_key_made_at', 'login_key_used_at',
-                               'login_key_uses'])
+    if person.member:
+        person.member.login_key = None
+        person.member.login_key_made_at = None
+        person.member.save(update_fields=['login_key', 'login_key_made_at'])
 
 
 def person_by_login_key(key):
-    """Whoever this key belongs to, if the key is real and the account is open.
-
-    A suspended or archived person is not returned, so switching someone off closes the magic
-    link too — the same rule `current_person()` applies on every request.
-    """
-    key = (key or '').strip()
-    if not key:
-        return None
-    return Person.objects.filter(login_key=key, is_active=True, is_archived=False).first()
+    member = hub.member_by_login_key(key)
+    return profile_for(member) if member else None
 
 
 def find_person(sign_in_id):
-    """Look someone up by whatever they typed — an email address or a phone number."""
-    value = (sign_in_id or '').strip()
-    if not value:
+    """Whoever signs in with this email or phone — looked up hub-wide, then narrowed to here."""
+    member = hub.find_member(sign_in_id)
+    return profile_for(member) if member else None
+
+
+# --------------------------------------------------------------------------- #
+# Sessions
+# --------------------------------------------------------------------------- #
+def profile_for(member):
+    """This person's diary, or None if they have never started one."""
+    if not member:
         return None
-    if '@' in value:
-        return Person.objects.filter(email__iexact=value).first()
-    digits = ''.join(c for c in value if c.isdigit())[-10:]
-    return Person.objects.filter(phone__endswith=digits).first() if digits else None
-
-
-def sign_in(request, person):
-    """Start a session for this person. Their own session key, separate from the admin's login."""
-    request.session[SESSION_KEY] = person.pk
-    request.session[GREET_KEY] = True
-    request.session.set_expiry(60 * 60 * 24 * 30)      # a diary is not a bank: 30 days
-    Person.objects.filter(pk=person.pk).update(
-        last_opened_at=timezone.now(), open_count=F('open_count') + 1)
-
-
-def sign_out(request):
-    request.session.pop(SESSION_KEY, None)
+    return Person.objects.filter(member=member, is_active=True, is_archived=False).first()
 
 
 def current_person(request):
-    """The signed-in person, or None. Re-checked on every request, because a suspended account
-    must stop working at once rather than at the end of their session."""
-    pk = request.session.get(SESSION_KEY)
-    if not pk:
-        return None
-    return Person.objects.filter(pk=pk, is_active=True, is_archived=False).first()
+    return profile_for(hub.current(request))
 
 
 def person_required(view):
-    """Signed-in diary owner only. Anyone else goes to the sign-in page."""
+    """Signed in to the hub, and keeps a diary.
+
+    Two different "no"s, two different places: the hub's sign-in carrying where they were
+    headed, or the page that offers to start a diary.
+    """
     @wraps(view)
     def inner(request, *args, **kwargs):
-        person = current_person(request)
+        member = hub.current(request)
+        if not member:
+            return redirect(f'{reverse("member_login")}?next={request.get_full_path()}')
+        person = profile_for(member)
         if not person:
-            sign_out(request)
-            return redirect('hibiscus_me_login')
+            return redirect('hibiscus_join')
+        request.member = member
         request.person = person
         return view(request, *args, **kwargs)
     return inner
 
 
 def log(action, person=None, actor=None, detail=''):
-    """Write one audit row. The admin sees everything, so every look and change is recorded."""
+    """One audit row. The admin sees everything here, so every look and change is recorded."""
     return Audit.objects.create(
         actor=actor if (actor and actor.is_authenticated) else None,
         person=person, action=action, detail=str(detail)[:200],

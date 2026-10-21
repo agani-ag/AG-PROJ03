@@ -1,0 +1,33 @@
+{% extends "core/member/base.html" %}
+{% block title %}Make an account{% endblock %}
+{% block wrap_class %} plain{% endblock %}
+
+{% block content %}
+<div class="brand">
+    <span class="mark"><svg class="ic" style="width:27px;height:27px;stroke:#fff"><use href="#m-hub"/></svg></span>
+    <h1>Make a SyncHub account</h1>
+    <p>One account for everything here.</p>
+</div>
+
+<form method="POST" class="card" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="label" for="name">Your name</label>
+    <input class="input" id="name" name="name" maxlength="80" autofocus autocomplete="name"
+           value="{{ request.POST.name|default:'' }}">
+    <label class="label" for="sign_in_id">Email or phone</label>
+    <input class="input" id="sign_in_id" name="sign_in_id" autocomplete="username"
+           value="{{ request.POST.sign_in_id|default:'' }}">
+    <p class="tiny" style="margin-top:6px">Either one. It is how you get back in if you forget
+        the password — nothing is sent to it otherwise.</p>
+    <label class="label" for="password">Password</label>
+    <input class="input" id="password" name="password" type="password" minlength="6"
+           autocomplete="new-password">
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+    <div style="margin-top:14px"><button class="btn" type="submit">Make it</button></div>
+</form>
+
+<p class="center"><a class="link" href="{% url 'member_login' %}">I already have one</a></p>
+<p class="tiny center">Making an account does not start any of the apps. You pick those next,
+    and each one keeps its own data.</p>
+{% endblock %}

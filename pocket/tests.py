@@ -18,6 +18,9 @@ from django.utils import timezone
 from core import cronhub
 from core.models import HubSettings
 
+from core import auth as hub
+from core.models import Member
+
 from . import auth, push, service
 from .cron import notify, retention
 from .models import (MIRROR, PERSON_SIGN, Account, EntryLog, Flow, Folder, Kind, LedgerEntry,
@@ -27,8 +30,20 @@ D = Decimal
 
 
 def make_account(name='Anand', sign_in_id=None, password='pw-for-tests'):
+    """A hub member who has started Pocket Money — which is what an account is now."""
     sign_in_id = sign_in_id or f'{name.lower().replace(" ", "")}@example.com'
-    return service.create_account(name, sign_in_id, password)
+    email, phone = hub.split_sign_in_id(sign_in_id)
+    member = Member.objects.create(name=name, email=email or None, phone=phone or None)
+    hub.set_password(member, password)
+    return service.join(member)
+
+
+def sign_in(client, sign_in_id, password='pw-for-tests'):
+    """Through the hub's one door. Signs out first: the sign-in page redirects somebody who is
+    already in rather than swapping accounts under them."""
+    client.post(reverse('member_logout'))
+    return client.post(reverse('member_login'),
+                       {'sign_in_id': sign_in_id, 'password': password})
 
 
 def make_folder(owner, name='Office'):
@@ -89,61 +104,37 @@ def _ctx(kind='tick', seconds=8):
 
 
 # --------------------------------------------------------------------------- #
-class SignUpTests(TestCase):
-    """A money account has to be recoverable, which is the whole reason for a password."""
+class JoiningTests(TestCase):
+    """Identity moved to the hub, and core tests it. What is left here is what *joining* does."""
 
-    def test_an_account_needs_a_way_back_in(self):
-        with self.assertRaises(ValidationError):
-            service.create_account('Anand', '', 'pw-for-tests')
+    def _member(self, name='Anand', email='anand@example.com', phone=None):
+        member = Member.objects.create(name=name, email=email, phone=phone)
+        hub.set_password(member, 'pw-for-tests')
+        return member
 
-    def test_an_email_or_a_phone_will_do(self):
-        by_mail = service.create_account('Anand', 'anand@example.com', 'pw-for-tests')
-        by_phone = service.create_account('Divya', '98765 43210', 'pw-for-tests')
-        self.assertEqual(by_mail.email, 'anand@example.com')
-        self.assertEqual(by_phone.phone, '9876543210')
-
-    def test_a_short_password_is_refused(self):
-        with self.assertRaises(ValidationError):
-            service.create_account('Anand', 'anand@example.com', 'pw')
-
-    def test_the_same_address_twice_is_refused(self):
-        make_account()
-        with self.assertRaises(ValidationError):
-            service.create_account('Someone', 'anand@example.com', 'pw-for-tests')
-
-    def test_signing_up_writes_a_starter_set_of_categories(self):
-        account = make_account()
+    def test_joining_needs_nothing_and_brings_the_categories(self):
+        member = self._member()
+        account = service.join(member)
+        self.assertEqual(account.member, member)
+        self.assertEqual(account.name, 'Anand')
         self.assertTrue(account.categories.filter(flow=Flow.IN, name='Salary').exists())
-        self.assertTrue(account.categories.filter(flow=Flow.OUT, name='Food').exists())
         self.assertTrue(account.categories.filter(flow=Flow.LEDGER, name='Chit').exists())
 
-    def test_the_password_is_hashed_not_kept(self):
-        account = make_account()
-        self.assertNotIn('pw-for-tests', account.password_hash)
-        self.assertTrue(auth.check_account_password(account, 'pw-for-tests'))
-        self.assertFalse(auth.check_account_password(account, 'something else'))
+    def test_joining_twice_gives_back_the_same_books(self):
+        member = self._member()
+        self.assertEqual(service.join(member), service.join(member))
+        self.assertEqual(Account.objects.count(), 1)
 
+    def test_the_module_keeps_no_password_of_its_own(self):
+        account = service.join(self._member())
+        self.assertEqual(account.password_hash, '')
+        self.assertIsNone(account.email, 'the email lives on the member now')
 
-class MagicLinkTests(TestCase):
-    def test_a_link_works_once_and_then_never(self):
-        account = make_account()
-        key = auth.new_login_key(account)
-        self.assertEqual(auth.account_by_login_key(key), account)
-        auth.spend_login_key(account)
-        self.assertIsNone(auth.account_by_login_key(key))
-
-    def test_a_link_older_than_an_hour_is_dead(self):
-        account = make_account()
-        key = auth.new_login_key(account)
-        Account.objects.filter(pk=account.pk).update(
-            login_key_made_at=timezone.now() - timedelta(hours=2))
-        self.assertIsNone(auth.account_by_login_key(key))
-
-    def test_an_archived_account_cannot_use_one(self):
-        account = make_account()
-        key = auth.new_login_key(account)
-        Account.objects.filter(pk=account.pk).update(is_archived=True)
-        self.assertIsNone(auth.account_by_login_key(key))
+    def test_one_person_one_set_of_books(self):
+        member = self._member()
+        service.join(member)
+        with self.assertRaises(Exception):
+            Account.objects.create(member=member, name='Second')
 
 
 # --------------------------------------------------------------------------- #
@@ -424,7 +415,7 @@ class PromotionTests(TestCase):
 
     def test_a_matching_phone_number_only_suggests(self):
         person = make_person(self.folder, 'Mani', phone='98765 43210')
-        mani = service.create_account('Mani', '9876543210', 'pw-for-tests')
+        mani = make_account('Mani', '9876543210')
         person.refresh_from_db()
         self.assertEqual(person.suggested_account, mani)
         self.assertIsNone(person.linked_account)
@@ -432,7 +423,7 @@ class PromotionTests(TestCase):
 
     def test_a_suggestion_never_appears_for_your_own_folder(self):
         make_person(self.folder, 'Me again', phone='9000000001')
-        same = service.create_account('Other', '9000000001', 'pw-for-tests')
+        same = make_account('Other', '9000000001')
         self.assertFalse(service.suggestions_for(same).exists())
 
     def test_an_invitation_needs_the_other_side_to_accept(self):

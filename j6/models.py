@@ -116,6 +116,12 @@ class Account(models.Model):
                                help_text='Stored readable on purpose: the owner can look it up '
                                          'any time, which is what makes it a way back in.')
     name = models.CharField(max_length=NAME_MAX)
+    member = models.OneToOneField('core.Member', null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name='j6',
+                                  help_text="Optional, and always the owner's choice: it is the "
+                                            'only way a lost Self-ID can be recovered. SET_NULL '
+                                            'rather than CASCADE — deleting a hub account must '
+                                            'not take an anonymous chat account with it.')
 
     created_at = models.DateTimeField(default=timezone.now)
     last_seen_at = models.DateTimeField(default=timezone.now)

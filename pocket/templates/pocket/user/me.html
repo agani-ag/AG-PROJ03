@@ -7,12 +7,15 @@
 {% endblock %}
 
 {% block content %}
-<div class="card row-h">
-    <span class="av lg" style="background:var(--me)">{{ account.initials }}</span>
-    <div class="mn"><div style="font-weight:750;font-size:17px">{{ account.name }}</div>
-        <div class="tiny">{{ account.sign_in_id }}</div>
+<a class="card row-h" href="{% url 'member_you' %}">
+    <span class="av lg" style="background:var(--me)">{{ member.initials }}</span>
+    <div class="mn"><div style="font-weight:750;font-size:17px">{{ member.name }}</div>
+        <div class="tiny">{{ member.sign_in_id }}</div>
         <div class="tiny">{{ folders }} folder{{ folders|pluralize }} · {{ lines }} shared line{{ lines|pluralize }}</div></div>
-</div>
+    <svg class="ic sm faint"><use href="#p-right"/></svg>
+</a>
+<p class="tiny">Your name, password and theme are the same across everything here — they live on
+    <a href="{% url 'member_you' %}">your SyncHub profile</a>. What is below belongs to Pocket Money.</p>
 
 <form method="POST" action="{% url 'pocket_upi' %}" class="card">
     {% csrf_token %}
@@ -45,20 +48,6 @@
     </div>
 </form>
 
-<form method="POST" class="card">
-    {% csrf_token %}
-    <input type="hidden" name="what" value="theme">
-    <span class="label" style="margin-top:0">Theme</span>
-    <div class="chips">
-        {% for value, label in account.THEMES %}
-        <label class="chip"><input type="radio" name="theme" value="{{ value }}"
-               {% if account.theme == value %}checked{% endif %}
-               onchange="try{localStorage.setItem('pocket-theme','{{ value }}')}catch(e){};this.form.submit()">{{ label }}</label>
-        {% endfor %}
-    </div>
-    <p class="tiny" style="margin-top:7px">Inside the SyncUp app the phone's own dark setting never
-        reaches this page, which is why the choice lives here.</p>
-</form>
 
 <div class="rows">
     <a class="row" href="{% url 'pocket_categories' %}">
@@ -80,7 +69,10 @@
         <div class="vl sm out">{{ money }}{{ position.you_owe|floatformat:0 }}</div></div>
 </div>
 
-<a class="btn ghost" href="{% url 'pocket_logout' %}">
-    <svg class="ic sm"><use href="#p-out-door"/></svg>Sign out</a>
+<form method="POST" action="{% url 'member_logout' %}">
+    {% csrf_token %}
+    <button class="btn ghost" type="submit">
+        <svg class="ic sm"><use href="#p-out-door"/></svg>Sign out of SyncHub</button>
+</form>
 <p class="tiny center">This server's admin can read your books.</p>
 {% endblock %}

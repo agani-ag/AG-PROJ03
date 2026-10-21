@@ -16,71 +16,79 @@ from .models import (Audit, Flow, NotifyLine, NotifyMute, NotifySent, NotifySlot
 from core import cronhub
 
 
-def make_person(name='Divya', email='d@example.com', phone=None, password='swan7tide'):
-    person = Person.objects.create(name=name, email=email, phone=phone)
-    auth.set_password(person, password)
-    return person
+from core import auth as hub
+from core.models import Member
+
+from .tests import make_person, refreshed, sign_in  # noqa: E402  (one fixture, both files)
 
 
-class SignUpTests(TestCase):
-    def test_sign_up_with_an_email(self):
-        r = self.client.post(reverse('hibiscus_me_signup'), {
-            'name': 'Divya', 'contact': 'Divya@Example.com', 'password': 'swan7tide',
-            'cycle_hint': '30'})
+class JoiningTests(TestCase):
+    """The diary has no sign-up of its own any more — the hub has one, and this starts a diary."""
+
+    def _member(self, name='Divya', email='d@example.com', phone=None):
+        member = Member.objects.create(name=name, email=email, phone=phone)
+        hub.set_password(member, 'swan7tide')
+        return member
+
+    def test_a_stranger_is_sent_to_the_hub(self):
+        r = self.client.get(reverse('hibiscus_me_home'))
+        self.assertEqual(r.status_code, 302)
+        self.assertIn(reverse('member_login'), r['Location'])
+
+    def test_a_member_with_no_diary_is_offered_one(self):
+        self._member()
+        sign_in(self.client)
+        self.assertRedirects(self.client.get(reverse('hibiscus_me_home')),
+                             reverse('hibiscus_join'))
+
+    def test_starting_a_diary_asks_only_for_the_cycle_hint(self):
+        member = self._member()
+        sign_in(self.client)
+        r = self.client.post(reverse('hibiscus_join'), {'cycle_hint': '30'})
         self.assertEqual(r.status_code, 302)
         person = Person.objects.get()
-        self.assertEqual(person.email, 'divya@example.com')      # stored lower case
-        self.assertEqual(person.signed_up_with, 'email')
+        self.assertEqual(person.member, member)
+        self.assertEqual(person.name, 'Divya')
         self.assertEqual(person.cycle_hint, 30)
-        self.assertTrue(auth.check_person_password(person, 'swan7tide'))
         self.assertEqual(self.client.get(reverse('hibiscus_me_home')).status_code, 200)
 
-    def test_sign_up_with_a_phone(self):
-        self.client.post(reverse('hibiscus_me_signup'), {
-            'name': 'Meena', 'contact': '+91 98765 43210', 'password': 'swan7tide'})
-        person = Person.objects.get()
-        self.assertEqual(person.phone, '9876543210')
-        self.assertIsNone(person.email)
-        self.assertEqual(person.signed_up_with, 'phone')
+    def test_the_hint_is_optional(self):
+        self._member()
+        sign_in(self.client)
+        self.client.post(reverse('hibiscus_join'), {'cycle_hint': ''})
+        self.assertIsNone(Person.objects.get().cycle_hint)
 
-    def test_a_short_password_is_refused(self):
-        r = self.client.post(reverse('hibiscus_me_signup'),
-                             {'name': 'X', 'contact': 'x@example.com', 'password': 'short'})
-        self.assertContains(r, 'at least 8 characters', status_code=200, msg_prefix='',
-                            html=False)
-        self.assertFalse(Person.objects.exists())
-
-    def test_an_address_already_in_use_is_refused(self):
-        make_person()
-        r = self.client.post(reverse('hibiscus_me_signup'),
-                             {'name': 'Someone', 'contact': 'd@example.com',
-                              'password': 'swan7tide'})
-        self.assertContains(r, 'already an account')
+    def test_starting_twice_keeps_one_diary(self):
+        self._member()
+        sign_in(self.client)
+        self.client.post(reverse('hibiscus_join'), {'cycle_hint': '30'})
+        self.client.post(reverse('hibiscus_join'), {'cycle_hint': '28'})
         self.assertEqual(Person.objects.count(), 1)
 
-    def test_nonsense_contact_is_refused(self):
-        r = self.client.post(reverse('hibiscus_me_signup'),
-                             {'name': 'X', 'contact': 'banana', 'password': 'swan7tide'})
-        self.assertContains(r, 'email address or a 10-digit mobile')
-
-    def test_sign_up_can_be_closed(self):
+    def test_joining_can_be_closed(self):
+        self._member()
+        sign_in(self.client)
         config = Settings.load()
         config.signup_open = False
         config.save()
-        self.assertEqual(self.client.get(reverse('hibiscus_me_signup')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('hibiscus_join')).status_code, 403)
 
     def test_an_invite_code_is_checked(self):
+        self._member()
+        sign_in(self.client)
         config = Settings.load()
         config.invite_code = 'hibiscus2026'
         config.save()
-        bad = self.client.post(reverse('hibiscus_me_signup'),
-                               {'name': 'X', 'contact': 'x@example.com',
-                                'password': 'swan7tide', 'invite_code': 'wrong'})
+        bad = self.client.post(reverse('hibiscus_join'), {'invite_code': 'wrong'})
         self.assertContains(bad, 'not right')
-        self.client.post(reverse('hibiscus_me_signup'),
-                         {'name': 'X', 'contact': 'x@example.com',
-                          'password': 'swan7tide', 'invite_code': 'hibiscus2026'})
+        self.assertFalse(Person.objects.exists())
+        self.client.post(reverse('hibiscus_join'), {'invite_code': 'hibiscus2026'})
         self.assertTrue(Person.objects.exists())
+
+    def test_the_old_sign_up_address_still_works(self):
+        self._member()
+        sign_in(self.client)
+        self.assertEqual(self.client.get(reverse('hibiscus_me_signup')).status_code, 200)
 
 
 class SignInTests(TestCase):
@@ -88,26 +96,31 @@ class SignInTests(TestCase):
         self.person = make_person()
 
     def test_sign_in_by_email_or_phone(self):
-        r = self.client.post(reverse('hibiscus_me_login'),
-                             {'contact': 'd@example.com', 'password': 'swan7tide'})
+        r = sign_in(self.client, 'd@example.com', 'swan7tide')
         self.assertEqual(r.status_code, 302)
         self.assertEqual(self.client.get(reverse('hibiscus_me_home')).status_code, 200)
 
     def test_a_wrong_password_says_nothing_useful(self):
-        r = self.client.post(reverse('hibiscus_me_login'),
-                             {'contact': 'd@example.com', 'password': 'nope'})
-        self.assertContains(r, 'did not match')
+        r = sign_in(self.client, 'd@example.com', 'nope')
+        self.assertContains(r, 'do not go together')
 
-    def test_a_suspended_account_cannot_get_in(self):
+    def test_a_suspended_diary_leaves_the_hub_account_alone(self):
+        """Two switches now: shut out of the diary, still able to sign in to everything else."""
         self.person.is_active = False
         self.person.save()
-        r = self.client.post(reverse('hibiscus_me_login'),
-                             {'contact': 'd@example.com', 'password': 'swan7tide'})
-        self.assertContains(r, 'switched off')
+        sign_in(self.client, 'd@example.com', 'swan7tide')
+        self.assertRedirects(self.client.get(reverse('hibiscus_me_home')),
+                             reverse('hibiscus_join'))
+        self.assertEqual(self.client.get(reverse('member_apps')).status_code, 200)
+
+    def test_a_closed_hub_account_cannot_get_in_at_all(self):
+        self.person.member.is_active = False
+        self.person.member.save(update_fields=['is_active'])
+        r = sign_in(self.client, 'd@example.com', 'swan7tide')
+        self.assertContains(r, 'do not go together')
 
     def test_suspending_someone_ends_their_session(self):
-        self.client.post(reverse('hibiscus_me_login'),
-                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+        sign_in(self.client, 'd@example.com', 'swan7tide')
         self.person.is_active = False
         self.person.save()
         r = self.client.get(reverse('hibiscus_me_home'))
@@ -119,18 +132,16 @@ class SignInTests(TestCase):
             self.assertEqual(self.client.get(reverse(name)).status_code, 302, name)
 
     def test_signing_in_counts_the_visit(self):
-        self.client.post(reverse('hibiscus_me_login'),
-                         {'contact': 'd@example.com', 'password': 'swan7tide'})
-        self.person.refresh_from_db()
-        self.assertEqual(self.person.open_count, 1)
-        self.assertIsNotNone(self.person.last_opened_at)
+        sign_in(self.client, 'd@example.com', 'swan7tide')
+        refreshed(self.person)
+        self.assertEqual(self.person.member.open_count, 1)
+        self.assertIsNotNone(self.person.member.last_opened_at)
 
 
 class DiaryTests(TestCase):
     def setUp(self):
         self.person = make_person()
-        self.client.post(reverse('hibiscus_me_login'),
-                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+        sign_in(self.client, 'd@example.com', 'swan7tide')
         self.config = Settings.load()
         self.today = self.config.today
 
@@ -214,21 +225,21 @@ class DiaryTests(TestCase):
                              {'name': 'Divya R', 'cycle_hint': '31',
                               'new_password': 'newer7pass'})
         self.assertEqual(r.status_code, 302)
-        self.person.refresh_from_db()
+        refreshed(self.person)
         self.assertEqual(self.person.name, 'Divya R')
         self.assertTrue(auth.check_person_password(self.person, 'newer7pass'))
 
     def test_theme_is_remembered_on_the_server_too(self):
         self.client.post(reverse('hibiscus_me_theme'), '{"theme": "dark"}',
                          content_type='application/json')
-        self.person.refresh_from_db()
-        self.assertEqual(self.person.theme, 'dark')
+        refreshed(self.person)
+        self.assertEqual(self.person.member.theme, 'dark')
 
     def test_the_syncup_token_is_stored_once(self):
         self.client.post(reverse('hibiscus_me_token'), '{"token": "abc123"}',
                          content_type='application/json')
-        self.person.refresh_from_db()
-        self.assertEqual(self.person.syncup_token, 'abc123')
+        refreshed(self.person)
+        self.assertEqual(self.person.member.syncup_token, 'abc123')
         self.assertTrue(Audit.objects.filter(action='syncup_token_saved').exists())
 
 
@@ -246,14 +257,14 @@ class BrowserBehaviourTests(TestCase):
         """A browser sends Origin on every POST. Under `Referrer-Policy: no-referrer` it sends
         the string "null" instead, which Django's CSRF check refuses — that was the 403."""
         client = Client(enforce_csrf_checks=True)
-        page = client.get(reverse('hibiscus_me_login'))
+        page = client.get(reverse('member_login'))
         token = page.context['csrf_token']
-        r = client.post(reverse('hibiscus_me_login'),
-                        {'contact': 'd@example.com', 'password': 'swan7tide',
+        r = client.post(reverse('member_login'),
+                        {'sign_in_id': 'd@example.com', 'password': 'swan7tide',
                          'csrfmiddlewaretoken': token},
                         headers={'origin': 'http://testserver'})
         self.assertEqual(r.status_code, 302)                    # not 403
-        self.assertEqual(r.url, reverse('hibiscus_me_home'))
+        self.assertEqual(r.url, reverse('member_apps'))
 
     def test_the_referrer_policy_does_not_null_the_origin(self):
         r = self.client.get(reverse('hibiscus_me_login'))
@@ -263,8 +274,7 @@ class BrowserBehaviourTests(TestCase):
     def test_no_page_leaks_a_raw_template_comment(self):
         """Django's {# … #} is single-line only: a multi-line one is not a comment, and its text
         renders onto the page. One did, right across the top of the sign-in screen."""
-        self.client.post(reverse('hibiscus_me_login'),
-                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+        sign_in(self.client, 'd@example.com', 'swan7tide')
         item = StockItem.objects.create(person=self.person, name='Sofy', low_at=3)
         StockMove.objects.create(item=item, date=Settings.load().today, change=1,
                                  reason=StockMove.Reason.OPENING)
@@ -279,8 +289,7 @@ class BrowserBehaviourTests(TestCase):
 class StockTests(TestCase):
     def setUp(self):
         self.person = make_person()
-        self.client.post(reverse('hibiscus_me_login'),
-                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+        sign_in(self.client, 'd@example.com', 'swan7tide')
         self.config = Settings.load()
 
     def test_adding_an_item_with_an_opening_count(self):
@@ -365,7 +374,7 @@ class NotificationTests(TestCase):
         self.config.syncup_base = ''              # nothing is actually sent in tests
         self.config.save()
         self.person = make_person()
-        self.person.syncup_token = 'tok'
+        self.person.member.syncup_token = 'tok'
         self.person.save()
         self.today = self.config.today
         self.morning = NotifySlot.objects.get(key=NotifySlot.Key.MORNING)
@@ -555,16 +564,16 @@ class MagicLinkTests(TestCase):
         r = self._open()
         self.assertEqual(r.status_code, 302)
         self.assertEqual(r['Location'], reverse('hibiscus_me_home'))
-        self.assertEqual(self.client.session.get(auth.SESSION_KEY), self.person.pk)
+        self.assertEqual(self.client.session.get(auth.SESSION_KEY), self.person.member_id)
         self.assertEqual(self.client.get(reverse('hibiscus_me_home')).status_code, 200)
 
     def test_it_keeps_working_and_is_not_one_shot(self):
         for _ in range(3):
             self.client.cookies.clear()
             self.assertEqual(self._open().status_code, 302)
-        self.person.refresh_from_db()
-        self.assertEqual(self.person.login_key_uses, 3)
-        self.assertIsNotNone(self.person.login_key_used_at)
+        refreshed(self.person)
+        self.assertEqual(self.person.member.login_key_uses, 3)
+        self.assertIsNotNone(self.person.member.login_key_used_at)
 
     def test_the_key_does_not_stay_in_the_address_bar(self):
         r = self._open()
@@ -574,38 +583,38 @@ class MagicLinkTests(TestCase):
 
     def test_using_the_link_counts_as_opening_the_diary(self):
         self._open()
-        self.person.refresh_from_db()
-        self.assertEqual(self.person.open_count, 1)
-        self.assertIsNotNone(self.person.last_opened_at)
+        refreshed(self.person)
+        self.assertEqual(self.person.member.open_count, 1)
+        self.assertIsNotNone(self.person.member.last_opened_at)
         self.assertTrue(Audit.objects.filter(person=self.person,
                                              action='signed_in_with_link').exists())
 
     def test_a_new_link_kills_the_old_one(self):
         old = self.key
-        self.person.refresh_from_db()
+        refreshed(self.person)
         new = auth.new_login_key(self.person)
         self.assertNotEqual(old, new)
         r = self._open(old)
-        self.assertEqual(r['Location'], reverse('hibiscus_me_login'))
+        self.assertEqual(r['Location'], reverse('member_login'))
         self.assertIsNone(self.client.session.get(auth.SESSION_KEY))
         self.assertEqual(self._open(new)['Location'], reverse('hibiscus_me_home'))
 
     def test_switching_the_link_off_kills_it(self):
         auth.clear_login_key(self.person)
-        self.assertEqual(self._open()['Location'], reverse('hibiscus_me_login'))
-        self.person.refresh_from_db()
-        self.assertIsNone(self.person.login_key)
-        self.assertEqual(self.person.login_key_uses, 0)
+        self.assertEqual(self._open()['Location'], reverse('member_login'))
+        refreshed(self.person)
+        self.assertIsNone(self.person.member.login_key)
+        self.assertEqual(self.person.member.login_key_uses, 0)
 
     def test_a_suspended_account_cannot_use_its_link(self):
         self.person.is_active = False
         self.person.save()
-        self.assertEqual(self._open()['Location'], reverse('hibiscus_me_login'))
+        self.assertEqual(self._open()['Location'], reverse('member_login'))
 
     def test_an_archived_account_cannot_use_its_link(self):
         self.person.is_archived = True
         self.person.save()
-        self.assertEqual(self._open()['Location'], reverse('hibiscus_me_login'))
+        self.assertEqual(self._open()['Location'], reverse('member_login'))
 
     def test_a_made_up_key_lands_on_the_sign_in_page(self):
         r = self.client.get(reverse('hibiscus_me_key', args=['x' * 43]), follow=True)
@@ -619,15 +628,13 @@ class MagicLinkTests(TestCase):
 
     def test_the_link_wins_when_someone_else_is_signed_in(self):
         other = make_person(name='Meena', email='m@example.com', password='rain4moss')
-        self.client.post(reverse('hibiscus_me_login'),
-                         {'contact': 'm@example.com', 'password': 'rain4moss'})
+        sign_in(self.client, 'm@example.com', 'rain4moss')
         self.assertEqual(self.client.session.get(auth.SESSION_KEY), other.pk)
         self._open()
-        self.assertEqual(self.client.session.get(auth.SESSION_KEY), self.person.pk)
+        self.assertEqual(self.client.session.get(auth.SESSION_KEY), self.person.member_id)
 
     def test_password_sign_in_still_works_alongside_a_link(self):
-        r = self.client.post(reverse('hibiscus_me_login'),
-                             {'contact': 'd@example.com', 'password': 'swan7tide'})
+        r = sign_in(self.client, 'd@example.com', 'swan7tide')
         self.assertEqual(r.status_code, 302)
 
 class CalendarGridTests(TestCase):
@@ -642,8 +649,7 @@ class CalendarGridTests(TestCase):
 
     def setUp(self):
         self.person = make_person()
-        self.client.post(reverse('hibiscus_me_login'),
-                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+        sign_in(self.client, 'd@example.com', 'swan7tide')
 
     def _month(self):
         return self.client.get(reverse('hibiscus_me_calendar')).content.decode()
@@ -688,8 +694,7 @@ class ArrivalReminderTests(TestCase):
     def setUp(self):
         self.person = make_person()
         self.URL = reverse('hibiscus_me_reminder')
-        self.client.post(reverse('hibiscus_me_login'),
-                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+        sign_in(self.client, 'd@example.com', 'swan7tide')
 
     def _ask(self):
         return self.client.get(self.URL).json()
@@ -706,12 +711,12 @@ class ArrivalReminderTests(TestCase):
         self.assertTrue(fresh.get(self.URL).json()['show'])
         self.assertFalse(fresh.get(self.URL).json()['show'])
 
-    def test_signing_up_counts_too(self):
+    def test_starting_a_diary_counts_too(self):
+        member = Member.objects.create(name='Meena', email='m@example.com')
+        hub.set_password(member, 'rain4moss')
         fresh = Client()
-        fresh.post(reverse('hibiscus_me_signup'), {
-            'name': 'Meena', 'kind': 'email', 'contact': 'm@example.com',
-            'password': 'rain4moss', 'cycle_hint': 30,
-        })
+        sign_in(fresh, 'm@example.com', 'rain4moss')
+        fresh.post(reverse('hibiscus_join'), {'cycle_hint': 30})
         self.assertTrue(fresh.get(self.URL).json()['show'])
 
     def test_a_session_left_open_is_greeted_once_the_next_day(self):
@@ -811,8 +816,7 @@ class RowAlignmentTests(TestCase):
 
     def test_the_reminder_rows_use_it(self):
         person = make_person()
-        self.client.post(reverse('hibiscus_me_login'),
-                         {'contact': 'd@example.com', 'password': 'swan7tide'})
+        sign_in(self.client, 'd@example.com', 'swan7tide')
         defaults.ensure_slots()
         body = self.client.get(reverse('hibiscus_me_settings')).content.decode()
         self.assertIn('class="grow"', body)

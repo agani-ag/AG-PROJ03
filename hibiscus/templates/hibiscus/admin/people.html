@@ -71,7 +71,7 @@
                         <div class="small faint">joined {{ row.person.created_at|date:"d M Y" }}{% if row.last_day %} · last logged {{ row.last_day|date:"d M" }}{% endif %}</div>
                     </td>
                     <td data-label="Signs in with"><span class="small">{{ row.person.sign_in_id }}</span>
-                        {% if row.person.login_key %}<span class="badge badge-accent" title="Has a magic link">{% icon "link" "icon-sm" %}link</span>{% endif %}
+                        {% if row.person.has_login_link %}<span class="badge badge-accent" title="Has a magic link">{% icon "link" "icon-sm" %}link</span>{% endif %}
                     </td>
                     <td data-label="State">
                         {% if row.person.is_archived %}<span class="badge"><span class="dot"></span>Archived</span>

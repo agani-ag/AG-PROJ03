@@ -55,6 +55,11 @@ class HubSettings(models.Model):
         help_text='Where SyncUp lives, e.g. https://syncup.example.com — a different machine '
                   'from this one.')
     syncup_notify_key = models.CharField(max_length=80, blank=True)
+    syncup_sso_key = models.CharField(
+        max_length=80, blank=True,
+        help_text='Made on SyncUp Admin → General links, beside the links key. A separate key '
+                  'on purpose: it lets a page sign somebody in, which the links key must not. '
+                  'Blank means nobody is offered "Continue with SyncUp" anywhere.')
     syncup_links_key = models.CharField(
         max_length=80, blank=True,
         help_text="From SyncUp's admin → General links → SyncUp links key. Lets the buttons below "
@@ -185,3 +190,87 @@ class CronRun(models.Model):
 
     def __str__(self):
         return f"{self.job} at {self.started_at:%Y-%m-%d %H:%M} ({'ok' if self.ok else 'failed'})"
+
+
+class Member(models.Model):
+    """One person, once, for the whole hub.
+
+    Hibiscus and Pocket Money each grew their own copy of the same thirteen fields, and roughly
+    seventy-five people exist in both. A third module would have made it three copies. So the
+    identity lives here and each module keeps a *profile* row instead — its own columns, its own
+    relationships, plus a link to whoever it belongs to.
+
+    The module rows deliberately stay where they are. Fifteen foreign keys point at them
+    (hibiscus days, notes, stocks, audit; pocket folders, people, entries, shares, created_by,
+    voided_by…), and repointing those is where a migration like this goes wrong.
+
+    A Member is **not** a Django user. The admin console is still a superuser with a PIN; this is
+    the public side, exactly as both modules already treated it.
+    """
+    THEMES = [('system', 'System'), ('light', 'Light'), ('dark', 'Dark')]
+
+    name = models.CharField(max_length=80)
+    email = models.EmailField(unique=True, null=True, blank=True)
+    phone = models.CharField(max_length=15, unique=True, null=True, blank=True)
+    password_hash = models.CharField(max_length=128, blank=True)
+    legacy_password_hash = models.CharField(
+        max_length=128, blank=True,
+        help_text='The other hash, when one person arrived from two modules with two passwords. '
+                  'Either one signs them in, until the next sign-in settles which and clears '
+                  'this. Seventy-five people must not be locked out to tidy a column.')
+
+    syncup_token = models.TextField(
+        blank=True, help_text='One per person, not one per module: opening any module inside the '
+                              'SyncUp app now makes all of them reachable.')
+    syncup_id = models.CharField(
+        max_length=64, unique=True, null=True, blank=True,
+        help_text="SyncUp's opaque per-site id, set when somebody signs in with SyncUp.")
+
+    theme = models.CharField(max_length=10, choices=THEMES, default='system')
+    is_active = models.BooleanField(
+        default=True, help_text='Can sign in at all. A module profile has its own switch for '
+                                '"may use this module", which is a different question.')
+    is_archived = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+    last_opened_at = models.DateTimeField(null=True, blank=True)
+    open_count = models.PositiveIntegerField(default=0)
+
+    login_key = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    login_key_made_at = models.DateTimeField(null=True, blank=True)
+    login_key_used_at = models.DateTimeField(null=True, blank=True)
+    login_key_uses = models.PositiveIntegerField(default=0)
+    login_key_expires_at = models.DateTimeField(
+        null=True, blank=True, help_text='Empty means it never expires. The hub asks for an '
+                                         'hour; the diary deliberately does not.')
+    login_key_one_shot = models.BooleanField(
+        default=True, help_text='A link somebody asked for themselves dies on first use. One '
+                                'the admin hands out to be bookmarked does not — that is the '
+                                'whole point of it.')
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def initials(self):
+        parts = [p for p in (self.name or '?').split() if p]
+        if len(parts) >= 2:
+            return (parts[0][0] + parts[1][0]).upper()
+        return (self.name or '?')[:2].upper()
+
+    @property
+    def sign_in_id(self):
+        return self.email or self.phone or ''
+
+    @property
+    def can_sign_in(self):
+        return self.is_active and not self.is_archived
+
+    @property
+    def can_be_pushed(self):
+        return bool(self.syncup_token) and self.can_sign_in

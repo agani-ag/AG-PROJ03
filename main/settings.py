@@ -8,6 +8,7 @@ listed in `core/modules.py`.
 Real values come from .env (see .env.example); the fallbacks here are for local development only.
 """
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -101,6 +102,12 @@ DATABASES = {
 
 
 # Password validation
+
+# Hashing a password properly is slow on purpose, and the test suite now signs people in
+# hundreds of times through one shared door. Under `manage.py test` only, use the cheap hasher:
+# it takes the suite from ten minutes back to two, and changes nothing a real server does.
+if 'test' in sys.argv:
+    PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},

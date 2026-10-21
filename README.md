@@ -165,6 +165,60 @@ than a 5xx that would trip the cron service's alerting. Each hook runs inside it
 with a slice of the run's budget, so one module failing never stops another's work. Every run is
 recorded and shown on **System → Cron**, which also has "Run now" buttons.
 
+## One account for the whole hub
+
+Hibiscus and Pocket Money each grew their own copy of the same thirteen identity fields, and
+about seventy-five people existed in both. **`core.Member`** holds the identity now — name,
+email or phone, password, magic link, SyncUp token, theme — and each module keeps a *profile*
+row instead: `hibiscus.Person`, `pocket.Account`, optionally `j6.Account`.
+
+The module rows did not move. Fifteen foreign keys point at them (diary days, notes, stocks,
+audit; folders, people, entries, shares, created_by, voided_by…), and repointing those is where
+a migration like this goes wrong. Each simply gained a `member` link. **Being in a module is
+having its profile row** — there is no separate membership table to drift.
+
+| | |
+|---|---|
+| Sign in | `/in/` — one page, one session (`synchub_member`), `cycle_key()` on every sign-in |
+| Sign up | `/join/` — the hub's own front door; each module then has a one-tap *join* page |
+| Sign out | `/out` — **POST**, so a link in an `<img>` cannot end somebody's session |
+| Links | One hour and one use by default. The diary's are deliberately durable: `new_login_key(member, hours=None, one_shot=False)` |
+| Suspension | `Member.is_active` is "can sign in at all"; a profile's own flag is "may use this module" |
+| Notifications | **One device token per person**, not one per module — opening any module inside SyncUp makes all of them reachable |
+
+Merging the existing people is a management command, never a data migration, because migrations
+are gitignored and never reach the server:
+
+```
+python manage.py merge_identities --dry-run     # a report, changes nothing
+python manage.py merge_identities --apply
+```
+
+It matches on email **or** phone and unions the two, so somebody who is in the diary by email
+and in the money books by phone still comes out as one person. Where two profiles carry
+different passwords it keeps **both** — either one signs them in until the next sign-in settles
+which — because seventy-five people must not be locked out to tidy a column. Anything it will
+not decide alone (two rows in one module on one number) is listed in the dry run and left
+alone. Take a backup from `/download/sqlite` first.
+
+### Sign in with SyncUp
+
+Built and inert: the button appears only when **System → Settings** has a SyncUp sign-in key,
+and only inside the SyncUp app. The page never says who anybody is — it hands over a one-time
+code and `core/syncup_sso.py` redeems it server-side against SyncUp, because `window.SyncUp` is
+a JavaScript object anybody can type into a console.
+
+What comes back is treated as **unverified for ever**: SyncUp does not verify email addresses,
+so arriving with one is not proof of owning the account here. If the address is already
+somebody's, the signer-in types that account's password first. If they say it is not theirs,
+they get a separate account — and are asked for a phone *and* a password before it is made,
+because an account with neither could only ever be opened from inside the app.
+
+J6 can be linked too, both ways round, and it stays anonymous: whoever you chat with sees a J6
+name and an Account ID and nothing else. The Self-ID remains the credential, no email is ever
+written to a chat account, and the only thing that changes is that this server's admin can see
+the account is yours. See [docs/core-accounts-plan.md](docs/core-accounts-plan.md).
+
 ## Modules
 
 | Module | What it is |
@@ -251,17 +305,20 @@ voided, never deleted, on the people's side; only the console can hard-delete on
 | `/ui/` | UI kit: every component in `app.css`, to copy from when building a module |
 | `/profile/` | Admin name, password, PIN and the database backup |
 | `/download/sqlite` | Downloads the whole SQLite database (admin only) |
+| `/in/` · `/join/` | The one sign-in and sign-up for everybody who is not the admin |
+| `/apps/` · `/you/` | What you are in, and your name, password and theme |
+| `/people/` | The console's view of one person: how they sign in, what they have here |
 | `/system/` | Hub settings: this site's address and how to reach SyncUp — read by every module |
 | `/cron/` | The two hub jobs, their hooks and recent runs (admin only) |
 | `/hibiscus/admin/` | Hibiscus console: people, periods, stocks, notifications, settings |
-| `/hibiscus/` | The diary, for the people who keep it (their own sign-in) |
+| `/hibiscus/` | The diary, for the people who keep it |
 | `/hibiscus/k/<key>` | Magic link: signs that person in and redirects, no password, no expiry |
 | `/j6/admin/` | J6 console: accounts → one account's chats → one conversation, read only |
 | `/j6/` | The chat itself (its own session) |
 | `/j6/s/<self-id>` | One-tap sign-in link, also how the Windows app hands its account to the page |
 | `/j6/api/…` | `start · hello · poll · send · new · read · version` for desktop and terminal clients |
 | `/pocket/admin/` | Pocket Money console: accounts → their folders → one folder's entries and audit |
-| `/pocket/` | The four tabs — Tracker, Ledger, Shared, Me (its own sign-in) |
+| `/pocket/` | The four tabs — Tracker, Ledger, Shared, Me |
 | `/pocket/s/<key>` | One-hour magic link |
 | `/pocket/i/<code>` | An invitation to one line; `/pocket/j/<code>` shares a whole folder |
 | `/m/<key>/` | Placeholder for a module that isn't built yet |

@@ -13,13 +13,11 @@ from django.urls import path
 from . import views_admin, views_user
 
 urlpatterns = [
-    # ---- getting in
+    # ---- getting in. The hub owns the sign-in; this module owns only "have you started it".
     path('', views_user.home, name='pocket_home'),
-    path('signup', views_user.signup, name='pocket_signup'),
-    path('login', views_user.login, name='pocket_login'),
+    path('join', views_user.join, name='pocket_join'),
+    path('login', views_user.login, name='pocket_login'),      # kept: old links and bookmarks
     path('logout', views_user.logout, name='pocket_logout'),
-    path('link', views_user.send_magic_link, name='pocket_magic_send'),
-    path('s/<str:key>', views_user.magic, name='pocket_magic'),
 
     # ---- half one, the Tracker
     path('tracker', views_user.tracker, name='pocket_tracker'),

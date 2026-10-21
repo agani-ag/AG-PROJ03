@@ -129,6 +129,12 @@ def compose(person, slot, config, today=None):
     return {'situation': situation, 'line': line, 'title': title, 'body': body}
 
 
+def token_for(person):
+    """One device token per person, held on the member — not one per module."""
+    member = getattr(person, 'member', None)
+    return (member.syncup_token if member else '') or person.syncup_token
+
+
 def send_via_syncup(config, person, title, body, url, timeout=SEND_TIMEOUT):
     """Post to SyncUp's partner endpoint. Returns (delivered, error).
 
@@ -136,7 +142,7 @@ def send_via_syncup(config, person, title, body, url, timeout=SEND_TIMEOUT):
     hold it up — and longer for the Test push, where somebody is watching the page. The transport
     itself lives in `core.push`, shared with every other module.
     """
-    return core_push.send(person.syncup_token, title, body, url, timeout)
+    return core_push.send(token_for(person), title, body, url, timeout)
 
 
 def arrival_message(person, config, today=None):

@@ -1,0 +1,69 @@
+{% extends "core/member/base.html" %}
+{% block title %}You{% endblock %}
+
+{% block content %}
+<div class="row">
+    <a class="btn ghost sm" href="{% url 'member_apps' %}">
+        <svg class="ic sm"><use href="#m-left"/></svg>Apps</a>
+    <div class="mn"><h1 style="font-size:21px">You</h1></div>
+</div>
+
+<div class="card row">
+    <span class="mark" style="width:48px;height:48px;border-radius:15px;background:var(--me);
+          display:grid;place-items:center;color:#fff;font-weight:700">{{ member.initials }}</span>
+    <div class="mn"><b style="font-size:16px">{{ member.name }}</b>
+        <div class="tiny">{{ member.sign_in_id|default:"no email or phone on file" }}</div>
+        <div class="tiny">In {{ joined|length }} app{{ joined|length|pluralize }}</div></div>
+</div>
+
+<form method="POST" class="card">
+    {% csrf_token %}<input type="hidden" name="what" value="name">
+    <label class="label" for="name">Your name</label>
+    <input class="input" id="name" name="name" maxlength="80" value="{{ member.name }}">
+    <p class="tiny" style="margin-top:6px">What the apps here call you. Pocket Money and the
+        diary both use it; your J6 chat name is separate and stays separate.</p>
+    <div style="margin-top:12px"><button class="btn ghost sm" type="submit">Save</button></div>
+</form>
+
+<form method="POST" class="card">
+    {% csrf_token %}<input type="hidden" name="what" value="password">
+    <h2>{% if has_password %}Change your password{% else %}Set a password{% endif %}</h2>
+    {% if not has_password %}
+    <p class="sub">You have no password yet — you got in by link or through SyncUp. Setting one
+        means you can still sign in from an ordinary browser.</p>
+    {% endif %}
+    {% if has_password %}
+    <label class="label" for="current_password">Current password</label>
+    <input class="input" id="current_password" name="current_password" type="password"
+           autocomplete="current-password">
+    {% endif %}
+    <label class="label" for="new_password">New password</label>
+    <input class="input" id="new_password" name="new_password" type="password" minlength="6"
+           autocomplete="new-password">
+    <div style="margin-top:12px"><button class="btn ghost sm" type="submit">Save</button></div>
+</form>
+
+<form method="POST" class="card">
+    {% csrf_token %}<input type="hidden" name="what" value="theme">
+    <h2>Theme</h2>
+    <div class="chips" style="margin-top:9px">
+        {% for value, label in member.THEMES %}
+        <label class="chip"><input type="radio" name="theme" value="{{ value }}"
+               {% if member.theme == value %}checked{% endif %}
+               onchange="try{localStorage.setItem('synchub-theme','{{ value }}')}catch(e){};this.form.submit()">{{ label }}</label>
+        {% endfor %}
+    </div>
+    <p class="tiny" style="margin-top:7px">Inside the SyncUp app the phone's own dark setting
+        never reaches these pages, which is why the choice lives here.</p>
+</form>
+
+<div class="note dashed"><svg class="ic sm"><use href="#m-info"/></svg>
+    <div>Notifications are set per app, because what you want to hear about a diary is not what
+        you want to hear about money. The phone itself is registered once, by opening any of them
+        inside SyncUp.</div></div>
+
+<form method="POST" action="{% url 'member_logout' %}">
+    {% csrf_token %}
+    <button class="btn ghost" type="submit"><svg class="ic sm"><use href="#m-out"/></svg>Sign out</button>
+</form>
+{% endblock %}

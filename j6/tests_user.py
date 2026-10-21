@@ -1,3 +1,4 @@
+import json
 """The pages people actually see, and the two files that make them work.
 
 Template mistakes are invisible to the model tests — a page renders, it just renders wrongly —
@@ -12,7 +13,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from . import service
-from .models import Settings
+from core import auth as hub
+from core.models import Member
+
+from .models import Account, Settings
 
 CSS = Path(django_settings.BASE_DIR) / 'static' / 'j6' / 'user.css'
 JS = Path(django_settings.BASE_DIR) / 'static' / 'j6' / 'user.js'
@@ -290,3 +294,136 @@ class LoadEarlierScriptTests(TestCase):
     def test_the_button_hides_at_the_start_of_the_conversation(self):
         block = self.JS.split('function paintEarlier(', 1)[1][:300]
         self.assertIn('hidden = !state.more', block)
+
+
+class HubDoorTests(TestCase):
+    """J6's two optional doors onto a hub account. Anonymity is the thing being protected."""
+
+    def setUp(self):
+        self.member = Member.objects.create(name='Ganesh Saravanan', email='g@example.com')
+        hub.set_password(self.member, 'pw-for-tests')
+
+    def _hub_in(self):
+        self.client.post(reverse('member_login'),
+                         {'sign_in_id': 'g@example.com', 'password': 'pw-for-tests'})
+
+    def _j6_in(self, account):
+        # Out first: J6's sign-in redirects somebody already in rather than swapping accounts.
+        self.client.get(reverse('j6_logout'))
+        self.client.post(reverse('j6_login'), {'self_id': account.self_id})
+
+    # ---- door one: claim an account you already have
+    def test_claiming_links_it_and_says_what_changed(self):
+        account = make('Anand')
+        self._hub_in()
+        self._j6_in(account)
+        r = self.client.post(reverse('j6_claim'))
+        account.refresh_from_db()
+        self.assertEqual(account.member, self.member)
+        self.assertContains(r, 'Linked to Ganesh Saravanan')
+        self.assertContains(r, 'can now see that this account is yours')
+
+    def test_cutting_it_leaves_the_account_working(self):
+        account = make('Anand')
+        self._hub_in()
+        self._j6_in(account)
+        self.client.post(reverse('j6_claim'))
+        self.client.post(reverse('j6_unclaim'))
+        account.refresh_from_db()
+        self.assertIsNone(account.member)
+        self.assertEqual(self.client.get(reverse('j6_inbox')).status_code, 200)
+
+    def test_only_one_chat_account_can_be_linked(self):
+        first, second = make('Anand'), make('Mani')
+        self._hub_in()
+        self._j6_in(first)
+        self.client.post(reverse('j6_claim'))
+        self._j6_in(second)
+        r = self.client.post(reverse('j6_claim'))
+        second.refresh_from_db()
+        self.assertIsNone(second.member)
+        self.assertContains(r, 'One chat account each', status_code=409)
+
+    # ---- door two: start a chat account from a hub account
+    def test_the_real_name_is_only_suggested(self):
+        self._hub_in()
+        r = self.client.get(reverse('j6_start_hub'))
+        self.assertContains(r, 'Ganesh Saravanan')           # in the field
+        self.assertContains(r, 'not</b> your\n            SyncHub name')
+        self.assertFalse(Account.objects.exists(), 'nothing is made until they choose a name')
+
+    def test_a_different_chat_name_is_what_gets_stored(self):
+        self._hub_in()
+        self.client.post(reverse('j6_start_hub'), {'name': 'Bluejay'})
+        account = Account.objects.get()
+        self.assertEqual(account.name, 'BLUEJAY')
+        self.assertEqual(account.member, self.member)
+
+    def test_no_email_or_phone_ever_lands_on_a_chat_account(self):
+        self._hub_in()
+        self.client.post(reverse('j6_start_hub'), {'name': 'Bluejay'})
+        account = Account.objects.get()
+        self.assertFalse(hasattr(account, 'email'))
+        self.assertFalse(hasattr(account, 'phone'))
+
+    def test_the_self_id_is_still_the_credential(self):
+        self._hub_in()
+        self.client.post(reverse('j6_start_hub'), {'name': 'Bluejay'})
+        account = Account.objects.get()
+        self.client.post(reverse('member_logout'))
+        self.client.get(reverse('j6_logout'))
+        self.client.post(reverse('j6_login'), {'self_id': account.self_id})
+        self.assertEqual(self.client.get(reverse('j6_inbox')).status_code, 200)
+
+    def test_coming_back_to_the_second_door_opens_the_account_you_have(self):
+        self._hub_in()
+        self.client.post(reverse('j6_start_hub'), {'name': 'Bluejay'})
+        self.client.get(reverse('j6_logout'))
+        r = self.client.get(reverse('j6_start_hub'))
+        self.assertRedirects(r, reverse('j6_inbox'))
+        self.assertEqual(Account.objects.count(), 1)
+
+    def test_a_stranger_is_sent_to_the_hub_first(self):
+        r = self.client.get(reverse('j6_start_hub'))
+        self.assertIn(reverse('member_login'), r['Location'])
+
+    def test_the_welcome_screen_describes_both_doors(self):
+        r = self.client.get(reverse('j6_welcome'))
+        self.assertContains(r, 'no email, no number, no password')
+        self.assertContains(r, 'Use my SyncHub account instead')
+        self.assertContains(r, 'no way back')
+
+    def test_a_different_syncup_person_ends_the_chat_session_too(self):
+        account = make('Anand')
+        self._hub_in()
+        self._j6_in(account)
+        Member.objects.filter(pk=self.member.pk).update(syncup_id='su_' + 'a' * 32)
+        r = self.client.post(reverse('member_sso_changed'),
+                             data=json.dumps({'id': 'su_' + 'b' * 32}),
+                             content_type='application/json')
+        self.assertTrue(r.json()['signed_out'])
+        self.assertNotIn('j6_account_id', self.client.session)
+
+
+class IdsPageWordingTests(TestCase):
+    """What the IDs page promises has to match what is actually true of that account."""
+
+    def setUp(self):
+        self.member = Member.objects.create(name='Ganesh', email='g@example.com')
+        hub.set_password(self.member, 'pw-for-tests')
+
+    def test_an_unlinked_account_is_told_the_hard_truth(self):
+        account = make('Anand')
+        self.client.post(reverse('j6_login'), {'self_id': account.self_id})
+        r = self.client.get(reverse('j6_ids'))
+        self.assertContains(r, 'account is gone')
+        self.assertContains(r, 'Remember it')
+
+    def test_a_linked_account_is_not(self):
+        account = make('Anand')
+        Account.objects.filter(pk=account.pk).update(member=self.member)
+        self.client.post(reverse('j6_login'), {'self_id': account.self_id})
+        r = self.client.get(reverse('j6_ids'))
+        self.assertNotContains(r, 'the account is gone')
+        self.assertContains(r, 'losing the Self-ID\n        is survivable')
+        self.assertContains(r, 'Ganesh')

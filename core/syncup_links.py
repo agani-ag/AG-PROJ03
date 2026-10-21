@@ -56,6 +56,7 @@ def details(module, hub=None):
         'icon': module.syncup_icon,
         'color': module.syncup_color,
         'give_token': module.syncup_token,
+        'sso': module.syncup_sso,
     }
 
 

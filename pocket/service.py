@@ -65,26 +65,20 @@ def log(scope, action, *, account=None, folder=None, entry_id=None, detail='',
 # --------------------------------------------------------------------------- #
 # Accounts
 # --------------------------------------------------------------------------- #
-def create_account(name, sign_in_id, password, config=None):
-    """Make an account from the three things the sign-up screen asks for."""
-    config = config or Settings.load()
-    name = validate_name(name)
-    email, phone = auth.split_sign_in_id(sign_in_id)
-    if not email and not phone:
-        raise ValidationError('An email address or a phone number, so you can get back in.')
-    if phone and len(phone) < 10:
-        raise ValidationError('That phone number looks too short.')
-    if len(password or '') < auth.PASSWORD_MIN:
-        raise ValidationError(f'A password needs at least {auth.PASSWORD_MIN} characters.')
-    if email and Account.objects.filter(email__iexact=email).exists():
-        raise ValidationError('There is already an account with that email address.')
-    if phone and Account.objects.filter(phone__endswith=phone).exists():
-        raise ValidationError('There is already an account with that phone number.')
+def join(member, config=None):
+    """Start Pocket Money for somebody who is already signed in to the hub.
 
-    account = Account.objects.create(name=name, email=email or None, phone=phone or None)
-    auth.set_password(account, password)
+    No name, no email, no password: the hub knows all three. Starting a module is one tap, and
+    the row that gets made *is* the membership — there is no separate join table to keep in
+    step with reality.
+    """
+    config = config or Settings.load()
+    existing = Account.objects.filter(member=member).first()
+    if existing:
+        return existing
+    account = Account.objects.create(member=member, name=member.name)
     seed_categories(account)
-    note_possible_links(account)
+    note_possible_links(member)
     return account
 
 
@@ -509,17 +503,16 @@ def unlink_person(person, by=None):
     return person
 
 
-def note_possible_links(account):
-    """Somebody just signed up. Flag the rows that might be them — and do nothing else.
+def note_possible_links(member):
+    """Somebody just started Pocket Money. Flag the rows that might be them — and stop there.
 
     A phone number match is a suggestion, never a link: numbers get recycled, and linking on a
     match alone would hand a stranger somebody's debt record. The owner has to confirm, and then
     the new account has to accept.
     """
-    if not account.phone:
-        return 0
-    tail = auth.normalise_phone(account.phone)
-    if len(tail) < 10:
+    account = Account.objects.filter(member=member).first()
+    tail = auth.normalise_phone(getattr(member, 'phone', '') or '')
+    if not account or len(tail) < 10:
         return 0
     rows = Person.objects.filter(phone__endswith=tail, linked_account__isnull=True,
                                  declined_at__isnull=True, suggested_account__isnull=True)

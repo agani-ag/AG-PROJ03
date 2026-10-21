@@ -1,0 +1,107 @@
+/* SyncHub's own public pages — sign in, your apps, you.
+   Our own CSS, no framework, no CDN, no webfont. The modules keep their own look; this is the
+   plain shell in front of all of them, so it borrows nobody's colour. */
+:root {
+  --bg: #eef2f4; --card: #ffffff; --ink: #0f172a; --mut: #64748b; --faint: #94a3b8;
+  --bd: #e2e8f0; --chip: #f1f4f9;
+  --me: #2563eb; --me-dark: #1e40af; --me-soft: #eaf1fe;
+  --ok: #15803d; --ok-soft: #e7f5ec; --bad: #dc2626; --bad-soft: #fdeded;
+  --warn-soft: #fdf3e1; --warn: #b45309;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+:root[data-theme="dark"] {
+  --bg: #0b1114; --card: #16202a; --ink: #e8eef2; --mut: #93a3af; --faint: #6b7a86;
+  --bd: #22303c; --chip: #1b2733; --me: #60a5fa; --me-soft: #1b2a44;
+  --ok-soft: #10281a; --bad-soft: #2b1414; --warn-soft: #2b2110;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1114; --card: #16202a; --ink: #e8eef2; --mut: #93a3af; --faint: #6b7a86;
+    --bd: #22303c; --chip: #1b2733; --me: #60a5fa; --me-soft: #1b2a44;
+    --ok-soft: #10281a; --bad-soft: #2b1414; --warn-soft: #2b2110;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font);
+       -webkit-font-smoothing: antialiased; }
+a { color: var(--me); text-decoration: none; }
+h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -.02em; }
+p { margin: 0; }
+input, button, select { font: inherit; color: inherit; }
+
+.wrap { max-width: 560px; margin: 0 auto; padding: 22px 16px 48px;
+        display: flex; flex-direction: column; gap: 14px; }
+.wrap.plain { min-height: 100vh; justify-content: center; padding-bottom: 22px; }
+
+.brand { display: grid; place-items: center; gap: 6px; text-align: center; }
+.brand .mark { width: 54px; height: 54px; border-radius: 17px; background: var(--me);
+               display: grid; place-items: center; }
+.brand h1 { font-size: 23px; margin-top: 6px; }
+.brand p { color: var(--mut); font-size: 13.5px; }
+
+.card { background: var(--card); border: 1px solid var(--bd); border-radius: 16px; padding: 16px; }
+.card h2 { font-size: 15.5px; }
+.sub { font-size: 13px; color: var(--mut); }
+.tiny { font-size: 12.5px; color: var(--mut); }
+.center { text-align: center; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; align-items: center; gap: 11px; }
+.mn { flex: 1; min-width: 0; }
+
+.label { display: block; font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+         letter-spacing: .04em; color: var(--mut); margin: 12px 0 5px; }
+.label:first-child { margin-top: 0; }
+.input { width: 100%; padding: 11px 12px; border-radius: 12px; background: var(--bg);
+         border: 1px solid var(--bd); font-size: 15px; }
+.input:focus { outline: 2px solid var(--me); outline-offset: -1px; }
+.err { color: var(--bad); font-size: 13px; margin-top: 10px; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+       min-height: 46px; padding: 0 16px; border-radius: 14px; border: 0; background: var(--me);
+       color: #fff; font-weight: 700; font-size: 15px; width: 100%; cursor: pointer; }
+.btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--bd); }
+.btn.sm { min-height: 38px; font-size: 13.5px; border-radius: 11px; width: auto; padding: 0 13px; }
+.btn.danger { background: var(--bad-soft); color: var(--bad); border: 1px solid #f7c9c9; }
+.link { color: var(--me); font-weight: 600; font-size: 13.5px; background: none; border: 0;
+        padding: 0; cursor: pointer; }
+
+.or { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 12px; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--bd); }
+
+.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9;
+      stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.ic.lg { width: 21px; height: 21px; }
+.ic.sm { width: 15px; height: 15px; }
+
+.apps { display: flex; flex-direction: column; gap: 10px; }
+.app { display: flex; align-items: center; gap: 12px; padding: 14px; background: var(--card);
+       border: 1px solid var(--bd); border-radius: 16px; color: inherit; }
+.app .mark { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center;
+             color: #fff; flex: none; }
+.app b { display: block; font-size: 15px; }
+.app .sub { margin-top: 1px; }
+.app.join { border-style: dashed; }
+
+.chips { display: flex; gap: 7px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 6px 11px;
+        border-radius: 999px; border: 1px solid var(--bd); background: var(--card);
+        font-size: 13px; color: var(--mut); cursor: pointer; }
+.chip input { position: absolute; opacity: 0; pointer-events: none; }
+.chip:has(input:checked) { background: var(--me-soft); border-color: var(--me);
+                           color: var(--me-dark); font-weight: 650; }
+
+.note { display: flex; gap: 10px; padding: 11px 13px; border-radius: 13px;
+        background: var(--me-soft); font-size: 12.5px; }
+.note.warn { background: var(--warn-soft); color: var(--warn); }
+.note.dashed { background: var(--card); border: 1px dashed var(--bd); color: var(--mut); }
+
+.flash { padding: 11px 13px; border-radius: 13px; font-size: 13.5px; background: var(--me-soft); }
+.flash.error { background: var(--bad-soft); color: #991b1b; }
+.flash.success { background: var(--ok-soft); color: #166534; }
+.flash.warning { background: var(--warn-soft); color: var(--warn); }
+
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px;
+        background: var(--chip); font-size: 10.5px; font-weight: 650; color: var(--mut); }
+[hidden] { display: none !important; }

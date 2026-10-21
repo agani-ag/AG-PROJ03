@@ -127,10 +127,12 @@ def account(request, pk):
 
 
 def _magic_link(request, account):
-    if not account.login_key:
+    """The hub owns sign-in links now, so this is the member's, not the module's."""
+    member = account.member
+    if not member or not member.login_key:
         return ''
     from django.urls import reverse
-    return request.build_absolute_uri(reverse('pocket_magic', args=[account.login_key]))
+    return request.build_absolute_uri(reverse('member_magic', args=[member.login_key]))
 
 
 @staff_member_required
@@ -185,12 +187,19 @@ def account_state(request, pk, what):
     if what == 'archive':
         account.is_archived = not account.is_archived
         account.save(update_fields=['is_archived'])
+        # Archiving here shuts them out of Pocket Money only. Whether they can sign in to the
+        # hub at all is a different switch, on the member — see /people/.
+
         messages.success(request, f'{account.name} is '
                                   f'{"archived" if account.is_archived else "back"}. '
                                   'Shared folders and linked lines keep working either way.')
     elif what == 'link':
-        from . import auth as pocket_auth
-        pocket_auth.new_login_key(account)
+        from core import auth as hub
+        if not account.member:
+            messages.error(request, 'This account has no hub member yet — run '
+                                    'merge_identities first.')
+            return redirect('pocket_admin_account', pk=account.pk)
+        hub.new_login_key(account.member)
         messages.success(request, 'A one-hour sign-in link is on their page. Hand it over '
                                   'yourself — this server sends no mail.')
     return redirect('pocket_admin_account', pk=account.pk)

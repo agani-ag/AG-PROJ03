@@ -1,0 +1,36 @@
+{% extends "pocket/user/base.html" %}
+{% block title %}Start Pocket Money{% endblock %}
+{% block wrap_class %} plain{% endblock %}
+
+{% block content %}
+<div class="center stack" style="gap:4px">
+    <span class="av sq lg" style="background:var(--me);margin:0 auto">
+        <svg class="ic" style="width:28px;height:28px;stroke:#fff"><use href="#p-wallet"/></svg></span>
+    <h1 style="font-size:24px;margin-top:8px">Pocket Money</h1>
+    <p class="tiny">What came in, what went out, who owes whom.</p>
+</div>
+
+{% if not config.signup_open %}
+<div class="card"><h4>Closed to new people</h4>
+    <p class="sub">The admin has stopped new sign-ups for Pocket Money on this server.</p></div>
+{% else %}
+<form method="POST" class="card">
+    {% csrf_token %}
+    <h4>Start it, {{ member.name }}?</h4>
+    <p class="sub">You are already signed in to SyncHub, so there is nothing to fill in. This
+        makes you a Tracker for your own money and a Ledger for what passes between you and
+        other people. Both start empty.</p>
+    {% if config.invite_code %}
+    <label class="label" for="invite">Invite code</label>
+    <input class="input" id="invite" name="invite">
+    {% endif %}
+    {% if error %}<p class="err" style="margin-top:10px">{{ error }}</p>{% endif %}
+    <div style="margin-top:14px"><button class="btn" type="submit">
+        <svg class="ic lg" style="stroke:#fff"><use href="#p-check"/></svg>Start Pocket Money</button></div>
+</form>
+{% endif %}
+
+<p class="tiny center">Your books can be read by this server's admin. Nothing here is encrypted
+    end to end, and no figure is sent anywhere else.</p>
+<p class="center"><a class="link" href="{% url 'member_apps' %}">Back to your apps</a></p>
+{% endblock %}

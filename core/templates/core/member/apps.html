@@ -1,0 +1,62 @@
+{% extends "core/member/base.html" %}
+{% block title %}Your apps{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="mn">
+        <h1 style="font-size:21px">{% if greeted %}Hello, {{ member.name }}{% else %}Your apps{% endif %}</h1>
+        <p class="sub">{% if greeted %}Here is what you are in.{% else %}Signed in as {{ member.sign_in_id }}{% endif %}</p>
+    </div>
+    <a class="btn ghost sm" href="{% url 'member_you' %}">
+        <svg class="ic sm"><use href="#m-user"/></svg>You</a>
+</div>
+
+{% if not has_password %}
+{% comment %}
+Stays until a password exists, rather than appearing once and being missed. Somebody who got in
+through SyncUp alone has no way back in from an ordinary browser, and may not notice until the
+day they need one.
+{% endcomment %}
+<div class="note warn" id="add-password"><svg class="ic sm"><use href="#m-key"/></svg>
+    <div><b>Add a password?</b><br>You signed in without one. Setting a password means you can
+        still get in from an ordinary browser, or if you ever change phone.
+        <a href="{% url 'member_you' %}">Set one now</a>.</div>
+    <button class="link" type="button" data-dismiss="add-password" aria-label="Dismiss">✕</button></div>
+{% endif %}
+
+<div class="apps">
+    {% for item in joined %}
+    <a class="app" href="{% url item.module.url_name %}">
+        <span class="mark" style="background:{% if item.module.key == 'hibiscus' %}#db2777{% elif item.module.key == 'pocket' %}#4f46e5{% else %}#0d9488{% endif %}">
+            <svg class="ic lg" style="stroke:#fff"><use href="#m-{% if item.module.key == 'hibiscus' %}flower{% elif item.module.key == 'pocket' %}wallet{% else %}chat{% endif %}"/></svg>
+        </span>
+        <span class="mn"><b>{{ item.module.title }}</b>
+            <span class="sub">{{ item.module.description }}</span></span>
+        <svg class="ic sm" style="color:var(--faint)"><use href="#m-right"/></svg>
+    </a>
+    {% empty %}
+    <div class="card center"><b>You are not in anything yet</b>
+        <p class="sub" style="margin-top:4px">Pick one below to start.</p></div>
+    {% endfor %}
+</div>
+
+{% if available %}
+<p class="label" style="margin-bottom:0">Also here</p>
+<div class="apps">
+    {% for item in available %}
+    <a class="app join" href="{% url item.module.url_name %}">
+        <span class="mark" style="background:var(--chip);color:var(--mut)">
+            <svg class="ic lg"><use href="#m-plus"/></svg></span>
+        <span class="mn"><b>{{ item.module.title }}</b>
+            <span class="sub">{{ item.module.description }}</span></span>
+        <span class="pill">join</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<form method="POST" action="{% url 'member_logout' %}">
+    {% csrf_token %}
+    <button class="btn ghost" type="submit"><svg class="ic sm"><use href="#m-out"/></svg>Sign out</button>
+</form>
+{% endblock %}

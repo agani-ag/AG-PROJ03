@@ -118,6 +118,11 @@ class Person(models.Model):
     Not a Django user: these people never reach the admin console, and the admin never appears in
     this table. They sign themselves up with an **email or a phone number** — one of the two.
     """
+    member = models.OneToOneField('core.Member', null=True, blank=True,
+                                  on_delete=models.CASCADE, related_name='hibiscus',
+                                  help_text='Who this diary belongs to, hub-wide. The identity '
+                                            'fields below are the old per-module copies, kept '
+                                            'until the switch to core has lived a release.')
     name = models.CharField(max_length=80)
     email = models.EmailField(unique=True, null=True, blank=True)
     phone = models.CharField(max_length=15, unique=True, null=True, blank=True)
@@ -162,19 +167,25 @@ class Person(models.Model):
 
     @property
     def sign_in_id(self):
+        if self.member and self.member.sign_in_id:
+            return self.member.sign_in_id
         return self.email or self.phone or f'person-{self.pk}'
 
     @property
     def has_login_link(self):
-        return bool(self.login_key)
+        return bool(self.member and self.member.login_key)
 
     @property
     def login_path(self):
-        """The magic link's path, or '' when there is none. The host is added by the view, which
-        is the only place that knows what name the site is being reached by."""
-        if not self.login_key:
+        """The magic link's path, or '' when there is none.
+
+        The link belongs to the member now — one way back in, not one per module — so this
+        points at the hub. The host is added by the view, which is the only place that knows
+        what name the site is being reached by.
+        """
+        if not (self.member and self.member.login_key):
             return ''
-        return reverse('hibiscus_me_key', args=[self.login_key])
+        return reverse('hibiscus_me_key', args=[self.member.login_key])
 
 
 class PeriodDay(models.Model):

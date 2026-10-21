@@ -16,8 +16,10 @@ from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
+from core import auth as hub
+
 from . import auth, service
-from .models import Account, Chat, Settings
+from .models import NAME_MAX, Account, Chat, Settings
 
 
 def _no_store(response):
@@ -305,3 +307,74 @@ def moved_from_me(request, rest=''):
     if request.META.get('QUERY_STRING'):
         target += '?' + request.META['QUERY_STRING']
     return redirect(target, permanent=True)
+
+
+# --------------------------------------------------------------------------- #
+# The two doors onto a hub account
+#
+# Both optional, both reversible, and neither changes what anybody you chat with can see: they
+# get a J6 name and an Account ID, as they always did. What a link buys is the one thing J6
+# never had — a way back in when the Self-ID is lost.
+# --------------------------------------------------------------------------- #
+@require_POST
+@auth.account_required
+def claim(request):
+    """"Remember this account on my SyncHub." Links the chat account to the signed-in member."""
+    member = hub.current(request)
+    if not member:
+        return redirect(f'{reverse("member_login")}?next={reverse("j6_profile")}')
+    account = request.account
+    if account.member_id:
+        return redirect('j6_profile')
+    if Account.objects.filter(member=member).exclude(pk=account.pk).exists():
+        # One linked chat account per person: "sign in with SyncHub" has to land somewhere
+        # definite. Anybody wanting a second, unconnected identity simply leaves it unlinked.
+        return _page(request, 'j6/user/claimed.html',
+                     {'clash': True, 'member': member}, status=409)
+    Account.objects.filter(pk=account.pk).update(member=member)
+    account.refresh_from_db()
+    return _page(request, 'j6/user/claimed.html', {'account': account, 'member': member})
+
+
+@require_POST
+@auth.account_required
+def unclaim(request):
+    """Cut it. The Self-ID still works — it was always the credential."""
+    Account.objects.filter(pk=request.account.pk).update(member=None)
+    return redirect('j6_profile')
+
+
+@never_cache
+def start_with_hub(request):
+    """The second door: a hub member with no chat account makes one here.
+
+    The name is *suggested* from the hub profile and must stay editable. Quietly publishing
+    somebody's real name to the people they chat with would be the worst thing this feature
+    could do, and it is the easy mistake.
+    """
+    member = hub.current(request)
+    if not member:
+        return redirect(f'{reverse("member_login")}?next={reverse("j6_start_hub")}')
+    existing = Account.objects.filter(member=member).first()
+    if existing:
+        auth.sign_in(request, existing)
+        return redirect('j6_inbox')
+
+    config = Settings.load()
+    error = ''
+    suggested = (member.name or '').strip()[:NAME_MAX]
+    if request.method == 'POST':
+        if not config.signup_open:
+            error = 'New accounts are closed on this server.'
+        else:
+            try:
+                account = service.create_account(request.POST.get('name'), config)
+            except ValidationError as exc:
+                error = exc.messages[0]
+            else:
+                Account.objects.filter(pk=account.pk).update(member=member)
+                auth.sign_in(request, account)
+                request.session['j6_fresh'] = True
+                return redirect('j6_ids')
+    return _page(request, 'j6/user/start_hub.html',
+                 {'error': error, 'suggested': suggested, 'member': member, 'config': config})

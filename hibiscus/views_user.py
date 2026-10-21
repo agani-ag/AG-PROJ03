@@ -21,6 +21,8 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
+from core import auth as hub
+
 from . import auth, cycle, push
 from .forms import (DayForm, DayRangeForm, MySettingsForm, SignInForm, SignUpForm, StockItemForm,
                     StockMoveForm)
@@ -67,74 +69,66 @@ def _stats_for(person, config, today=None):
 # Getting in
 # --------------------------------------------------------------------------- #
 @never_cache
-def sign_up(request):
+def join(request):
+    """Starting a diary, for somebody the hub already knows.
+
+    The old form asked for a name, a contact and a password. The hub has all three now, so the
+    only thing left to ask is the cycle hint — and even that is optional, because two logged
+    periods replace it.
+    """
     config = Settings.load()
-    if auth.current_person(request):
+    member = hub.current(request)
+    if not member:
+        return _no_store(redirect(f'{reverse("member_login")}'
+                                  f'?next={reverse("hibiscus_join")}'))
+    person = auth.profile_for(member)
+    if person:
         return redirect('hibiscus_me_home')
     if not config.signup_open:
         return _no_store(render(request, 'hibiscus/user/closed.html',
                                 {'config': config}, status=403))
 
-    form = SignUpForm(request.POST or None, config=config)
-    if request.method == 'POST' and form.is_valid():
-        kind = form.cleaned_data.get('kind', 'email')
-        person = Person(
-            name=form.cleaned_data['name'],
-            cycle_hint=form.cleaned_data.get('cycle_hint') or None,
-            signed_up_with=kind,
-        )
-        setattr(person, 'email' if kind == 'email' else 'phone', form.cleaned_data['contact'])
-        person.save()
-        auth.set_password(person, form.cleaned_data['password'])
-        auth.log('signed_up', person=person, detail=person.sign_in_id)
-        auth.sign_in(request, person)
+    error = ''
+    if request.method == 'POST':
+        if config.invite_code and request.POST.get('invite_code', '').strip() != config.invite_code:
+            return _no_store(render(request, 'hibiscus/user/join.html',
+                                    {'config': config, 'member': member,
+                                     'error': 'That invite code is not right.'}))
+        hint = (request.POST.get('cycle_hint') or '').strip()
+        person = Person.objects.create(
+            member=member, name=member.name,
+            cycle_hint=int(hint) if hint.isdigit() and 15 <= int(hint) <= 60 else None,
+            signed_up_with='hub')
+        auth.log('signed_up', person=person, detail=member.sign_in_id)
         messages.success(request, f'Welcome, {person.name.split(" ")[0]}.')
         return redirect('hibiscus_me_home')
-    return _no_store(render(request, 'hibiscus/user/signup.html',
-                            {'form': form, 'config': config}))
+    return _no_store(render(request, 'hibiscus/user/join.html',
+                            {'config': config, 'member': member, 'error': error}))
 
 
-@never_cache
 def sign_in_view(request):
-    config = Settings.load()
-    if auth.current_person(request):
-        return redirect('hibiscus_me_home')
-    form = SignInForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        person = auth.find_person(form.cleaned_data['contact'])
-        if person and not (person.is_active and not person.is_archived):
-            messages.error(request, 'That account is switched off. Ask the admin about it.')
-        elif person and auth.check_person_password(person, form.cleaned_data['password']):
-            auth.sign_in(request, person)
-            auth.log('signed_in', person=person)
-            return redirect('hibiscus_me_home')
-        else:
-            messages.error(request, 'That did not match. Check the email or number, and the password.')
-    return _no_store(render(request, 'hibiscus/user/login.html',
-                            {'form': form, 'config': config}))
+    """The diary has no sign-in of its own any more. One hub, one password."""
+    return redirect(f'{reverse("member_login")}?next={reverse("hibiscus_me_home")}')
 
 
 @never_cache
 def magic_login(request, key):
-    """Sign in by link alone — no password, no expiry.
+    """Sign in by link alone — the diary's own address, still working.
 
-    The admin hands this out from someone's page. Opening it signs that person in and then
-    *redirects*, so the key does not sit in the address bar of the page they end up on and does
-    not get shared along with a screenshot of it.
-
-    A key that has been replaced, switched off, or belongs to a suspended account lands on the
-    normal sign-in page with a plain explanation. Nothing says whether the key was ever real,
-    which is all the lookup resistance a 43-character random key needs.
+    The key belongs to the member now, but the landing is the diary's: these links are in
+    people's bookmarks and notifications, and the whole point of one is that it opens *the
+    diary*, not a list of apps. So it signs in here and redirects, keeping the key out of the
+    address bar of the page they end up on.
     """
-    person = auth.person_by_login_key(key)
+    member = hub.member_by_login_key(key)
+    person = auth.profile_for(member) if member else None
     if not person:
         messages.error(request, 'That link does not work any more. Ask for a new one, '
                                 'or sign in with your password.')
-        return _no_store(redirect('hibiscus_me_login'))
+        return _no_store(redirect('member_login'))
 
-    auth.sign_in(request, person)
-    Person.objects.filter(pk=person.pk).update(
-        login_key_used_at=timezone.now(), login_key_uses=F('login_key_uses') + 1)
+    hub.spend_login_key(member)
+    hub.sign_in(request, member, via='link')
     auth.log('signed_in_with_link', person=person)
     return _no_store(redirect('hibiscus_me_home'))
 
@@ -172,13 +166,10 @@ def my_reminder(request):
 
 
 def sign_out_view(request):
-    auth.sign_out(request)
-    return redirect('hibiscus_me_login')
+    """Kept so old links do not dead-end. Ending the session is the hub's, and it is a POST."""
+    return redirect('member_apps')
 
 
-# --------------------------------------------------------------------------- #
-# Today
-# --------------------------------------------------------------------------- #
 @auth.person_required
 def home(request):
     config = Settings.load()
@@ -494,29 +485,31 @@ def toggle_slot(request, pk):
 @auth.person_required
 @require_POST
 def set_theme(request):
-    person = request.person
+    """The theme is the person's, not the diary's, so it is kept once on the member."""
+    member = request.member
     try:
         theme = json.loads(request.body or b'{}').get('theme', 'system')
     except (ValueError, TypeError):
         theme = 'system'
     if theme in dict(Person.THEMES):
-        person.theme = theme
-        person.save(update_fields=['theme'])
-    return JsonResponse({'theme': person.theme})
+        type(member).objects.filter(pk=member.pk).update(theme=theme)
+        return JsonResponse({'theme': theme})
+    return JsonResponse({'theme': member.theme})
 
 
 @auth.person_required
 @require_POST
 def save_syncup_token(request):
     """Store `window.SyncUp.token`, which is what makes a daily push possible at all."""
-    person = request.person
+    person, member = request.person, request.member
     try:
         token = str(json.loads(request.body or b'{}').get('token') or '')[:500]
     except (ValueError, TypeError):
         token = ''
-    if token and token != person.syncup_token:
-        person.syncup_token = token
-        person.save(update_fields=['syncup_token'])
+    # One token per person, not one per module: opening any of them inside SyncUp now makes
+    # all of them reachable.
+    if token and token != member.syncup_token:
+        type(member).objects.filter(pk=member.pk).update(syncup_token=token)
         auth.log('syncup_token_saved', person=person)
     return HttpResponse(status=204)
 

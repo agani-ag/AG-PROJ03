@@ -369,7 +369,9 @@ class StaticLayoutTests(TestCase):
         import re
 
         from django.contrib.staticfiles import finders
-        body = self.client.get(reverse('hibiscus_me_login')).content.decode()
+        # The hub's sign-in replaced each module's, so that is where the public side's assets
+        # are now asked for — and where a /static/ mapping going wrong would show first.
+        body = self.client.get(reverse('member_login')).content.decode()
         asked = re.findall(r'(?:href|src)="/static/([^"?]+)', body)
         self.assertTrue(asked)
         for path in asked:

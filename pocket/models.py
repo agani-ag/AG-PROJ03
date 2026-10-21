@@ -196,6 +196,8 @@ class Account(models.Model):
     """
     THEMES = [('system', 'System'), ('light', 'Light'), ('dark', 'Dark')]
 
+    member = models.OneToOneField('core.Member', null=True, blank=True,
+                                  on_delete=models.CASCADE, related_name='pocket')
     name = models.CharField(max_length=NAME_MAX)
     email = models.EmailField(unique=True, null=True, blank=True)
     phone = models.CharField(max_length=15, unique=True, null=True, blank=True)

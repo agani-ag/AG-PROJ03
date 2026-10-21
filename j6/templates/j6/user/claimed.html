@@ -1,0 +1,25 @@
+{% extends "j6/user/base.html" %}
+{% block title %}{% if clash %}Already linked{% else %}Linked{% endif %}{% endblock %}
+
+{% block content %}
+{% if clash %}
+<div class="card stack">
+    <b>One chat account each</b>
+    <p class="sub">{{ member.name }} already has a J6 account linked to SyncHub. Signing in with
+        SyncHub has to land somewhere definite, so a second link is not offered.</p>
+    <p class="tiny">This account keeps working exactly as it did — its Self-ID is still the way
+        in. An unlinked account is also the way to keep an identity nobody can connect to you.</p>
+    <a class="btn" href="{% url 'j6_profile' %}">Back</a>
+</div>
+{% else %}
+<div class="card stack">
+    <b>Linked to {{ member.name }}</b>
+    <p class="sub">If you lose the Self-ID you can get back into this chat account by signing in
+        to SyncHub. Nothing else changed.</p>
+    <p class="tiny">The people you chat with still see only <b>{{ account.name }}</b> and your
+        Account ID. The admin of this server can now see that this account is yours — they could
+        already read the chats.</p>
+    <a class="btn" href="{% url 'j6_profile' %}">Back to profile</a>
+</div>
+{% endif %}
+{% endblock %}

@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from core.models import Member
 from core.models import HubSettings
 from core.views import admin_required
 
@@ -32,7 +33,7 @@ def _magic_url(request, person):
     Built per request rather than stored: the same database answers to localhost in development
     and to the real domain on the server, and a stored link would be wrong on one of them.
     """
-    return request.build_absolute_uri(person.login_path) if person.login_key else ''
+    return request.build_absolute_uri(person.login_path) if person.has_login_link else ''
 
 
 def _tab_counts(person):
@@ -116,6 +117,11 @@ def person_add(request):
         person = form.save(commit=False)
         person.signed_up_with = 'admin'
         person.created_by = request.user
+        # A person is a hub member with a diary, so the admin makes both. The identity — name,
+        # contact, password — belongs on the member; the Person row is the diary's own part.
+        person.member = Member.objects.create(
+            name=person.name, email=person.email or None, phone=person.phone or None,
+            created_by=request.user)
         raw = auth.generate_password()
         person.password_hash = ''
         person.save()
@@ -613,7 +619,7 @@ def notifications_page(request):
         'modes': NotifySlot.Mode.choices,
         'recent': NotifySent.objects.select_related('person', 'slot')[:20],
         'people_count': Person.objects.filter(is_active=True, is_archived=False).count(),
-        'with_token': Person.objects.filter(is_active=True).exclude(syncup_token='').count(),
+        'with_token': Person.objects.filter(is_active=True).exclude(member__syncup_token='').count(),
     })
 
 
