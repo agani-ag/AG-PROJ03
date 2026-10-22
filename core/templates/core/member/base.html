@@ -1,9 +1,19 @@
 {% load static %}<!DOCTYPE html>
-<html lang="en"{% if member.theme and member.theme != 'system' %} data-theme="{{ member.theme }}"{% endif %}>
+<html lang="en"{% if member.theme %} data-theme="{{ member.theme }}"{% endif %}>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <script>try{var t=localStorage.getItem("synchub-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    {% comment %}
+    Light unless somebody says otherwise. Following the operating system sounds neutral and
+    is not: a person on a dark phone gets a screen they never asked to be dark. "System" is
+    still one of the three — it just has to be chosen, and a choice always wins.
+
+    The attribute is rendered for all three values, including "system", so this script can
+    tell "they chose system" from "nobody has chosen anything". The CSS reads
+    :not([data-theme="light"]) for its media query, so "system" says the same thing as no
+    attribute at all. Applied before first paint, so there is no flash.
+    {% endcomment %}
+    <script>try{var r=document.documentElement,t=localStorage.getItem("synchub-theme");if(t==="light"||t==="dark"||t==="system")r.setAttribute("data-theme",t);else if(!r.getAttribute("data-theme"))r.setAttribute("data-theme","light")}catch(e){document.documentElement.setAttribute("data-theme","light")}</script>
     {% include "_theme_color.html" with light="#ffffff" dark="#16202a" %}
     <title>{% block title %}SyncHub{% endblock %} · {{ app_name }}</title>
     <link rel="icon" href="{% static 'images/app-icon.svg' %}" type="image/svg+xml">

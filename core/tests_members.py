@@ -544,3 +544,47 @@ class DeletingAPersonTests(TestCase):
 
     def test_it_is_post_only(self):
         self.assertEqual(self.client.get(self.url).status_code, 405)
+
+
+class ThemeDefaultTests(TestCase):
+    """Every surface starts light. "System" stays available, but has to be chosen."""
+
+    TEMPLATES = [
+        ('core/templates/core/member/base.html', 'synchub-theme'),
+        ('hibiscus/templates/hibiscus/user/base.html', 'hibiscus-theme'),
+        ('j6/templates/j6/user/base.html', 'j6-theme'),
+        ('pocket/templates/pocket/user/base.html', 'pocket-theme'),
+        ('core/templates/base.html', 'theme'),
+    ]
+
+    def _read(self, path):
+        from pathlib import Path
+
+        from django.conf import settings
+        return (Path(settings.BASE_DIR) / path).read_text(encoding='utf-8')
+
+    def test_every_base_template_falls_back_to_light(self):
+        for path, key in self.TEMPLATES:
+            body = self._read(path)
+            self.assertIn(f'localStorage.getItem("{key}")', body, path)
+            self.assertIn('"data-theme","light"', body.replace(' ', ''), path)
+
+    def test_a_chosen_system_is_not_overwritten(self):
+        """The attribute is rendered for 'system' too, so the script can tell it from unset."""
+        for path, _key in self.TEMPLATES[:4]:
+            body = self._read(path)
+            self.assertNotIn("!= 'system'", body,
+                             f'{path} still hides a deliberate System choice')
+            self.assertIn('t==="system"', body, path)
+
+    def test_a_new_person_starts_light(self):
+        from j6 import service as j6_service
+        self.assertEqual(Member.objects.create(name='New').theme, 'light')
+        self.assertEqual(j6_service.create_account('NEW').theme, 'light')
+
+    def test_the_diary_reads_the_theme_it_saves(self):
+        """It saved to the member and read from the person, so a choice did nothing."""
+        self.assertIn('person.member.theme',
+                      self._read('hibiscus/templates/hibiscus/user/base.html'))
+        self.assertIn('account.member.theme',
+                      self._read('pocket/templates/pocket/user/base.html'))

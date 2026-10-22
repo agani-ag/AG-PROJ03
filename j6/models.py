@@ -132,7 +132,7 @@ class Account(models.Model):
         default=True, help_text='Their own switch: off and every link stays a link.')
     notify = models.BooleanField(default=True)
     THEMES = (('system', 'Follow the device'), ('light', 'Light'), ('dark', 'Dark'))
-    theme = models.CharField(max_length=10, choices=THEMES, default='system')
+    theme = models.CharField(max_length=10, choices=THEMES, default='light')
 
     class Meta:
         ordering = ['name']

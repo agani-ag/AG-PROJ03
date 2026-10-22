@@ -226,7 +226,7 @@ class Member(models.Model):
         max_length=64, unique=True, null=True, blank=True,
         help_text="SyncUp's opaque per-site id, set when somebody signs in with SyncUp.")
 
-    theme = models.CharField(max_length=10, choices=THEMES, default='system')
+    theme = models.CharField(max_length=10, choices=THEMES, default='light')
     is_active = models.BooleanField(
         default=True, help_text='Can sign in at all. A module profile has its own switch for '
                                 '"may use this module", which is a different question.')
