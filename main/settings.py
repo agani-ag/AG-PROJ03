@@ -129,6 +129,9 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+# Only for `collectstatic`, which a deploy no longer needs: the server maps /static/ straight to
+# the static/ folder above (and /static/admin/ to Django's admin assets), as AG-PROJ01 does, so a
+# git pull and a Reload put new CSS, JS and icons live. {% static_v %} changes their ?v= with them.
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'

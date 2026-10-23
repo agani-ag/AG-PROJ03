@@ -343,10 +343,12 @@ class BrandMarkTests(TestCase):
 class StaticLayoutTests(TestCase):
     """Every asset this project ships lives in the project's own `static/` folder.
 
-    Not in `<app>/static/`, which is Django's other convention: a server whose /static/ points at
-    `static/` rather than `staticfiles/` serves a project-level file and 404s anything that only
-    appears after collectstatic. That is not theoretical — the diary shipped unstyled on the live
-    server for exactly that reason. Keeping assets here means either mapping works.
+    Not in `<app>/static/`, which is Django's other convention. It began as insurance: a server
+    whose /static/ pointed at `static/` rather than `staticfiles/` served a project-level file
+    and 404d anything that only appeared after collectstatic, and the diary shipped unstyled on
+    the live server for exactly that reason. It is now load-bearing — the web server maps
+    /static/ straight at this folder and there is no collectstatic at all, so an asset that goes
+    anywhere else is simply not served.
     """
 
     def test_no_app_ships_its_own_static_folder(self):

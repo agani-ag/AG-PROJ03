@@ -101,7 +101,6 @@ cp .env.example .env            # then edit it — see the table below
 python manage.py makemigrations # migrations are gitignored, so generate them here
 python manage.py migrate
 python manage.py createadminuser
-python manage.py collectstatic --noinput
 python manage.py check          # must pass before the site goes up
 ```
 
@@ -120,12 +119,16 @@ about the rest:
 **Two things Django will not do for you:**
 
 1. **Serve static files.** With `DEBUG=0` Django serves nothing, so point the web server's
-   `/static/` at **`staticfiles/`** (on PythonAnywhere that is the Static files table in the Web
-   tab) and re-run `collectstatic` after every deploy. It must be `staticfiles/`, not the
-   project's own `static/`: that folder holds the shared console files only, so mapping it serves
-   `css/app.css` and 404s everything an app ships with — the console then looks perfect while
-   `/hibiscus/` renders as plain text. `manage.py check` looks for both kinds of file and
-   warns with `synchub.W003`.
+   `/static/` straight at the project's own **`static/`** folder (on PythonAnywhere that is the
+   Static files table in the Web tab), the same as AG-PROJ01. There is **no `collectstatic`
+   step**: a `git pull` and a Reload put new CSS, JS and icons live, and `{% static_v %}` gives
+   each file a new `?v=` when it changes, so nobody needs a hard refresh. Add a second row,
+   `/static/admin/` → Django's own `contrib/admin/static/admin` folder in the virtualenv, so
+   `/django-admin/` keeps its styling. `manage.py check` looks for the files in `static/` and
+   warns with `synchub.W003`. On a server that had `collectstatic` before, **delete
+   `staticfiles/`** once the row is changed: while it is there, a row still aimed at it serves
+   the last collected copy and the site looks fine, so a mapping that never moved goes
+   unnoticed. `synchub.W005` says so until it is gone.
 2. **Generate migrations.** Migration files are gitignored, as in AG-PROJ01 and AG-PROJ02, so a
    fresh clone has none: run `makemigrations` *before* `migrate`, or nothing gets created. Plain
    `makemigrations` is enough — it picks up every installed app.
@@ -342,8 +345,9 @@ desktop/         the Windows client: one portable j6.exe that is a window and a 
 `<app>/static/`, which is Django's other convention. The reason is operational: a server whose
 `/static/` points at `static/` instead of `staticfiles/` serves a project-level file fine and
 404s anything that only appears after `collectstatic`, which is how the diary once came up as
-unstyled plain text while the console looked perfect. Keeping assets here means both mappings
-work. (`collectstatic` is still required — Django's own admin pages have assets of their own.)
+unstyled plain text while the console looked perfect. Keeping assets here is also what lets the
+server serve `static/` directly with no `collectstatic` (Django's own admin assets get their own
+`/static/admin/` row — see "Putting it on a server").
 
 SyncHub's mark is the **repeat arrow** — one loop that comes back round, which is what the hub
 does: the same two cron jobs, every 15 minutes, for every module. It is **black and white**, the
