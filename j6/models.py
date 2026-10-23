@@ -156,6 +156,16 @@ class Account(models.Model):
         return palette[sum(self.account_id.encode()) % len(palette)]
 
     @property
+    def push_token(self):
+        """One device token per person, on the member when there is one.
+
+        J6 is the only module where the fallback is load-bearing: an anonymous account has no
+        Member, so its token has nowhere to live but here. See `core.push.token_of`.
+        """
+        from core.push import token_of
+        return token_of(self)
+
+    @property
     def is_online(self):
         return (timezone.now() - self.last_seen_at).total_seconds() < ONLINE_SECONDS
 

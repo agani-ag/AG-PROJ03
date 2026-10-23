@@ -20,6 +20,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from core import auth as hub
+from core import push as core_push
 
 from . import auth, push, service
 from .models import (Account, Category, Flow, Folder, LedgerEntry, Person, Settings,
@@ -658,14 +659,10 @@ def save_syncup_token(request):
         payload = json.loads(request.body or b'{}')
     except ValueError:
         return JsonResponse({'saved': False}, status=400)
-    token = (payload.get('token') or '').strip()
-    member = request.member
-    if not token or token == member.syncup_token:
-        return JsonResponse({'saved': False})
-    # One token per person, not one per module: opening any module inside SyncUp now makes all
-    # of them reachable.
-    type(member).objects.filter(pk=member.pk).update(syncup_token=token)
-    return JsonResponse({'saved': True})
+    # One token per person, not one per module: opening any module inside SyncUp now makes
+    # all of them reachable. `core.push` owns that rule.
+    saved = core_push.remember_token(request.account, payload.get('token'))
+    return JsonResponse({'saved': saved})
 
 
 # --------------------------------------------------------------------------- #

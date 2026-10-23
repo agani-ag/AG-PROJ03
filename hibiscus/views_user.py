@@ -21,6 +21,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from core import auth as hub
+from core import push as core_push
 
 from . import auth, cycle, push
 from .forms import DayRangeForm, MySettingsForm, StockItemForm, StockMoveForm
@@ -458,7 +459,7 @@ def my_settings(request):
         'form': form,
         'slots': [{'slot': s, 'muted': s.pk in muted} for s in slots],
         'recent_sent': person.sent.select_related('slot')[:6],
-        'has_token': bool(person.syncup_token),
+        'has_token': bool(person.push_token),
     }))
 
 
@@ -499,15 +500,14 @@ def set_theme(request):
 @require_POST
 def save_syncup_token(request):
     """Store `window.SyncUp.token`, which is what makes a daily push possible at all."""
-    person, member = request.person, request.member
+    person = request.person
     try:
-        token = str(json.loads(request.body or b'{}').get('token') or '')[:500]
+        token = json.loads(request.body or b'{}').get('token')
     except (ValueError, TypeError):
         token = ''
     # One token per person, not one per module: opening any of them inside SyncUp now makes
-    # all of them reachable.
-    if token and token != member.syncup_token:
-        type(member).objects.filter(pk=member.pk).update(syncup_token=token)
+    # all of them reachable. `core.push` owns that rule.
+    if core_push.remember_token(person, token):
         auth.log('syncup_token_saved', person=person)
     return HttpResponse(status=204)
 

@@ -241,8 +241,14 @@ class Account(models.Model):
         return self.email or self.phone or ''
 
     @property
+    def push_token(self):
+        """One device token per person, on the member. See `core.push.token_of`."""
+        from core.push import token_of
+        return token_of(self)
+
+    @property
     def can_be_pushed(self):
-        return bool(self.syncup_token and self.notify and self.is_active)
+        return bool(self.push_token and self.notify and self.is_active)
 
 
 class Category(models.Model):

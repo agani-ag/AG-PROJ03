@@ -188,6 +188,29 @@ having its profile row** — there is no separate membership table to drift.
 | Links | One hour and one use by default. The diary's are deliberately durable: `new_login_key(member, hours=None, one_shot=False)` |
 | Suspension | `Member.is_active` is "can sign in at all"; a profile's own flag is "may use this module" |
 | Notifications | **One device token per person**, not one per module — opening any module inside SyncUp makes all of them reachable |
+| Admin | **System → People** adds somebody, edits their name and how they sign in, and sets a password. `/people/new/` and `/people/<pk>/edit/` |
+
+**One sign-in opens all three.** Hibiscus and Pocket Money read the hub session directly; their
+old `/login` addresses redirect to `/in/`. J6 keeps a session of its own for a Self-ID, and
+falls back to the hub when there is none, so a linked chat account opens with the hub password
+and nothing else. Two rules keep that honest: J6's own **Sign out** sticks while the hub stays
+open (the mistake the removed SyncUp sign-in made was signing people back in on the next page),
+and the hub's sign-out closes a chat session that is **linked to the person signing out** — a
+shared phone is the reason — while leaving an anonymous Self-ID session alone, because as far
+as this server knows that is somebody else.
+
+**The device token is one row, on the Member.** `core.push.remember_token` writes it and
+`core.push.token_of` reads it, with `push_token` on each profile model in front. Register a
+phone by opening the diary inside the SyncUp app and Pocket Money and J6 can both reach it.
+A profile's own `syncup_token` column survives as a fallback with exactly one real user: an
+unlinked J6 account, which has no Member to hold it.
+
+**Every new person gets an email or a phone and a password.** `auth.check_identity` and
+`auth.check_password_value` are the rules, shared by `/join/` and the console so the two cannot
+drift. There is deliberately **no database constraint** demanding it: `/in/k/<key>` does not
+look anybody up by email or phone, so a link-only account works, and `merge_identities` can
+build one out of a module profile that never had a handle — refusing it there would lock that
+person out rather than protect them. System → People lists anybody in that state instead.
 
 Merging the existing people is a management command, never a data migration, because migrations
 are gitignored and never reach the server:
@@ -209,7 +232,18 @@ alone. Take a backup from `/download/sqlite` first.
 J6 can be linked to a SyncHub account, both ways round, and it stays anonymous: whoever you chat
 with sees a J6 name and an Account ID and nothing else. The Self-ID remains the credential, no
 email is ever written to a chat account, and the only thing that changes is that this server's
-admin can see the account is yours. See [docs/core-accounts-plan.md](docs/core-accounts-plan.md).
+admin can see the account is yours.
+
+Three doors, and every one of them optional:
+
+| From | What happens |
+|---|---|
+| `/j6/` welcome | A name and nothing else. Anonymous, no Member, no way back if the Self-ID is lost |
+| `/j6/start` | A hub member with no chat account makes one, already linked. The name is *suggested* from the hub profile and stays editable — quietly publishing somebody's real name to their chat partners is the worst thing this could do |
+| `/j6/profile` | Somebody already in by Self-ID links it: to the SyncHub account they have, or to one they make from there. The sign-in and sign-up pages carry `?next=` through the swap, so making an account brings them back to the chat rather than dumping them on `/apps/` |
+
+Linking is reversible (`/j6/unclaim`), at most one linked chat account per person, and the
+Self-ID keeps working either way. See [docs/one-door-plan.md](docs/one-door-plan.md).
 
 **"Continue with SyncUp" was built and then removed**, on both sides, in October 2026. The hub
 never delegates who somebody is: the ways in are a password, or a link the admin hands over.

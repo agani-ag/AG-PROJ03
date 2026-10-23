@@ -3,6 +3,7 @@ from django import forms
 from django.contrib.auth import password_validation
 from django.contrib.auth.forms import AuthenticationForm
 
+from . import auth as hub
 from .models import AdminPin, HubSettings
 
 
@@ -73,6 +74,63 @@ class ProfileForm(forms.Form):
                 self.add_error('confirm_password', "The two passwords don't match.")
             else:
                 password_validation.validate_password(new, self.user)
+        return data
+
+
+class MemberForm(forms.Form):
+    """Somebody on the public side, added or edited from the console.
+
+    Email and phone are both optional *fields* with one of the two required, because the rule
+    is "something to sign in with", not "an email". That rule lives in
+    `core.auth.check_identity` alongside the public sign-up form rather than here — the console
+    is the one that would otherwise quietly create a row nobody can sign in as.
+
+    The password works the way the admin's own profile page works: typed means change it, blank
+    means leave it. Adding somebody is the exception, where it is required, because a new
+    account with no password can only be opened by a link and the brief says every new person
+    gets a password.
+    """
+
+    name = forms.CharField(max_length=80, label='Name')
+    email = forms.EmailField(
+        required=False, label='Email',
+        widget=forms.EmailInput(attrs={'autocomplete': 'off', 'inputmode': 'email'}))
+    phone = forms.CharField(
+        required=False, max_length=15, label='Phone',
+        widget=forms.TextInput(attrs={'autocomplete': 'off', 'inputmode': 'tel'}))
+    password = forms.CharField(
+        required=False, strip=False, label='Password',
+        widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}))
+
+    def __init__(self, *args, member=None, adding=False, **kwargs):
+        self.member = member
+        self.adding = adding
+        super().__init__(*args, **kwargs)
+        self.fields['password'].help_text = (
+            f'At least {hub.PASSWORD_MIN} characters. You hand it over yourself — this server '
+            'sends no mail.' if adding else 'Leave blank to keep their current password.')
+        if not adding:
+            self.fields['password'].label = 'New password'
+        _style(self)
+
+    def clean_email(self):
+        return (self.cleaned_data.get('email') or '').strip().lower()
+
+    def clean_phone(self):
+        return hub.normalise_phone(self.cleaned_data.get('phone'))
+
+    def clean(self):
+        data = super().clean()
+        field, problem = hub.check_identity(data.get('name', ''), data.get('email', ''),
+                                            data.get('phone', ''),
+                                            exclude=self.member.pk if self.member else None)
+        if problem:
+            self.add_error(field or None, problem)
+        password = data.get('password') or ''
+        if self.adding or password:
+            problem = hub.check_password_value(password)
+            if problem:
+                self.add_error('password', problem)
         return data
 
 

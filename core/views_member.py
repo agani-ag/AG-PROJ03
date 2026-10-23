@@ -61,25 +61,16 @@ def join(request):
         name = (request.POST.get('name') or '').strip()
         email, phone = auth.split_sign_in_id(request.POST.get('sign_in_id'))
         password = request.POST.get('password') or ''
-        if len(name) < 2:
-            error = 'A name needs at least two characters.'
-        elif not email and not phone:
-            error = 'An email address or a phone number, so you can get back in.'
-        elif phone and len(phone) < 10:
-            error = 'That phone number looks too short.'
-        elif len(password) < auth.PASSWORD_MIN:
-            error = f'A password needs at least {auth.PASSWORD_MIN} characters.'
-        elif email and Member.objects.filter(email__iexact=email).exists():
-            error = 'There is already an account with that email address.'
-        elif phone and Member.objects.filter(phone__endswith=phone).exists():
-            error = 'There is already an account with that phone number.'
-        else:
+        # The same two checks the console runs, so the rules cannot drift apart.
+        _, error = auth.check_identity(name, email, phone)
+        error = error or auth.check_password_value(password)
+        if not error:
             member = Member.objects.create(name=name[:80], email=email or None,
                                            phone=phone or None)
             auth.set_password(member, password)
             return _signed_in(request, member, auth.safe_next(request))
     return _page(request, 'core/member/join.html',
-                 {'error': error, 'next': request.GET.get('next', '')})
+                 {'error': error, 'next': auth.next_value(request)})
 
 
 @never_cache
@@ -95,7 +86,7 @@ def sign_in(request):
             return _signed_in(request, member, auth.safe_next(request))
         error = 'That email or phone and password do not go together.'
     return _page(request, 'core/member/sign_in.html',
-                 {'error': error, 'next': request.GET.get('next', '')})
+                 {'error': error, 'next': auth.next_value(request)})
 
 
 @require_POST
@@ -119,9 +110,35 @@ def magic(request, key):
     return _signed_in(request, member, auth.safe_next(request))
 
 
+def _close_linked_chat(request, member):
+    """J6 keeps a session of its own, and one kind of it belongs to this sign-out.
+
+    A chat account **linked** to the person signing out is that person, and leaving it open on
+    a shared phone is the leak sign-out exists to prevent. An unlinked Self-ID session is
+    somebody else as far as this server knows — an anonymous account that happens to share a
+    browser — so it is left alone, exactly as it was before the hub could open J6 at all.
+
+    Reaching into a module from core, inside a function and guarded, is what
+    `views_people._unmerged_counts` already does. The alternative is a hook registry for one
+    caller.
+    """
+    try:
+        from j6 import auth as chat
+        from j6.models import Account
+    except Exception:                       # pragma: no cover - the module is optional
+        return
+    # Whatever they had decided about the hub opening J6 goes with the session it was decided
+    # in, so signing in again starts clean.
+    request.session.pop(chat.NO_HUB_KEY, None)
+    pk = request.session.get(chat.SESSION_KEY)
+    if pk and member and Account.objects.filter(pk=pk, member=member).exists():
+        request.session.pop(chat.SESSION_KEY, None)
+
+
 @require_POST
 def sign_out(request):
     """POST, not GET: a link anybody can put in an <img> should not end your session."""
+    _close_linked_chat(request, auth.current(request))
     auth.sign_out(request)
     return redirect('member_login')
 

@@ -12,6 +12,7 @@ from django.views.decorators.http import require_POST
 
 from . import auth as hub
 from . import push as core_push
+from .forms import MemberForm
 from .models import Member
 from .modules import MODULES
 from .views import admin_required
@@ -55,6 +56,7 @@ def people(request):
     return render(request, 'core/people.html', {
         'rows': shown, 'search': search,
         'total': Member.objects.count(),
+        'no_handle': _no_handle(),
         'with_password': Member.objects.exclude(password_hash='').count(),
         'link_only': Member.objects.filter(password_hash='').count(),
         'push_ready': Member.objects.exclude(syncup_token='').count(),
@@ -62,6 +64,69 @@ def people(request):
         'unmerged': _unmerged_counts(),
         'module_count': unmerged,
     })
+
+
+@admin_required
+def person_new(request):
+    """Make somebody an account from the console.
+
+    The other way in is the public sign-up form, which not everybody will be handed. An admin
+    adding a person is expected to type a password here and pass it on — a new account with no
+    password can only be opened by a link, and chasing a link is not an introduction.
+    """
+    form = MemberForm(request.POST or None, adding=True)
+    if request.method == 'POST' and form.is_valid():
+        data = form.cleaned_data
+        member = Member.objects.create(name=data['name'].strip()[:80],
+                                       email=data['email'] or None,
+                                       phone=data['phone'] or None,
+                                       created_by=request.user)
+        hub.set_password(member, data['password'])
+        messages.success(request, f'{member.name} can sign in at /in/ with '
+                                  f'{member.sign_in_id} and the password you typed. Hand it '
+                                  'over yourself — this server sends no mail.')
+        return redirect('person', pk=member.pk)
+    return render(request, 'core/person_form.html', {'form': form, 'adding': True})
+
+
+@admin_required
+def person_edit(request, pk):
+    """Name, how they sign in, and a new password when one is typed.
+
+    Changing an email or a phone changes the thing they sign in *with*, so it is worth knowing
+    that is what you are doing — hence a page of its own rather than an inline field.
+    """
+    member = get_object_or_404(Member, pk=pk)
+    form = MemberForm(request.POST or None, member=member,
+                      initial={'name': member.name, 'email': member.email or '',
+                               'phone': member.phone or ''})
+    if request.method == 'POST' and form.is_valid():
+        data = form.cleaned_data
+        member.name = data['name'].strip()[:80]
+        member.email = data['email'] or None
+        member.phone = data['phone'] or None
+        member.save(update_fields=['name', 'email', 'phone'])
+        if data['password']:
+            # set_password also clears the spare hash, which settles anybody still carrying
+            # two from the merge.
+            hub.set_password(member, data['password'])
+            messages.success(request, 'Password changed. Hand it over yourself — this server '
+                                      'sends no mail, and nothing here can show it again.')
+        messages.success(request, f'{member.name} saved.')
+        return redirect('person', pk=member.pk)
+    return render(request, 'core/person_form.html', {'form': form, 'member': member})
+
+
+def _no_handle():
+    """People with neither an email nor a phone — they cannot use the sign-in page at all.
+
+    Not an error, and not forbidden by the database: `/in/k/<key>` does not look anybody up by
+    email or phone, so somebody holding a bookmarked link gets in exactly as they always have.
+    It is still worth showing, because that link is their only door and nobody put it there
+    deliberately — `merge_identities` builds such a row out of a module profile that never had
+    a handle. Editing them now fixes it.
+    """
+    return list(Member.objects.filter(email__isnull=True, phone__isnull=True)[:20])
 
 
 def _unmerged_counts():

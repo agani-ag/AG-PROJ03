@@ -88,6 +88,38 @@ def split_sign_in_id(value):
     return '', normalise_phone(value)
 
 
+def check_identity(name, email, phone, exclude=None):
+    """What a Member needs to exist: a name, and something to sign in with that nobody has.
+
+    Returns `(field, complaint)`, both empty when it is fine. `field` is '' for a complaint
+    about the pair rather than one of them.
+
+    Shared by the public sign-up and the console on purpose. Two copies would drift, and the
+    console's is the one that would quietly let an unreachable row through — a Member with
+    neither an email nor a phone cannot sign in at all, because `find_member` looks people up
+    by one of those *before* a password is ever checked.
+    """
+    if len((name or '').strip()) < 2:
+        return 'name', 'A name needs at least two characters.'
+    if not email and not phone:
+        return '', 'An email address or a phone number, so they can get back in.'
+    if phone and len(phone) < 10:
+        return 'phone', 'That phone number looks too short.'
+    rows = Member.objects.exclude(pk=exclude) if exclude else Member.objects.all()
+    if email and rows.filter(email__iexact=email).exists():
+        return 'email', 'There is already an account with that email address.'
+    if phone and rows.filter(phone__endswith=phone).exists():
+        return 'phone', 'There is already an account with that phone number.'
+    return '', ''
+
+
+def check_password_value(password):
+    """'' when this will do as a password. The only rule is a length, deliberately."""
+    if len(password or '') < PASSWORD_MIN:
+        return f'A password needs at least {PASSWORD_MIN} characters.'
+    return ''
+
+
 def find_member(sign_in_id):
     email, phone = split_sign_in_id(sign_in_id)
     if email:
@@ -168,6 +200,16 @@ def current(request):
     if not pk:
         return None
     return Member.objects.filter(pk=pk, is_active=True, is_archived=False).first()
+
+
+def next_value(request):
+    """The raw `?next=`, as typed in the URL or carried in the form.
+
+    Kept because it is lost at exactly the wrong moment otherwise: somebody sent to sign in
+    from J6 who has no account yet clicks "I am new here", makes one, and lands on /apps/
+    instead of back where they were going.
+    """
+    return request.POST.get('next') or request.GET.get('next') or ''
 
 
 def safe_next(request, fallback='member_apps'):

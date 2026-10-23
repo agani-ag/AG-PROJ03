@@ -48,8 +48,7 @@ def money(amount, config=None):
 
 def token_for(account):
     """One device token per person, held on the member — not one per module."""
-    member = getattr(account, 'member', None)
-    return (member.syncup_token if member else '') or account.syncup_token
+    return account.push_token
 
 
 def can_push(account, config=None):

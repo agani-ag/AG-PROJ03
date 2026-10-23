@@ -27,7 +27,7 @@
     <div style="margin-top:14px"><button class="btn" type="submit">Make it</button></div>
 </form>
 
-<p class="center"><a class="link" href="{% url 'member_login' %}">I already have one</a></p>
+<p class="center"><a class="link" href="{% url 'member_login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">I already have one</a></p>
 <p class="tiny center">Making an account does not start any of the apps. You pick those next,
     and each one keeps its own data.</p>
 {% endblock %}

@@ -17,6 +17,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from core import auth as hub
+from core import push as core_push
 
 from . import auth, service
 from .models import NAME_MAX, Account, Chat, Settings
@@ -180,6 +181,10 @@ def profile(request):
                if (c.member_for(account) and c.member_for(account).is_blocked)]
     return _page(request, 'j6/user/profile.html', {
         'saved': saved, 'link': link,
+        # Who is signed in to the hub right now, which decides whether linking is one tap or
+        # needs an account first. Not the same question as `account.member`.
+        'hub_member': hub.current(request),
+        'here': reverse('j6_profile'),
         'blocked': [{'chat': c, 'other': c.other(account)} for c in blocked],
     })
 
@@ -283,10 +288,7 @@ def save_syncup_token(request):
     Without it the 15-minute cron has nothing to push to, and the person simply gets their
     messages when they open the page — which is why it fails quietly.
     """
-    token = (_json(request).get('token') or '')[:4000]
-    if token and token != request.account.syncup_token:
-        request.account.syncup_token = token
-        request.account.save(update_fields=['syncup_token'])
+    core_push.remember_token(request.account, _json(request).get('token'))
     return _no_store(JsonResponse({'ok': True}))
 
 
@@ -357,7 +359,9 @@ def start_with_hub(request):
         return redirect(f'{reverse("member_login")}?next={reverse("j6_start_hub")}')
     existing = Account.objects.filter(member=member).first()
     if existing:
-        auth.sign_in(request, existing)
+        # No session of J6's own: the account is found through the member on every request, so
+        # signing out of SyncHub closes the chat with it. Only a Self-ID gets a sticky session.
+        auth.allow_hub_session(request)
         return redirect('j6_inbox')
 
     config = Settings.load()
@@ -373,7 +377,7 @@ def start_with_hub(request):
                 error = exc.messages[0]
             else:
                 Account.objects.filter(pk=account.pk).update(member=member)
-                auth.sign_in(request, account)
+                auth.allow_hub_session(request)
                 request.session['j6_fresh'] = True
                 return redirect('j6_ids')
     return _page(request, 'j6/user/start_hub.html',

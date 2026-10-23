@@ -7,7 +7,18 @@
         <h1>People</h1>
         <p class="page-sub">Everybody who signs in to anything here · {{ total }} account{{ total|pluralize }}</p>
     </div>
+    <div class="page-actions">
+        <a class="btn btn-primary" href="{% url 'person_new' %}">{% icon "user-plus" %}Add a person</a>
+    </div>
 </div>
+
+{% if no_handle %}
+<div class="alert alert-warning" style="margin-top:14px">{% icon "circle-alert" %}
+    <div class="alert-body"><b>{{ no_handle|length }} {{ no_handle|pluralize:"person has,people have" }} no email and no phone</b>
+        They cannot use the sign-in page — a link is their only way in, and whoever holds it is
+        them. Give each one an email or a phone and a password:
+        {% for m in no_handle %}<a href="{% url 'person_edit' m.pk %}">{{ m.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}.</div></div>
+{% endif %}
 
 {% if unmerged %}
 <div class="card" style="margin-top:14px">

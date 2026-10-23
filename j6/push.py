@@ -47,14 +47,14 @@ def send_via_syncup(account, title, body, url, timeout=SEND_TIMEOUT):
 
     The transport itself lives in `core.push` — three modules were about to own a copy of it.
     """
-    return core_push.send(account.syncup_token, title, body, url, timeout)
+    return core_push.send(account.push_token, title, body, url, timeout)
 
 
 def can_push_to(account, config=None):
     """Whether there is any point trying: switched on, a token, and an account in good standing."""
     config = config or Settings.load()
     return bool(config.push_enabled and account.is_active and account.notify
-                and account.syncup_token and HubSettings.load().syncup_base)
+                and account.push_token and HubSettings.load().syncup_base)
 
 
 def is_away(account, seconds=AWAY_SECONDS):
@@ -82,7 +82,7 @@ def notify_new_message(chat, message):
     if not theirs or theirs.is_blocked:
         return 'blocked'
     if not can_push_to(other, config):
-        return 'no token' if not other.syncup_token else 'off'
+        return 'no token' if not other.push_token else 'off'
     if not is_away(other):
         return 'reading'
     if theirs.last_push_seq >= message.seq:

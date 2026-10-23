@@ -15,9 +15,22 @@
         way back, you can remember this account on your SyncHub sign-in.</p>
     <p class="tiny">Nobody you chat with learns anything new — they see a name and an Account ID,
         as they do now. What changes is that this server's admin can see the account is yours.</p>
+    {% if hub_member %}
+    <p class="tiny">Signed in to SyncHub as <b>{{ hub_member.name }}</b>.</p>
     <form method="POST" action="{% url 'j6_claim' %}">{% csrf_token %}
-        <button class="btn ghost" type="submit">Remember this on SyncHub</button>
+        <button class="btn ghost" type="submit">Link this account to it</button>
     </form>
+    {% else %}
+    {% comment %}
+    Two ways to end up with a SyncHub account, and the second one used to be a dead end: the
+    sign-in page's "I am new here" dropped the ?next=, so somebody who made an account here
+    landed on /apps/ wondering what had happened to their chat.
+    {% endcomment %}
+    <a class="btn ghost" href="{% url 'member_login' %}?next={{ here|urlencode }}">Sign in to SyncHub</a>
+    <a class="btn ghost" href="{% url 'member_join' %}?next={{ here|urlencode }}">Make a SyncHub account</a>
+    <p class="tiny fade">Either one brings you back here, and then it is one tap. Your chat name
+        stays separate from your SyncHub name.</p>
+    {% endif %}
     {% endif %}
 </div>
 

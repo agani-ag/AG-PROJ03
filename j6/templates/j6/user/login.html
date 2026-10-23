@@ -19,10 +19,21 @@
     <button class="btn" type="submit">Continue</button>
 </form>
 
+{% comment %}
+The second door, and the reason it is here rather than only on the welcome screen: somebody who
+bookmarked this page and lost their Self-ID had nothing to do but start again. If they linked
+the account to SyncHub, their email or phone and password opens it.
+{% endcomment %}
+<div class="or">or</div>
+<a class="btn ghost" href="{% url 'j6_start_hub' %}">Sign in with SyncHub</a>
+<p class="tiny center fade">Only if you linked this chat account to a SyncHub account already.
+    Your chat name stays separate and nobody you chat with sees any difference.</p>
+
 <div class="card dashed row">
     <svg class="ic sm fade"><use href="#j-block"/></svg>
-    <p class="tiny">No Self-ID? There is nothing to recover — no email, no number, nothing that was ever asked of you.
-        Starting fresh gives you a new Account ID, so anyone who had the old one will need the new one.</p>
+    <p class="tiny">No Self-ID and no SyncHub account? There is nothing to recover — no email, no number, nothing
+        that was ever asked of you. Starting fresh gives you a new Account ID, so anyone who had the old one will
+        need the new one.</p>
 </div>
 
 <p class="center"><a class="link" href="{% url 'j6_welcome' %}">Start a new account instead</a></p>

@@ -131,8 +131,7 @@ def compose(person, slot, config, today=None):
 
 def token_for(person):
     """One device token per person, held on the member — not one per module."""
-    member = getattr(person, 'member', None)
-    return (member.syncup_token if member else '') or person.syncup_token
+    return person.push_token
 
 
 def send_via_syncup(config, person, title, body, url, timeout=SEND_TIMEOUT):

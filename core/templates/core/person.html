@@ -10,6 +10,7 @@
             {% if member.syncup_token %}<span class="badge badge-success">SyncUp registered</span>{% endif %}</h1>
     </div>
     <div class="page-actions">
+        <a class="btn" href="{% url 'person_edit' member.pk %}">{% icon "pencil" %}Edit</a>
         <form method="POST" action="{% url 'person_action' member.pk 'push' %}">{% csrf_token %}
             <button class="btn" type="submit">{% icon "bell" %}Test push</button></form>
         <form method="POST" action="{% url 'person_action' member.pk 'link' %}">{% csrf_token %}

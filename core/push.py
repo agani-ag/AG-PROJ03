@@ -25,6 +25,35 @@ BODY_MAX = 200
 SEND_TIMEOUT = 5          # short for cron work, longer when somebody is watching a page
 
 
+def token_of(profile):
+    """The device token to reach this person on — one per person, not one per module.
+
+    It lives on the `core.Member`, so a phone registered by opening the diary inside the SyncUp
+    app also reaches Pocket Money and J6. The profile's own column is a fallback with exactly
+    one real user: an unlinked J6 chat account, which has no Member to put it on.
+    """
+    member = profile.member if profile.member_id else None
+    return (member.syncup_token if member else '') or profile.syncup_token
+
+
+def remember_token(profile, token):
+    """Store `window.SyncUp.token` where every module will look for it. True if it changed.
+
+    Writes to the Member whenever there is one, which is what makes the token shared. Updated
+    with a queryset `update()` rather than `save()`: these arrive from a background fetch while
+    the page is doing something else, and must not write back a whole stale row.
+    """
+    token = (token or '').strip()[:4000]
+    if not token:
+        return False
+    owner = profile.member if profile.member_id else profile
+    if token == owner.syncup_token:
+        return False
+    type(owner).objects.filter(pk=owner.pk).update(syncup_token=token)
+    owner.syncup_token = token
+    return True
+
+
 def send(token, title, body, url, timeout=SEND_TIMEOUT):
     """Post one notification. Returns `(delivered, error)`.
 

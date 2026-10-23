@@ -172,6 +172,12 @@ class Person(models.Model):
         return self.email or self.phone or f'person-{self.pk}'
 
     @property
+    def push_token(self):
+        """One device token per person, on the member. See `core.push.token_of`."""
+        from core.push import token_of
+        return token_of(self)
+
+    @property
     def has_login_link(self):
         return bool(self.member and self.member.login_key)
 

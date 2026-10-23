@@ -33,6 +33,6 @@
     </div>
 </form>
 
-<p class="center"><a class="link" href="{% url 'member_join' %}">I am new here</a></p>
+<p class="center"><a class="link" href="{% url 'member_join' %}{% if next %}?next={{ next|urlencode }}{% endif %}">I am new here</a></p>
 <p class="tiny center">Each app here keeps its own data. Signing in once opens the ones you are in.</p>
 {% endblock %}

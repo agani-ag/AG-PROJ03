@@ -48,7 +48,12 @@ def push(ctx):
     quiet_before = timezone.now() - timedelta(seconds=QUIET_AFTER_SECONDS)
     out = {'items': 0, 'sent': 0, 'failed': 0, 'skipped': 0}
 
-    with_token = Account.objects.filter(is_active=True, notify=True).exclude(syncup_token='')
+    # A token on the member reaches every module, so an account linked to somebody who
+    # registered their phone in the diary is pushable here without J6 ever seeing a token.
+    # An unlinked account has no member, and keeps its own.
+    with_token = (Account.objects.filter(is_active=True, notify=True)
+                  .filter(Q(member__syncup_token__gt='') | Q(syncup_token__gt=''))
+                  .select_related('member'))
     if not with_token.exists():
         return {'items': 0, 'note': 'no account has a device token yet — J6 has to be opened '
                                     'once inside the SyncUp app before anything can be pushed'}

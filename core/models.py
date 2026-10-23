@@ -244,6 +244,18 @@ class Member(models.Model):
 
     class Meta:
         ordering = ['name']
+        # No database constraint demanding an email or a phone, and that is deliberate — it was
+        # tried and taken out. Both doors that make a *new* Member refuse one without
+        # (`auth.check_identity`, used by the public sign-up and by the console), which is what
+        # "every new person has a way to sign in" actually means.
+        #
+        # A constraint would also have to be true of every *old* row, and two things make that
+        # wrong here. A Member with neither handle is not unreachable: `/in/k/<key>` does not
+        # look anybody up by email or phone, so the diary's bookmarked-link people get in
+        # exactly as they always have. And `merge_identities` can build such a row out of a
+        # module profile that never had a handle — refusing it there would not protect that
+        # person, it would lock them out, which is the one thing that command must never do.
+        # System → People counts them instead, and can now give them one.
 
     def __str__(self):
         return self.name
