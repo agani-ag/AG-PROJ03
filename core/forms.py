@@ -81,14 +81,12 @@ class HubSettingsForm(forms.ModelForm):
 
     class Meta:
         model = HubSettings
-        fields = ['site_base', 'syncup_base', 'syncup_notify_key', 'syncup_links_key',
-                  'syncup_sso_key']
+        fields = ['site_base', 'syncup_base', 'syncup_notify_key', 'syncup_links_key']
         labels = {
             'site_base': "This site's address",
             'syncup_base': 'SyncUp address',
             'syncup_notify_key': 'SyncUp notify key',
             'syncup_links_key': 'SyncUp links key',
-            'syncup_sso_key': 'SyncUp sign-in key',
         }
 
     def __init__(self, *args, **kwargs):

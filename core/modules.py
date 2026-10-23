@@ -29,7 +29,6 @@ A module can also have a link in the SyncUp app (System → Tools in SyncUp send
     syncup_icon         an icon from SyncUp's own list (its mobileapi/link_icons.py), not a Lucide name
     syncup_color        one of SyncUp's nine icon colours
     syncup_token        give the page `window.SyncUp.token` (it pushes notifications to the phone)
-    syncup_sso          let the page offer "Continue with SyncUp"
 """
 from dataclasses import dataclass
 
@@ -49,7 +48,6 @@ class Module:
     syncup_icon: str = ''
     syncup_color: str = ''
     syncup_token: bool = False
-    syncup_sso: bool = False      # may this module's pages offer Continue with SyncUp
 
     @property
     def is_live(self) -> bool:
@@ -74,7 +72,6 @@ MODULES = [
         syncup_description='Cycle diary',
         syncup_icon='flower',
         syncup_color='rose',
-        syncup_sso=True,
         syncup_token=True,
     ),
     Module(
@@ -90,7 +87,6 @@ MODULES = [
         syncup_description='Chat with no sign-up',
         syncup_icon='chat',
         syncup_color='teal',
-        syncup_sso=True,
         syncup_token=True,
     ),
     Module(
@@ -106,7 +102,6 @@ MODULES = [
         syncup_description='Money in and out, and who owes whom',
         syncup_icon='wallet',
         syncup_color='amber',
-        syncup_sso=True,
         syncup_token=True,                # pocket/user.js sends the token for its reminders
     ),
 ]

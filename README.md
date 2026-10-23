@@ -201,23 +201,17 @@ which — because seventy-five people must not be locked out to tidy a column. A
 not decide alone (two rows in one module on one number) is listed in the dry run and left
 alone. Take a backup from `/download/sqlite` first.
 
-### Sign in with SyncUp
+### Linking J6 to a hub account
 
-Built and inert: the button appears only when **System → Settings** has a SyncUp sign-in key,
-and only inside the SyncUp app. The page never says who anybody is — it hands over a one-time
-code and `core/syncup_sso.py` redeems it server-side against SyncUp, because `window.SyncUp` is
-a JavaScript object anybody can type into a console.
+J6 can be linked to a SyncHub account, both ways round, and it stays anonymous: whoever you chat
+with sees a J6 name and an Account ID and nothing else. The Self-ID remains the credential, no
+email is ever written to a chat account, and the only thing that changes is that this server's
+admin can see the account is yours. See [docs/core-accounts-plan.md](docs/core-accounts-plan.md).
 
-What comes back is treated as **unverified for ever**: SyncUp does not verify email addresses,
-so arriving with one is not proof of owning the account here. If the address is already
-somebody's, the signer-in types that account's password first. If they say it is not theirs,
-they get a separate account — and are asked for a phone *and* a password before it is made,
-because an account with neither could only ever be opened from inside the app.
-
-J6 can be linked too, both ways round, and it stays anonymous: whoever you chat with sees a J6
-name and an Account ID and nothing else. The Self-ID remains the credential, no email is ever
-written to a chat account, and the only thing that changes is that this server's admin can see
-the account is yours. See [docs/core-accounts-plan.md](docs/core-accounts-plan.md).
+**"Continue with SyncUp" was built and then removed**, on both sides, in October 2026. The hub
+never delegates who somebody is: the ways in are a password, or a link the admin hands over.
+What SyncUp still does for this site is deliver notifications and carry the tool links —
+`syncup_notify_key` and `syncup_links_key` — and give a page `window.SyncUp.token`.
 
 ## Modules
 

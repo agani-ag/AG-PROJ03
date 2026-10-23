@@ -67,9 +67,6 @@ input, button, select { font: inherit; color: inherit; }
 .link { color: var(--me); font-weight: 600; font-size: 13.5px; background: none; border: 0;
         padding: 0; cursor: pointer; }
 
-.or { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 12px; }
-.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--bd); }
-
 .ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9;
       stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .ic.lg { width: 21px; height: 21px; }

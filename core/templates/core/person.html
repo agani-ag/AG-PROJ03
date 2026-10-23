@@ -35,12 +35,6 @@
             <dl class="kv">
                 <dt>Signs in as</dt><dd><code class="small">{{ member.sign_in_id|default:"—" }}</code></dd>
                 <dt>Signs in with</dt><dd>{% for way in ways %}<span class="badge">{{ way }}</span> {% endfor %}</dd>
-                <dt>SyncUp account</dt><dd>{% if member.syncup_id %}
-                    <code class="small">{{ member.syncup_id|slice:":14" }}…</code>
-                    <form method="POST" action="{% url 'person_action' member.pk 'unlink-syncup' %}"
-                          style="display:inline">{% csrf_token %}
-                        <button class="btn btn-ghost btn-sm" type="submit">Disconnect</button></form>
-                    {% else %}<span class="muted">not connected</span>{% endif %}</dd>
                 <dt>Device token</dt><dd>{% if member.syncup_token %}
                     <code class="small">{{ member.syncup_token|slice:":12" }}…</code>
                     <div class="small faint">One token, used by every module</div>
@@ -88,7 +82,7 @@
             them. It cannot be undone, and there is no copy anywhere else.</p>
 
         <ul class="small" style="margin-top:10px">
-            <li><b>The SyncHub account</b> — name, sign-in, password, SyncUp link, device token</li>
+            <li><b>The SyncHub account</b> — name, sign-in, password, device token</li>
             {% for item in would_go %}
             <li><b>{{ item.module }}</b> — {{ item.detail }}</li>
             {% empty %}

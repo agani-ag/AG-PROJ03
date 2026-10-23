@@ -14,12 +14,12 @@
 {% if not has_password %}
 {% comment %}
 Stays until a password exists, rather than appearing once and being missed. Somebody who got in
-through SyncUp alone has no way back in from an ordinary browser, and may not notice until the
-day they need one.
+by link alone has to ask for a new link every time that one runs out, and may not notice until
+the day they need one.
 {% endcomment %}
 <div class="note warn" id="add-password"><svg class="ic sm"><use href="#m-key"/></svg>
     <div><b>Add a password?</b><br>You signed in without one. Setting a password means you can
-        still get in from an ordinary browser, or if you ever change phone.
+        get back in without waiting for a new link.
         <a href="{% url 'member_you' %}">Set one now</a>.</div>
     <button class="link" type="button" data-dismiss="add-password" aria-label="Dismiss">✕</button></div>
 {% endif %}

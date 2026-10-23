@@ -55,11 +55,6 @@ class HubSettings(models.Model):
         help_text='Where SyncUp lives, e.g. https://syncup.example.com — a different machine '
                   'from this one.')
     syncup_notify_key = models.CharField(max_length=80, blank=True)
-    syncup_sso_key = models.CharField(
-        max_length=80, blank=True,
-        help_text='Made on SyncUp Admin → General links, beside the links key. A separate key '
-                  'on purpose: it lets a page sign somebody in, which the links key must not. '
-                  'Blank means nobody is offered "Continue with SyncUp" anywhere.')
     syncup_links_key = models.CharField(
         max_length=80, blank=True,
         help_text="From SyncUp's admin → General links → SyncUp links key. Lets the buttons below "
@@ -222,9 +217,6 @@ class Member(models.Model):
     syncup_token = models.TextField(
         blank=True, help_text='One per person, not one per module: opening any module inside the '
                               'SyncUp app now makes all of them reachable.')
-    syncup_id = models.CharField(
-        max_length=64, unique=True, null=True, blank=True,
-        help_text="SyncUp's opaque per-site id, set when somebody signs in with SyncUp.")
 
     theme = models.CharField(max_length=10, choices=THEMES, default='light')
     is_active = models.BooleanField(

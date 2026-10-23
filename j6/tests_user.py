@@ -1,4 +1,3 @@
-import json
 """The pages people actually see, and the two files that make them work.
 
 Template mistakes are invisible to the model tests — a page renders, it just renders wrongly —
@@ -392,17 +391,6 @@ class HubDoorTests(TestCase):
         self.assertContains(r, 'no email, no number, no password')
         self.assertContains(r, 'Use my SyncHub account instead')
         self.assertContains(r, 'no way back')
-
-    def test_a_different_syncup_person_ends_the_chat_session_too(self):
-        account = make('Anand')
-        self._hub_in()
-        self._j6_in(account)
-        Member.objects.filter(pk=self.member.pk).update(syncup_id='su_' + 'a' * 32)
-        r = self.client.post(reverse('member_sso_changed'),
-                             data=json.dumps({'id': 'su_' + 'b' * 32}),
-                             content_type='application/json')
-        self.assertTrue(r.json()['signed_out'])
-        self.assertNotIn('j6_account_id', self.client.session)
 
 
 class IdsPageWordingTests(TestCase):

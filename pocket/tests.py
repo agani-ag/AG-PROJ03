@@ -60,6 +60,17 @@ def entry(folder, person, kind, amount, **fields):
     return service.add_ledger(acc, person, kind, amount, **fields)
 
 
+def _daytime():
+    """Today, at an hour the reminder gate lets through.
+
+    `run_due_reminders` is deliberately silent before `reminder_hour` and inside quiet hours,
+    so a test that let it read the wall clock passed in the afternoon and failed at night.
+    The gate has a test of its own below; these pin the clock to get past it.
+    """
+    config = Settings.load()
+    return config.now_local().replace(hour=max(config.reminder_hour, 12), minute=0)
+
+
 class FakeSyncUp:
     """Stands in for SyncUp's partner endpoint and keeps what was posted to it."""
 
@@ -638,6 +649,15 @@ class PushTests(TestCase):
         fake, _ = self._send(acc)
         self.assertEqual(len(fake.payloads), 2)          # Divya, and the linked Mani
 
+    def test_nothing_is_chased_before_the_reminder_hour(self):
+        """The gate the two tests below step over by pinning the clock."""
+        acc = service.access(self.anand, self.folder)
+        yesterday = Settings.load().today() - timedelta(days=1)
+        service.add_ledger(acc, self.mani, Kind.LENT, '2000', due_on=yesterday)
+        early = _daytime().replace(hour=Settings.load().reminder_hour - 1)
+        self.assertEqual(push.run_due_reminders(now=early),
+                         {'sent': 0, 'skipped': 'not yet'})
+
     def test_a_due_reminder_goes_once_a_day(self):
         acc = service.access(self.anand, self.folder)
         yesterday = Settings.load().today() - timedelta(days=1)
@@ -645,8 +665,8 @@ class PushTests(TestCase):
         fake = FakeSyncUp()
         with patch('pocket.push.threading.Thread', RunInline), \
              patch('core.push.urllib.request.urlopen', fake):
-            first = push.run_due_reminders()
-            second = push.run_due_reminders()
+            first = push.run_due_reminders(now=_daytime())
+            second = push.run_due_reminders(now=_daytime())
         self.assertEqual(first['sent'], 1)
         self.assertEqual(second['sent'], 0)
         self.assertIn('late', fake.payload['body'])
@@ -659,7 +679,7 @@ class PushTests(TestCase):
         fake = FakeSyncUp()
         with patch('pocket.push.threading.Thread', RunInline), \
              patch('core.push.urllib.request.urlopen', fake):
-            self.assertEqual(push.run_due_reminders()['sent'], 0)
+            self.assertEqual(push.run_due_reminders(now=_daytime())['sent'], 0)
 
 
 class CronTests(TestCase):

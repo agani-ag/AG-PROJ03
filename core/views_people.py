@@ -31,8 +31,6 @@ def _how_they_sign_in(member):
     ways = []
     if member.password_hash:
         ways.append('Password')
-    if member.syncup_id:
-        ways.append('SyncUp')
     if member.login_key:
         ways.append('Link')
     return ways or ['Nothing yet']
@@ -58,7 +56,7 @@ def people(request):
         'rows': shown, 'search': search,
         'total': Member.objects.count(),
         'with_password': Member.objects.exclude(password_hash='').count(),
-        'with_syncup': Member.objects.exclude(syncup_id=None).count(),
+        'link_only': Member.objects.filter(password_hash='').count(),
         'push_ready': Member.objects.exclude(syncup_token='').count(),
         'modules': [m for m in MODULES if m.is_live],
         'unmerged': _unmerged_counts(),
@@ -142,10 +140,6 @@ def person_action(request, pk, what):
         messages.success(request, f'{member.name} is '
                                   f'{"archived" if member.is_archived else "back"}. '
                                   'What each module lets them do is still a separate switch.')
-    elif what == 'unlink-syncup':
-        member.syncup_id = None
-        member.save(update_fields=['syncup_id'])
-        messages.success(request, 'SyncUp sign-in disconnected for this person.')
     elif what == 'push':
         if not member.syncup_token:
             messages.warning(request, f'{member.name} has no device token yet. They have to '

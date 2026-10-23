@@ -22,20 +22,6 @@
     <div style="margin-top:14px"><button class="btn" type="submit">Sign in</button></div>
 </form>
 
-{% comment %}
-Hidden unless the page is genuinely inside the SyncUp app *and* an SSO key is configured here.
-A button that cannot work is worse than no button, so member.js reveals it rather than the
-template guessing.
-{% endcomment %}
-<div class="or" data-sso-wrap hidden>or</div>
-<button class="btn ghost" type="button" data-sso hidden>
-    <svg class="ic lg"><use href="#m-sync"/></svg>Continue with SyncUp</button>
-{% if sso_url %}
-<form method="POST" action="{{ sso_url }}" id="sso-form" hidden>
-    {% csrf_token %}<input type="hidden" name="code"><input type="hidden" name="next" value="{{ next }}">
-</form>
-{% endif %}
-
 <form method="POST" action="{% url 'member_link' %}" class="card" style="border-style:dashed">
     {% csrf_token %}
     <input type="hidden" name="sign_in_id" value="{{ request.POST.sign_in_id|default:'' }}">

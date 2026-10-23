@@ -29,8 +29,8 @@
     {% csrf_token %}<input type="hidden" name="what" value="password">
     <h2>{% if has_password %}Change your password{% else %}Set a password{% endif %}</h2>
     {% if not has_password %}
-    <p class="sub">You have no password yet — you got in by link or through SyncUp. Setting one
-        means you can still sign in from an ordinary browser.</p>
+    <p class="sub">You have no password yet — you got in by link. Setting one means you can
+        sign in without waiting for a new link.</p>
     {% endif %}
     {% if has_password %}
     <label class="label" for="current_password">Current password</label>

@@ -28,9 +28,6 @@ SESSION_KEY = 'synchub_member'
 #: Set when a session begins and popped by the first page that asks, so a greeting fires on
 #: arrival rather than on every page.
 GREET_KEY = 'synchub_greet'
-#: How the session was established. An SSO session with no password of its own is the only kind
-#: that ends when somebody signs out of SyncUp.
-VIA_KEY = 'synchub_via'
 
 PASSWORD_MIN = 6
 LOGIN_KEY_BYTES = 32
@@ -145,7 +142,7 @@ def spend_login_key(member):
 # --------------------------------------------------------------------------- #
 # Sessions
 # --------------------------------------------------------------------------- #
-def sign_in(request, member, via='password'):
+def sign_in(request, member):
     """Start a session.
 
     `cycle_key()` first: a fresh session id on every sign-in, so a cookie somebody else already
@@ -155,19 +152,14 @@ def sign_in(request, member, via='password'):
     request.session.cycle_key()
     request.session[SESSION_KEY] = member.pk
     request.session[GREET_KEY] = True
-    request.session[VIA_KEY] = via
     request.session.set_expiry(60 * 60 * 24 * SESSION_DAYS)
     Member.objects.filter(pk=member.pk).update(last_opened_at=timezone.now(),
                                                open_count=F('open_count') + 1)
 
 
 def sign_out(request):
-    for key in (SESSION_KEY, GREET_KEY, VIA_KEY):
+    for key in (SESSION_KEY, GREET_KEY):
         request.session.pop(key, None)
-
-
-def signed_in_via(request):
-    return request.session.get(VIA_KEY, '')
 
 
 def current(request):

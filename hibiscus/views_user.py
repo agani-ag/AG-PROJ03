@@ -17,15 +17,13 @@ from django.db.models import F
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from core import auth as hub
 
 from . import auth, cycle, push
-from .forms import (DayForm, DayRangeForm, MySettingsForm, SignInForm, SignUpForm, StockItemForm,
-                    StockMoveForm)
+from .forms import DayRangeForm, MySettingsForm, StockItemForm, StockMoveForm
 from .models import (DaySymptom, Flow, NotifyMute, NotifySlot, Person, PeriodDay, Settings,
                      StockItem, StockMove, Symptom)
 
@@ -128,7 +126,7 @@ def magic_login(request, key):
         return _no_store(redirect('member_login'))
 
     hub.spend_login_key(member)
-    hub.sign_in(request, member, via='link')
+    hub.sign_in(request, member)
     auth.log('signed_in_with_link', person=person)
     return _no_store(redirect('hibiscus_me_home'))
 

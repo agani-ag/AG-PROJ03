@@ -289,12 +289,12 @@ class PeoplePageTests(TestCase):
         self.assertContains(r, 'merge_identities')
 
     def test_one_person_shows_how_they_sign_in(self):
-        member = Member.objects.create(name='Ganesh', email='g@example.com',
-                                       syncup_id='su_' + 'a' * 32)
+        member = Member.objects.create(name='Ganesh', email='g@example.com')
         auth.set_password(member, 'pw-for-tests')
+        auth.new_login_key(member)
         r = self.client.get(reverse('person', args=[member.pk]))
         self.assertContains(r, 'Password')
-        self.assertContains(r, 'SyncUp')
+        self.assertContains(r, 'Link')
 
     def test_two_passwords_are_flagged_for_the_admin(self):
         member = Member.objects.create(name='Anand', email='a@example.com',
@@ -307,13 +307,6 @@ class PeoplePageTests(TestCase):
         self.client.post(reverse('person_action', args=[member.pk, 'archive']))
         member.refresh_from_db()
         self.assertTrue(member.is_archived)
-
-    def test_syncup_can_be_disconnected(self):
-        member = Member.objects.create(name='Anand', email='a@example.com',
-                                       syncup_id='su_' + 'a' * 32)
-        self.client.post(reverse('person_action', args=[member.pk, 'unlink-syncup']))
-        member.refresh_from_db()
-        self.assertIsNone(member.syncup_id)
 
     def test_the_page_needs_an_admin(self):
         self.client.logout()
@@ -344,9 +337,8 @@ class PublicPageTests(TestCase):
         self.assertEqual(Member.objects.count(), 1)
 
     def test_the_profile_page_opens_and_can_set_a_first_password(self):
-        member = Member.objects.create(name='Ganesh', email='g@example.com',
-                                       syncup_id='su_' + 'a' * 32)
-        # No password yet — which is exactly the state an SSO-only account is in — so the
+        member = Member.objects.create(name='Ganesh', email='g@example.com')
+        # No password yet — the state somebody the admin let in by link is in — so the
         # way in is a link.
         key = auth.new_login_key(member)
         self.client.get(reverse('member_magic', args=[key]))
