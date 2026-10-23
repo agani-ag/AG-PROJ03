@@ -256,6 +256,19 @@ class ChatMeetsTheHubTests(TestCase):
         self.chat.refresh_from_db()
         self.assertEqual(self.chat.member, row)
 
+    def test_signing_in_to_an_account_they_have_comes_back_to_the_chat(self):
+        """The first of the two routes, and the one with no test until now — which is why a
+        stray `/apps/` in a manual walk could not be told from a bug."""
+        member('Anand')
+        r = self.client.get(f"{reverse('j6_profile')}")
+        self.assertContains(r, f"{reverse('member_login')}?next={reverse('j6_profile')}")
+        r = self.client.post(reverse('member_login'),
+                             {'sign_in_id': 'anand@example.com', 'password': PASSWORD,
+                              'next': reverse('j6_profile')})
+        self.assertRedirects(r, reverse('j6_profile'))
+        self.assertContains(self.client.get(reverse('j6_profile')),
+                            'Link this account to it')
+
     def test_making_an_account_from_the_chat_comes_back_to_the_chat(self):
         """The ?next= used to be dropped by "I am new here", landing people on /apps/."""
         r = self.client.get(f"{reverse('member_login')}?next={reverse('j6_profile')}")
