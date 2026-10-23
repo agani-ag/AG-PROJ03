@@ -95,7 +95,8 @@
                         {% if r.ok %}<span class="badge badge-success"><span class="dot"></span>OK</span>
                         {% else %}<span class="badge badge-danger"><span class="dot"></span>Failed</span>{% endif %}
                         {% if r.error %}<div class="small text-danger">{{ r.error }}</div>{% endif %}
-                        {% if r.detail %}<details class="disclosure"><summary>Detail</summary><pre class="code">{{ r.detail }}</pre></details>{% endif %}
+                        {% if r.detail %}<details class="disclosure-sm"><summary>Detail</summary>
+                        <pre class="code wrap">{{ r.detail }}</pre></details>{% endif %}
                     </td>
                 </tr>
                 {% empty %}

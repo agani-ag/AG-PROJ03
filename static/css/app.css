@@ -249,6 +249,16 @@ input[type="color"].input { padding: 4px; width: 64px; cursor: pointer; }
 .disclosure > summary .chev { margin-left: auto; transition: transform .15s; color: var(--muted); }
 .disclosure[open] > summary .chev { transform: rotate(180deg); }
 .disclosure > .disclosure-body { padding: 4px 14px 16px; display: flex; flex-direction: column; gap: 16px; }
+/* The same thing inside a table cell. The panel above is a full-width box with its own
+   border and padding, which in a cell triples the height of every row whether or not
+   anybody opens it. This one is a word you click, and it costs nothing until it is open. */
+.disclosure-sm { display: inline-block; vertical-align: middle; border: 0; border-radius: 0;
+                 background: transparent; max-width: 100%; }
+.disclosure-sm > summary { display: inline-flex; padding: 0; font-size: 12.5px; font-weight: 500;
+                           color: var(--accent); cursor: pointer; list-style: none; }
+.disclosure-sm > summary::-webkit-details-marker { display: none; }
+.disclosure-sm > summary:hover { text-decoration: underline; }
+.disclosure-sm[open] > summary { margin-bottom: 6px; }
 
 /* Segmented control */
 .seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }

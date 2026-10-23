@@ -60,7 +60,7 @@
     <div class="table-wrap">
         <table class="table table-stack">
             <thead><tr><th>Name</th><th>Signs in with</th><th>Signs in as</th>
-                <th>In</th><th>Last opened</th><th>Phone</th><th></th></tr></thead>
+                <th>In</th><th>Last opened</th><th>Reachable</th><th></th></tr></thead>
             <tbody>
                 {% for row in rows %}
                 <tr data-href="{% url 'person' row.member.pk %}">
@@ -69,14 +69,19 @@
                         <div class="small faint">joined {{ row.member.created_at|date:"d M Y" }}</div></td>
                     <td data-label="Signs in with">
                         {% for way in row.ways %}<span class="badge">{{ way }}</span> {% endfor %}</td>
-                    <td data-label="Signs in as"><code class="small">{{ row.member.sign_in_id|default:"—" }}</code></td>
+                    <td data-label="Signs in as">
+                        {% if row.member.email %}<code class="small">{{ row.member.email }}</code>{% endif %}
+                        {% if row.member.phone %}{% if row.member.email %}<br>{% endif %}
+                        <code class="small">{{ row.member.phone }}</code>{% endif %}
+                        {% if not row.member.email and not row.member.phone %}
+                        <span class="small muted">link only</span>{% endif %}</td>
                     <td data-label="In">
                         {% for item in row.profiles %}{% if item.profile %}
                         <span class="badge badge-success">{{ item.module.title }}</span>
                         {% endif %}{% endfor %}
                         {% if not row.count %}<span class="small muted">nothing yet</span>{% endif %}</td>
                     <td data-label="Last opened">{{ row.member.last_opened_at|ago }}</td>
-                    <td data-label="Phone">{% if row.member.syncup_token %}
+                    <td data-label="Reachable">{% if row.member.syncup_token %}
                         <span class="badge badge-success">SyncUp</span>{% else %}
                         <span class="badge">no token</span>{% endif %}</td>
                     <td data-label=""><a class="btn btn-ghost btn-sm"

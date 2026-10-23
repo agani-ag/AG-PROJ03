@@ -34,7 +34,17 @@
         <div class="card-head">{% icon "user" %}<h2>Who they are</h2></div>
         <div class="card-body">
             <dl class="kv">
-                <dt>Signs in as</dt><dd><code class="small">{{ member.sign_in_id|default:"—" }}</code></dd>
+                <dt>Signs in as</dt><dd>
+                    {% if member.email %}<code class="small">{{ member.email }}</code>{% endif %}
+                    {% if member.phone %}{% if member.email %} <span class="muted">or</span> {% endif %}
+                    <code class="small">{{ member.phone }}</code>{% endif %}
+                    {% if member.email and member.phone %}
+                    <div class="small faint">Either one, with the same password</div>{% endif %}
+                    {% if not member.email and not member.phone %}
+                    <span class="muted">neither — a sign-in link is their only way in</span>
+                    <div class="small faint">Give them one at
+                        <a href="{% url 'person_edit' member.pk %}">Edit</a>, or they stay
+                        dependent on a link that could be lost.</div>{% endif %}</dd>
                 <dt>Signs in with</dt><dd>{% for way in ways %}<span class="badge">{{ way }}</span> {% endfor %}</dd>
                 <dt>Device token</dt><dd>{% if member.syncup_token %}
                     <code class="small">{{ member.syncup_token|slice:":12" }}…</code>

@@ -257,6 +257,17 @@ class CronPageTests(TestCase):
         self.assertContains(r, 'Tick · every 15 minutes')
         self.assertContains(r, 'Cleanup · nightly')
 
+    def test_a_runs_detail_does_not_set_the_height_of_every_row(self):
+        """The panel-sized `.disclosure` made each row three lines tall, open or not."""
+        from django.utils import timezone
+
+        from core.models import CronRun
+        CronRun.objects.create(job='tick', started_at=timezone.now(), duration_ms=111,
+                               items=0, triggered_by='cron', ok=True, detail='{"sent": 0}')
+        r = self.client.get(reverse('cron_page'))
+        self.assertContains(r, 'class="disclosure-sm"')
+        self.assertNotContains(r, 'class="disclosure"')
+
     def test_run_now_runs_the_job(self):
         r = self.client.post(reverse('cron_run_now', args=['tick']), follow=True)
         self.assertEqual(r.status_code, 200)

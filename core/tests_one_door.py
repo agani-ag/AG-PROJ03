@@ -437,6 +437,26 @@ class ConsolePeopleTests(TestCase):
         row.refresh_from_db()
         self.assertEqual(row.legacy_password_hash, '')
 
+    def test_both_an_email_and_a_phone_are_shown(self):
+        """`sign_in_id` returns whichever exists first, so a page using it alone hides the
+        other one — and both of them work."""
+        row = Member.objects.create(name='Divya', email='divya@example.com',
+                                    phone='9876543210')
+        for url in (reverse('people'), reverse('person', args=[row.pk])):
+            r = self.client.get(url)
+            self.assertContains(r, 'divya@example.com', msg_prefix=url)
+            self.assertContains(r, '9876543210', msg_prefix=url)
+
+    def test_somebody_with_only_a_phone_still_shows_it(self):
+        row = Member.objects.create(name='Divya', phone='9876543210')
+        self.assertContains(self.client.get(reverse('person', args=[row.pk])), '9876543210')
+
+    def test_a_person_with_neither_is_told_so_on_their_own_page(self):
+        row = Member.objects.create(name='No Handles')
+        r = self.client.get(reverse('person', args=[row.pk]))
+        self.assertContains(r, 'a sign-in link is their only way in')
+        self.assertContains(r, reverse('person_edit', args=[row.pk]))
+
     def test_the_people_page_flags_anybody_with_no_way_to_sign_in(self):
         Member.objects.create(name='No Handles')
         r = self.client.get(reverse('people'))
