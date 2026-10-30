@@ -287,9 +287,14 @@ class MigrationPackageTests(TestCase):
     Django treats an app with no `migrations/` package as unmigrated and skips it, so a missing
     `__init__.py` makes `makemigrations` answer "No changes detected" instead of writing the
     app's migration. The file is committed on purpose; the generated migrations are not.
+
+    An app with **no models** is exempt, because there is nothing for `makemigrations` to skip
+    — `pages` is one, and an empty package in it would only make the next person wonder what
+    it was for. The exemption lapses the moment a model appears, which is when the rule starts
+    mattering again.
     """
 
-    def test_every_local_app_ships_a_migrations_package(self):
+    def test_every_local_app_with_models_ships_a_migrations_package(self):
         from pathlib import Path
 
         from django.apps import apps
@@ -300,6 +305,10 @@ class MigrationPackageTests(TestCase):
             path = Path(config.path)
             if root not in path.parents:
                 continue  # Django's own apps bring their migrations with them
+            # list(), because get_models() is a generator and an empty one is still truthy —
+            # the exemption would otherwise cover every app and the rule would check nothing.
+            if not list(config.get_models()):
+                continue  # nothing to migrate, so nothing to skip
             if not (path / 'migrations' / '__init__.py').exists():
                 missing.append(f'{config.label} ({path.name}/migrations/__init__.py)')
         self.assertEqual(missing, [], 'bare makemigrations would skip these apps')

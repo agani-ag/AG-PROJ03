@@ -17,13 +17,68 @@ view that can say 404, not at `/static/photo-stamp.html`.
 They are public, like the rest of `static/`. Anything carrying a key or spending somebody's
 money does not belong in here.
 """
+import html as htmllib
+import re
+from datetime import datetime, timezone as dt_timezone
 from pathlib import Path
 
 from django.conf import settings
 from django.http import Http404, HttpResponse
+from django.shortcuts import render
+
+from core.views import admin_required
 
 #: The folder this module lives in. The `.html` files sit beside this file.
 HTML_DIR = Path(settings.BASE_DIR) / 'pages'
+
+
+TITLE = re.compile(r'<title[^>]*>(.*?)</title>', re.IGNORECASE | re.DOTALL)
+#: Enough of a file to find its <title> without reading a 40 KB page to list it.
+HEAD_BYTES = 4096
+
+
+def _title_of(path):
+    """The page's own <title>, or '' — so the list reads like the pages do."""
+    try:
+        with path.open(encoding='utf-8', errors='replace') as handle:
+            found = TITLE.search(handle.read(HEAD_BYTES))
+    except OSError:                         # pragma: no cover - unreadable file
+        return ''
+    return htmllib.unescape(' '.join(found.group(1).split()))[:120] if found else ''
+
+
+def listing():
+    """Every `.html` in `pages/`, newest edit first."""
+    if not HTML_DIR.is_dir():
+        return []
+    out = []
+    for path in sorted(HTML_DIR.glob('*.html')):
+        stat = path.stat()
+        out.append({
+            'name': path.stem,
+            'file': path.name,
+            'title': _title_of(path),
+            'size_kb': round(stat.st_size / 1024, 1),
+            'changed': datetime.fromtimestamp(stat.st_mtime, dt_timezone.utc),
+            'path': f'/p/{path.stem}',
+        })
+    return sorted(out, key=lambda r: r['changed'], reverse=True)
+
+
+@admin_required
+def index(request):
+    """System → Pages. A list of what is in the folder, and nothing to press.
+
+    Read-only on purpose: there is no state here to change. The file is the decision, so the
+    console's job is to answer "what is there and what is its address" — which is otherwise
+    an ls and some guessing.
+    """
+    rows = listing()
+    for row in rows:
+        row['link'] = request.build_absolute_uri(row['path'])
+    return render(request, 'pages/index.html',
+                  {'rows': rows, 'folder': HTML_DIR,
+                   'total_kb': round(sum(r['size_kb'] for r in rows), 1)})
 
 
 def show(request, name):

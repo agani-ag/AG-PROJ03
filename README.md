@@ -266,6 +266,10 @@ The file is served **byte for byte** — no template engine, no layout, no rewri
 containing `{{ x }}` gets those characters back. Not in `static/` because these are pages
 rather than assets: a page belongs at a readable address with a view that can answer 404.
 
+**System → Pages** in the console lists whatever is in the folder — each page under its own
+`<title>`, with its address, its size, Open, and a button that copies the full link. It is
+read-only: there is nothing to switch on, because the file being there is the switch.
+
 They are public, like everything in `static/`. Anything carrying a key or spending somebody's
 money does not belong in there — see [docs/pages-plan.md](docs/pages-plan.md), which also
 lists what is still to migrate.

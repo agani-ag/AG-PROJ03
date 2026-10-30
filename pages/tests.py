@@ -11,7 +11,9 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
+from django.contrib.auth.models import User
 from django.test import TestCase
+from django.urls import reverse
 
 from . import views
 
@@ -71,6 +73,59 @@ class PagesTests(TestCase):
         self.assertIn('₹1,200', body)
         self.assertIn('café', body)
         self.assertIn('—', body)
+
+
+class ConsoleListTests(TestCase):
+    """System → Pages. Read-only: it answers "what is there and what is its address"."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self.dir = Path(self._tmp)
+        self.addCleanup(shutil.rmtree, self._tmp, True)
+        patcher = mock.patch.object(views, 'HTML_DIR', self.dir)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        User.objects.create_superuser('admin', 'a@example.com', 'admin-pw')
+        self.client.login(username='admin', password='admin-pw')
+
+    def write(self, name, body=RAW):
+        (self.dir / f'{name}.html').write_text(body, encoding='utf-8')
+
+    def test_it_lists_the_files_with_their_own_titles(self):
+        self.write('photo-stamp', '<!doctype html><title>Photo Stamp</title><p>hi</p>')
+        self.write('plain', '<!doctype html><p>no title here</p>')
+        r = self.client.get(reverse('pages'))
+        self.assertContains(r, 'Photo Stamp')        # the <title>, not the file name
+        self.assertContains(r, 'photo-stamp.html')
+        self.assertContains(r, '/p/photo-stamp')
+        self.assertContains(r, 'plain')              # falls back to the name
+
+    def test_a_title_with_entities_and_newlines_reads_properly(self):
+        self.write('x', '<!doctype html><title>Server,\n  Browser &amp; Sides</title>')
+        self.assertContains(self.client.get(reverse('pages')), 'Server, Browser &amp; Sides')
+
+    def test_each_row_carries_a_full_link_to_copy(self):
+        self.write('photo-stamp')
+        self.assertContains(self.client.get(reverse('pages')),
+                            'data-copy="http://testserver/p/photo-stamp"')
+
+    def test_an_empty_folder_says_so(self):
+        self.assertContains(self.client.get(reverse('pages')), 'Nothing in the folder yet')
+
+    def test_a_folder_that_is_not_there_is_not_an_error(self):
+        shutil.rmtree(self._tmp, True)
+        self.assertEqual(self.client.get(reverse('pages')).status_code, 200)
+
+    def test_only_html_is_listed(self):
+        self.write('real')
+        (self.dir / 'notes.txt').write_text('ignore me', encoding='utf-8')
+        r = self.client.get(reverse('pages'))
+        self.assertContains(r, 'real.html')
+        self.assertNotContains(r, 'notes.txt')
+
+    def test_the_list_needs_an_admin(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('pages')).status_code, 302)
 
 
 class TheRealFolderTests(TestCase):
