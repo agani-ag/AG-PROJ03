@@ -57,6 +57,24 @@ class Module:
     def has_syncup_link(self) -> bool:
         return bool(self.syncup_path)
 
+    @property
+    def syncup_ready(self) -> bool:
+        """True once the module's own pages exist. A link to a page that is not there helps
+        nobody, so the System page will not offer to send one.
+
+        Asked of the subject rather than worked out by `syncup_links`, because a Page row is a
+        link subject too, and "are your pages built" is not a question about a URL name for
+        one of those.
+        """
+        from django.urls import NoReverseMatch, reverse
+        if not self.url_name:
+            return False
+        try:
+            reverse(self.url_name)
+        except NoReverseMatch:
+            return False
+        return True
+
 
 MODULES = [
     Module(

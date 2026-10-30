@@ -15,6 +15,8 @@ urlpatterns = [
     path('hibiscus/', include('hibiscus.urls')),
     path('j6/', include('j6.urls')),
     path('pocket/', include('pocket.urls')),
+    # Not a feature module: standalone HTML files, each at its own short address.
+    path('', include('pages.urls')),
 ]
 
 if settings.DEBUG:

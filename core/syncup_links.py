@@ -16,8 +16,8 @@ import json
 import logging
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 
-from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
 from .models import HubSettings, SyncUpLink
@@ -30,19 +30,71 @@ SEND_TIMEOUT = 5
 PAGE_TIMEOUT = 10         # somebody is watching the page, so give SyncUp longer
 
 
+@dataclass(frozen=True)
+class LinkSubject:
+    """Something that can be a link in SyncUp, when it is not a module.
+
+    Everything below reads the same seven attributes off whatever it is given, so a `Module`
+    from `modules.py` and a `pages.Page` row go through one code path. The `Page` builds one
+    of these; nothing else here knows that the Pages module exists.
+    """
+    key: str
+    title: str
+    syncup_path: str
+    syncup_description: str = ''
+    syncup_icon: str = ''
+    syncup_color: str = ''
+    syncup_token: bool = False
+    ready: bool = True
+
+    @property
+    def has_syncup_link(self) -> bool:
+        return bool(self.syncup_path)
+
+    @property
+    def syncup_ready(self) -> bool:
+        return self.ready
+
+
+def subjects():
+    """Everything that can hold a link: the modules, the pages, and anything left behind.
+
+    Reaching into a module from core, inside a function and guarded, is the convention
+    `views_people._unmerged_counts` already set. A SyncHub without the Pages app still works.
+
+    The third group matters more than it sounds. A page can be deleted, and a module can stop
+    offering a link; either way SyncUp is still showing the one it was sent. Those come back
+    as a subject with no path, which is already the "No longer offered" case the System page
+    knows how to hide — the alternative is a live link in everybody's app with nothing on
+    this side admitting it exists.
+    """
+    out = list(MODULES)
+    try:
+        from pages.models import Page
+    except Exception:                       # pragma: no cover - the app is optional
+        pass
+    else:
+        out += [p.link_subject for p in Page.objects.all()]
+
+    known = {s.key for s in out}
+    for row in SyncUpLink.objects.exclude(module__in=known):
+        out.append(LinkSubject(key=row.module, title=row.module, syncup_path=''))
+    return out
+
+
+def sent_before(subject):
+    """True when SyncUp has this link and has not been told to hide it."""
+    row = SyncUpLink.objects.filter(module=subject.key).first()
+    return bool(row and row.sent_at and not row.hidden)
+
+
 def ref(module):
     return REF_PREFIX + module.key
 
 
 def is_built(module):
-    """True once the module's own pages exist — a link to a page that isn't there helps nobody."""
-    if not module.url_name:
-        return False
-    try:
-        reverse(module.url_name)
-    except NoReverseMatch:
-        return False
-    return True
+    """True once whatever this link points at actually exists."""
+    return module.syncup_ready
 
 
 def details(module, hub=None):
@@ -151,8 +203,9 @@ def hide(module, timeout=SEND_TIMEOUT):
 
 
 def send_all(timeout=SEND_TIMEOUT):
-    """Send every module that has a SyncUp link and whose pages exist. Returns [(module, ok, error)]."""
-    return [(m, *send(m, timeout=timeout)) for m in MODULES if m.has_syncup_link and is_built(m)]
+    """Send everything with a SyncUp link that exists. Returns [(subject, ok, error)]."""
+    return [(m, *send(m, timeout=timeout))
+            for m in subjects() if m.has_syncup_link and is_built(m)]
 
 
 def rows():
@@ -161,7 +214,7 @@ def rows():
     saved = {r.module: r for r in SyncUpLink.objects.all()}
     can_send = not problem(hub)
     out = []
-    for m in MODULES:
+    for m in subjects():
         row = saved.get(m.key)
         if not m.has_syncup_link and row is None:
             continue

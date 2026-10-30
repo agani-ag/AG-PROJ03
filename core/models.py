@@ -113,7 +113,9 @@ class SyncUpLink(models.Model):
     Nothing is sent on its own: the admin presses Send. A module keeps its row when it stops
     offering a link, so the page can still offer to hide it.
     """
-    module = models.CharField(max_length=32, unique=True)
+    # A module's key, or `page-<slug>` for a page added in the console. Wider than a module
+    # key needs, because a slug is somebody's typing rather than a constant in this repo.
+    module = models.CharField(max_length=64, unique=True)
     sent_hash = models.CharField(max_length=64, blank=True)      # of the details last sent
     sent_at = models.DateTimeField(null=True, blank=True)
     hidden = models.BooleanField(default=False)                  # SyncHub asked SyncUp to hide it

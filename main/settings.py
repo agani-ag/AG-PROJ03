@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'hibiscus.apps.HibiscusConfig',
     'j6.apps.J6Config',
     'pocket.apps.PocketConfig',
+    'pages.apps.PagesConfig',
 ]
 
 MIDDLEWARE = [

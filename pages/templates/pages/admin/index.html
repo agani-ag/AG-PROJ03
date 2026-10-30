@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Pages{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Pages</h1>
+        <p class="page-sub">Standalone HTML, served at <code>/p/&lt;name&gt;</code> · {{ live }} live</p>
+    </div>
+</div>
+
+{% if spare %}
+<div class="alert" style="margin-top:14px">{% icon "folder-open" %}
+    <div class="alert-body"><b>{{ spare|length }} file{{ spare|pluralize }} here with no page set up</b>
+        {% for slug in spare %}<a href="{% url 'page_new' %}?file={{ slug }}">{{ slug }}.html</a>{% if not forloop.last %}, {% endif %}{% endfor %}.
+        Nothing is served until one is.</div></div>
+{% endif %}
+
+{% if missing %}
+<div class="alert alert-warning" style="margin-top:14px">{% icon "circle-alert" %}
+    <div class="alert-body"><b>{{ missing }} page{{ missing|pluralize }} point at a file that is not here</b>
+        The row survived a deploy that the file did not. Each one answers 404 until the file is
+        pulled, or the row is deleted.</div></div>
+{% endif %}
+
+<div class="stats">
+    <div class="stat"><span class="stat-label">{% icon "code" %}Set up</span>
+        <span class="stat-value">{{ rows|length }}</span>
+        <span class="stat-meta">{{ live }} switched on and present</span></div>
+    <div class="stat"><span class="stat-label">{% icon "folder" %}Files waiting</span>
+        <span class="stat-value">{{ spare|length }}</span>
+        <span class="stat-meta">in pages/html/, not set up yet</span></div>
+    <div class="stat"><span class="stat-label">{% icon "smartphone" %}In the SyncUp list</span>
+        <span class="stat-value">{{ in_syncup }}</span>
+        <span class="stat-meta">sent from System → Settings</span></div>
+</div>
+
+<div class="card" style="margin-top:16px" data-table>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Page</th><th>Address</th><th>File</th><th>Opened</th>
+                <th>Switches</th><th></th></tr></thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="t-primary" data-label="Page"><b>{{ row.page.title }}</b>
+                        {% if not row.page.is_enabled %}<span class="badge">off</span>{% endif %}
+                        {% if not row.file %}<span class="badge badge-danger">file missing</span>{% endif %}
+                        {% if row.page.description %}<div class="small faint">{{ row.page.description }}</div>{% endif %}</td>
+                    <td data-label="Address">
+                        {% if row.page.is_ready %}<a href="{{ row.page.path }}"><code class="small">{{ row.page.path }}</code></a>
+                        {% else %}<code class="small muted">{{ row.page.path }}</code>{% endif %}</td>
+                    <td data-label="File"><code class="small">{{ row.page.slug }}.html</code>
+                        {% if row.file %}<div class="small faint">{{ row.page.size_kb }} KB</div>{% endif %}</td>
+                    <td data-label="Opened">{{ row.page.last_opened_at|ago }}
+                        <div class="small faint">{{ row.page.open_count }} time{{ row.page.open_count|pluralize }}</div></td>
+                    <td data-label="Switches">
+                        <div class="row" style="gap:6px;flex-wrap:wrap">
+                        <form method="POST" action="{% url 'page_toggle' row.page.pk 'enabled' %}">{% csrf_token %}
+                            <button class="btn btn-ghost btn-sm" type="submit">{% if row.page.is_enabled %}Switch off{% else %}Switch on{% endif %}</button></form>
+                        <form method="POST" action="{% url 'page_toggle' row.page.pk 'syncup' %}">{% csrf_token %}
+                            <button class="btn btn-ghost btn-sm" type="submit">{% if row.page.in_syncup %}Off the SyncUp list{% else %}Add to SyncUp{% endif %}</button></form>
+                        </div>
+                        {% if row.page.sandboxed %}<div class="small faint">sandboxed</div>{% endif %}</td>
+                    <td data-label=""><a class="btn btn-ghost btn-sm" href="{% url 'page_edit' row.page.pk %}">Open</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6"><div class="empty">{% icon "code" %}<b>No pages yet</b>
+                    <span>Drop a .html into <code>pages/html/</code>, pull, Reload — it appears
+                        above as a file to set up.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-foot bordered">
+        <span class="small muted">A page is a file in the repository and a row here. The file
+            arrives with a <code>git pull</code>; this page decides whether anybody can open
+            it, and whether it shows up in the SyncUp app.</span>
+    </div>
+</div>
+{% endblock %}
