@@ -529,14 +529,66 @@
       saveBlob(b);
     }, 'image/jpeg', 0.92);
   };
+  // ---- sharing, in a browser and inside the SyncUp app ----
+  // Android's WebView does not implement the Web Share API at all, so inside the SyncUp app
+  // `navigator.share` is simply undefined and no amount of page code conjures a share sheet.
+  // The app has to hand one over. `AndroidShareBridge` is that contract, shaped like the
+  // AndroidFileBridge the app already uses for blob downloads — begin / chunk / end / fail,
+  // base64 in 4-char-aligned pieces because a whole JPEG will not cross the bridge in one
+  // string. Until the app ships it this is simply absent, and the download below is what
+  // happens instead.
+  function bridge(){
+    var B = window.AndroidShareBridge;
+    return (B && typeof B.begin === 'function') ? B : null;
+  }
+
+  function base64Of(blob){
+    return new Promise(function(resolve, reject){
+      var r = new FileReader();
+      r.onload  = function(){ var s = String(r.result); resolve(s.slice(s.indexOf(',') + 1)); };
+      r.onerror = function(){ reject(r.error); };
+      r.readAsDataURL(blob);
+    });
+  }
+
+  function shareViaApp(B, b, name){
+    var id = B.begin(name, 'image/jpeg');
+    if(!id){ return Promise.resolve(false); }
+    return base64Of(b).then(function(data){
+      var STEP = 65532;                     // 4 base64 chars = 3 bytes, so a multiple of 4
+      for(var i = 0; i < data.length; i += STEP){ B.chunk(id, data.slice(i, i + STEP)); }
+      B.end(id);
+      return true;
+    }).catch(function(){
+      if(B.fail){ B.fail(id); }
+      return false;
+    });
+  }
+
   document.getElementById('btnShare').onclick = function(){
     if(!img){ toast('Add a photo first.'); return; }
-    if(!navigator.share){ toast('This browser has no share sheet — downloading instead.');
-                          document.getElementById('btnDownload').click(); return; }
     render();
     canvas.toBlob(function(b){
       if(!b){ toast('Could not prepare the image.'); return; }
-      var file = new File([b], filename(), {type:'image/jpeg'});
+      var name = filename();
+      var B = bridge();
+
+      if(B){
+        shareViaApp(B, b, name).then(function(ok){
+          if(!ok){ toast('The app could not take the photo — downloading instead.'); saveBlob(b); }
+        });
+        return;
+      }
+
+      if(!navigator.share){
+        // The SyncUp app today, and any other WebView. Saying "not supported" and stopping
+        // would leave them with nothing, so the photo still arrives.
+        toast('No share sheet here — saved to your downloads instead.');
+        saveBlob(b);
+        return;
+      }
+
+      var file = new File([b], name, {type:'image/jpeg'});
       // canShare is the only honest way to ask whether *files* can go: a browser can have
       // navigator.share for links and refuse a file.
       if(navigator.canShare && !navigator.canShare({files:[file]})){
@@ -545,13 +597,13 @@
         return;
       }
       navigator.share({files:[file], title:'Stamped photo'}).catch(function(err){
-        var name = err && err.name;
-        if(name === 'AbortError') return;        // they closed the sheet; nothing went wrong
+        var why = err && err.name;
+        if(why === 'AbortError') return;        // they closed the sheet; nothing went wrong
         // Everything else used to be swallowed by an empty catch, so a failed share looked
         // exactly like a dead button. Say what happened, and still hand them the photo.
-        toast(name === 'NotAllowedError'
+        toast(why === 'NotAllowedError'
               ? 'The share sheet was blocked — downloading instead.'
-              : 'Share did not work (' + (name || 'unknown') + ') — downloading instead.');
+              : 'Share did not work (' + (why || 'unknown') + ') — downloading instead.');
         saveBlob(b);
       });
     }, 'image/jpeg', 0.92);
