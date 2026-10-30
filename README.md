@@ -250,6 +250,26 @@ never delegates who somebody is: the ways in are a password, or a link the admin
 What SyncUp still does for this site is deliver notifications and carry the tool links —
 `syncup_notify_key` and `syncup_links_key` — and give a page `window.SyncUp.token`.
 
+## Standalone pages
+
+Single-file HTML tools — a photo stamper, an explainer, a gallery — live in `pages/`:
+
+```
+pages/photo-stamp.html   →   /p/photo-stamp
+```
+
+Drop a `.html` file in, commit, pull. No model, no admin screen, no switch: **the file being
+in the repository is the decision**, the same way a line of code is. One view, one route, and
+the file is read at request time, so a `git pull` puts a page live without a Reload.
+
+The file is served **byte for byte** — no template engine, no layout, no rewriting, so a page
+containing `{{ x }}` gets those characters back. Not in `static/` because these are pages
+rather than assets: a page belongs at a readable address with a view that can answer 404.
+
+They are public, like everything in `static/`. Anything carrying a key or spending somebody's
+money does not belong in there — see [docs/pages-plan.md](docs/pages-plan.md), which also
+lists what is still to migrate.
+
 ## Modules
 
 | Module | What it is |
