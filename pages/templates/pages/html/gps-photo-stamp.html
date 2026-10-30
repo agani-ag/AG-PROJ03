@@ -138,6 +138,24 @@
          opacity:0; pointer-events:none; transition:opacity .2s, transform .2s}
   .toast.show{opacity:1; transform:translate(-50%,0)}
 
+  /* A file input has to stay rendered to be clickable and to honour `capture` on some
+     Android browsers — display:none is what makes "Take photo" do nothing there. Off-screen
+     instead of hidden. */
+  .offscreen{position:absolute; width:1px; height:1px; opacity:0; pointer-events:none;
+             overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%)}
+
+  /* live camera, for when the browser will give us one */
+  .shot{position:fixed; inset:0; z-index:2000; background:#000; display:flex; flex-direction:column}
+  .shot video{flex:1 1 auto; width:100%; min-height:0; object-fit:contain; background:#000}
+  .shot-bar{flex:none; display:flex; align-items:center; justify-content:space-between; gap:16px;
+            padding:18px 22px calc(18px + env(safe-area-inset-bottom,0px))}
+  .shot-bar button{font-family:var(--font); font-size:15px; font-weight:600; color:#fff;
+                   background:none; border:0; cursor:pointer; min-height:48px; padding:0 8px}
+  .shot-go{flex:none; width:68px; height:68px; border-radius:50% !important; padding:0 !important;
+           background:#fff !important; border:4px solid rgba(255,255,255,.35) !important;
+           box-shadow:inset 0 0 0 3px #000}
+  .shot-go:active{transform:scale(.94)}
+
   @media (prefers-reduced-motion:reduce){ .btn, input, .toast{transition:none} }
 </style>
 </head>
@@ -177,8 +195,8 @@
         Gallery
       </button>
     </div>
-    <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
-    <input type="file" id="filePick" accept="image/*" hidden>
+    <input type="file" id="fileCamera" accept="image/*" capture="environment" class="offscreen" tabindex="-1" aria-hidden="true">
+    <input type="file" id="filePick" accept="image/*" class="offscreen" tabindex="-1" aria-hidden="true">
   </section>
 
   <!-- 2. stamp details -->
@@ -236,6 +254,16 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7.5 7.5 4.5-4.5 4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
       Share
     </button>
+  </div>
+</div>
+
+<!-- live camera; shown only once a stream is actually running -->
+<div class="shot" id="shot" hidden>
+  <video id="shotVideo" playsinline autoplay muted></video>
+  <div class="shot-bar">
+    <button id="shotClose" type="button">Cancel</button>
+    <button class="shot-go" id="shotGo" type="button" aria-label="Take the photo"></button>
+    <button id="shotFlip" type="button">Flip</button>
   </div>
 </div>
 
@@ -297,12 +325,15 @@
                 .filter(function(s){ return s && s.length; });
     if(!lines.length) return;
 
-    // sized & placed to match the classic GPS-camera stamp: regular weight,
-    // hugging the bottom-right edge
-    var fs  = Math.max(16, Math.round(W/29.5));
-    var padX = Math.round(fs*0.22);
-    var padY = Math.round(fs*0.32);
-    var lh  = Math.round(fs*1.32);
+    // Bigger than the classic GPS-camera stamp, and held well away from the edge: a stamp
+    // that hugs the corner is the first thing lost to a crop, a rounded phone frame or a
+    // print margin. The inset is a share of the photo's shorter side, so it stays the same
+    // visual distance whether the photo is 1080px or 4000px wide.
+    var fs    = Math.max(20, Math.round(W/22));
+    var inset = Math.round(Math.min(W, H) * 0.038);
+    var padX  = inset;
+    var padY  = inset + Math.round(fs*0.22);   // room under the baseline for descenders
+    var lh    = Math.round(fs*1.32);
 
     ctx.textAlign = 'right';
     ctx.textBaseline = 'alphabetic';
@@ -343,11 +374,77 @@
     im.src = URL.createObjectURL(file);
   }
 
-  // ---- wiring: capture / pick ----
-  document.getElementById('btnCamera').onclick = function(){ document.getElementById('fileCamera').click(); };
+  // ---- camera ----
+  // `<input capture>` asks the browser to open the camera, and plenty of them do not: an
+  // Android WebView only honours it if the host app reads isCaptureEnabled(), and several
+  // browsers ignore it outright and show the gallery. So we open the camera ourselves when
+  // the browser will give us one, and keep the input as the fallback.
+  var shot = document.getElementById('shot');
+  var shotVideo = document.getElementById('shotVideo');
+  var fileCamera = document.getElementById('fileCamera');
+  var stream = null, facing = 'environment';
+
+  function cameraPossible(){
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  }
+
+  function openCamera(){
+    if(!cameraPossible()){ fileCamera.click(); return; }
+    navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing}}, audio:false})
+      .then(function(s){
+        stream = s;
+        shotVideo.srcObject = s;
+        shot.hidden = false;
+        var playing = shotVideo.play();
+        if(playing && playing.catch){ playing.catch(function(){}); }
+      })
+      .catch(function(err){
+        // Refused, in use, or no camera. The picker still gets them a photo, so say what
+        // happened once and then get out of the way.
+        var why = err && err.name === 'NotAllowedError'
+          ? 'Camera permission was refused — opening the picker instead.'
+          : 'No camera available here — opening the picker instead.';
+        toast(why);
+        fileCamera.click();
+      });
+  }
+
+  function closeCamera(){
+    if(stream){ stream.getTracks().forEach(function(t){ t.stop(); }); stream = null; }
+    shotVideo.srcObject = null;
+    shot.hidden = true;
+  }
+
+  function snap(){
+    var vw = shotVideo.videoWidth, vh = shotVideo.videoHeight;
+    if(!vw || !vh){ toast('The camera is still starting — try again.'); return; }
+    var frame = document.createElement('canvas');
+    frame.width = vw; frame.height = vh;
+    frame.getContext('2d').drawImage(shotVideo, 0, 0, vw, vh);
+    img = frame;                      // a canvas draws like an image and has width/height
+    closeCamera();
+    canvas.hidden = false; placeholder.style.display = 'none';
+    render();
+  }
+
+  document.getElementById('btnCamera').onclick = openCamera;
+  document.getElementById('shotGo').onclick = snap;
+  document.getElementById('shotClose').onclick = closeCamera;
+  document.getElementById('shotFlip').onclick = function(){
+    facing = (facing === 'environment') ? 'user' : 'environment';
+    closeCamera();
+    openCamera();
+  };
+  // Backing out of a full-screen camera with the back button should close it, not leave the
+  // stream running behind the page.
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && !shot.hidden){ closeCamera(); }
+  });
+
+  // ---- wiring: pick ----
   document.getElementById('btnPick').onclick   = function(){ document.getElementById('filePick').click(); };
-  document.getElementById('fileCamera').onchange = function(e){ loadFile(e.target.files[0]); };
-  document.getElementById('filePick').onchange   = function(e){ loadFile(e.target.files[0]); };
+  fileCamera.onchange = function(e){ loadFile(e.target.files[0]); e.target.value = ''; };
+  document.getElementById('filePick').onchange = function(e){ loadFile(e.target.files[0]); e.target.value = ''; };
 
   // ---- editable fields -> live re-render ----
   dtInput.value = toLocalInput(new Date());
@@ -417,26 +514,46 @@
     return 'stamped-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+
            pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())+'.jpg';
   }
+  function saveBlob(b){
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = filename();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1500);
+  }
+
   document.getElementById('btnDownload').onclick = function(){
     if(!img){ toast('Add a photo first.'); return; }
     render();
     canvas.toBlob(function(b){
-      var a=document.createElement('a');
-      a.href=URL.createObjectURL(b); a.download=filename();
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1500);
+      if(!b){ toast('Could not prepare the image.'); return; }
+      saveBlob(b);
     }, 'image/jpeg', 0.92);
   };
   document.getElementById('btnShare').onclick = function(){
     if(!img){ toast('Add a photo first.'); return; }
+    if(!navigator.share){ toast('This browser has no share sheet — downloading instead.');
+                          document.getElementById('btnDownload').click(); return; }
     render();
     canvas.toBlob(function(b){
+      if(!b){ toast('Could not prepare the image.'); return; }
       var file = new File([b], filename(), {type:'image/jpeg'});
-      if(navigator.canShare && navigator.canShare({files:[file]})){
-        navigator.share({files:[file], title:'Stamped photo'}).catch(function(){});
-      } else {
-        toast('Sharing not supported here — use Download.');
+      // canShare is the only honest way to ask whether *files* can go: a browser can have
+      // navigator.share for links and refuse a file.
+      if(navigator.canShare && !navigator.canShare({files:[file]})){
+        toast('This browser cannot share a file — downloading instead.');
+        saveBlob(b);
+        return;
       }
+      navigator.share({files:[file], title:'Stamped photo'}).catch(function(err){
+        var name = err && err.name;
+        if(name === 'AbortError') return;        // they closed the sheet; nothing went wrong
+        // Everything else used to be swallowed by an empty catch, so a failed share looked
+        // exactly like a dead button. Say what happened, and still hand them the photo.
+        toast(name === 'NotAllowedError'
+              ? 'The share sheet was blocked — downloading instead.'
+              : 'Share did not work (' + (name || 'unknown') + ') — downloading instead.');
+        saveBlob(b);
+      });
     }, 'image/jpeg', 0.92);
   };
 })();
