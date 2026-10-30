@@ -1,4 +1,4 @@
-"""Standalone pages: a file in `pages/`, served at `/p/<name>`.
+"""Standalone pages: a file in `pages/templates/pages/html/`, served at `/p/<name>`.
 
 Small feature, two things worth proving. That nothing touches the file on its way out — a
 page that is quietly templated has stopped being what was committed, and it stops in a way
@@ -33,7 +33,10 @@ class PagesTests(TestCase):
         self.addCleanup(patcher.stop)
 
     def write(self, name, body=RAW):
-        (self.dir / f'{name}.html').write_text(body, encoding='utf-8')
+        # newline='' so the bytes on disk are exactly these bytes. The default rewrites line
+        # endings on Windows, and then a byte-for-byte test is testing the platform instead
+        # of the view.
+        (self.dir / f'{name}.html').write_text(body, encoding='utf-8', newline='')
 
     def test_the_file_is_served_exactly_as_committed(self):
         """No template engine anywhere near it: the braces come out as braces."""
@@ -89,7 +92,10 @@ class ConsoleListTests(TestCase):
         self.client.login(username='admin', password='admin-pw')
 
     def write(self, name, body=RAW):
-        (self.dir / f'{name}.html').write_text(body, encoding='utf-8')
+        # newline='' so the bytes on disk are exactly these bytes. The default rewrites line
+        # endings on Windows, and then a byte-for-byte test is testing the platform instead
+        # of the view.
+        (self.dir / f'{name}.html').write_text(body, encoding='utf-8', newline='')
 
     def test_it_lists_the_files_with_their_own_titles(self):
         self.write('photo-stamp', '<!doctype html><title>Photo Stamp</title><p>hi</p>')
@@ -129,12 +135,26 @@ class ConsoleListTests(TestCase):
 
 
 class TheRealFolderTests(TestCase):
-    """The one page actually in the repository, so a bad move here fails a test."""
+    """The pages actually in the repository, so moving the folder fails a test.
 
-    def test_the_example_page_is_served(self):
-        shipped = Path(views.HTML_DIR) / 'client-vs-server.html'
-        if not shipped.is_file():           # pragma: no cover - it was deliberately removed
-            self.skipTest('client-vs-server.html is no longer in pages/')
-        r = self.client.get('/p/client-vs-server')
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.content, shipped.read_bytes())
+    Deliberately not a list of names: whatever is in there should be served, and a test that
+    has to be edited every time a page is added is a test people start editing without
+    reading.
+    """
+
+    def test_every_page_in_the_folder_is_served_byte_for_byte(self):
+        shipped = sorted(Path(views.HTML_DIR).glob('*.html'))
+        self.assertTrue(shipped, f'nothing in {views.HTML_DIR} — has the folder moved?')
+        for path in shipped:
+            with self.subTest(page=path.name):
+                r = self.client.get(f'/p/{path.stem}')
+                self.assertEqual(r.status_code, 200)
+                self.assertEqual(r.content, path.read_bytes())
+
+    def test_the_console_lists_them(self):
+        shipped = sorted(Path(views.HTML_DIR).glob('*.html'))
+        User.objects.create_superuser('admin', 'a@example.com', 'admin-pw')
+        self.client.login(username='admin', password='admin-pw')
+        body = self.client.get(reverse('pages')).content.decode()
+        for path in shipped:
+            self.assertIn(path.name, body)

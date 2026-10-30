@@ -252,10 +252,10 @@ What SyncUp still does for this site is deliver notifications and carry the tool
 
 ## Standalone pages
 
-Single-file HTML tools — a photo stamper, an explainer, a gallery — live in `pages/`:
+Single-file HTML tools — a photo stamper, an explainer, a gallery — live in one folder:
 
 ```
-pages/photo-stamp.html   →   /p/photo-stamp
+pages/templates/pages/html/gps-photo-stamp.html   →   /p/gps-photo-stamp
 ```
 
 Drop a `.html` file in, commit, pull. No model, no admin screen, no switch: **the file being

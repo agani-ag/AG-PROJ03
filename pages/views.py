@@ -1,8 +1,8 @@
 """Standalone HTML, served from this folder.
 
-Drop a `.html` file into `pages/`, commit, pull, Reload — it is live at `/p/<name>`. There is
-no model, no admin screen and nothing to switch on: the file being in the repository *is* the
-decision, the same way a line of code is.
+Drop a `.html` file into `pages/templates/pages/html/`, commit, pull — it is live at
+`/p/<name>`. There is no model, no admin screen and nothing to switch on: the file being in
+the repository *is* the decision, the same way a line of code is.
 
 **The file is served byte for byte.** No template engine, no layout, no rewriting. A page
 containing `{{ x }}` or `{% y %}` gets those characters back. That is the whole point of a
@@ -28,8 +28,10 @@ from django.shortcuts import render
 
 from core.views import admin_required
 
-#: The folder this module lives in. The `.html` files sit beside this file.
-HTML_DIR = Path(settings.BASE_DIR) / 'pages'
+#: Where the pages live. Under `templates/` by choice, next to the console's own template —
+#: Django's loader never touches them, because nothing here renders one by name. They are
+#: read off disk and sent as they are.
+HTML_DIR = Path(settings.BASE_DIR) / 'pages' / 'templates' / 'pages' / 'html'
 
 
 TITLE = re.compile(r'<title[^>]*>(.*?)</title>', re.IGNORECASE | re.DOTALL)
@@ -82,11 +84,14 @@ def index(request):
 
 
 def show(request, name):
-    """`/p/<name>` → `pages/<name>.html`, exactly as committed."""
+    """`/p/<name>` → `pages/templates/pages/html/<name>.html`, exactly as committed."""
     found = (HTML_DIR / f'{name}.html').resolve()
     # Proved rather than trusted: the URL pattern already forbids a dot or a slash, but this
     # is the one place a path is built from something somebody typed.
     if found.parent != HTML_DIR.resolve() or not found.is_file():
-        raise Http404(f'There is no pages/{name}.html')
-    return HttpResponse(found.read_text(encoding='utf-8'),
-                        content_type='text/html; charset=utf-8')
+        raise Http404(f'There is no pages/templates/pages/html/{name}.html')
+    # Bytes, not text. Reading it as text would decode and re-encode it, and Python's
+    # universal newlines would quietly turn a CRLF file into an LF response — which is how
+    # "served exactly as committed" stops being true on a Windows checkout without anybody
+    # noticing. Whatever is in the file is what goes out.
+    return HttpResponse(found.read_bytes(), content_type='text/html; charset=utf-8')

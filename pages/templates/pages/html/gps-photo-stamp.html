@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>GPS Photo Stamp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+<style>
+  /* ---------- Monochrome: white surfaces, black actions, hairline structure ---------- */
+  :root{
+    --black:#0A0A0A; --ink:#171717; --muted:#737373; --faint:#A3A3A3;
+    --line:#E5E5E5; --line-2:#D4D4D4; --page:#F5F5F5; --white:#FFFFFF;
+    --radius:16px; --radius-sm:11px;
+    --font:"Geist",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"Geist Mono",ui-monospace,"SF Mono",Consolas,monospace;
+    --bar-h:73px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  [hidden]{display:none !important}          /* empty canvas truly hides until a photo loads */
+  html,body{margin:0}
+  body{
+    background:var(--page); color:var(--ink); font-family:var(--font);
+    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+    padding-bottom:calc(var(--bar-h) + 20px + env(safe-area-inset-bottom,0px));
+  }
+  .wrap{max-width:620px; margin:0 auto; padding:0 16px}
+  svg{display:block}
+
+  /* top bar */
+  .topbar{display:flex; align-items:center; gap:12px; padding:20px 0 4px}
+  .mark{flex:none; width:42px; height:42px; border-radius:12px; background:var(--black); color:#fff;
+        display:grid; place-items:center}
+  .mark svg{width:22px; height:22px}
+  .brand h1{margin:0; font-size:1.18rem; font-weight:700; letter-spacing:-.02em; line-height:1.2}
+  .brand p{margin:1px 0 0; font-size:.84rem; color:var(--muted)}
+
+  /* step cards */
+  .card{background:var(--white); border:1px solid var(--line); border-radius:var(--radius);
+        padding:18px 16px; margin-top:14px}
+  .card-head{display:flex; align-items:flex-start; gap:12px; margin-bottom:16px}
+  .step{flex:none; width:24px; height:24px; border-radius:50%; background:var(--black); color:#fff;
+        font-family:var(--mono); font-size:12px; font-weight:500; display:grid; place-items:center; margin-top:1px}
+  .card-head h2{margin:0; font-size:1rem; font-weight:600; letter-spacing:-.01em; line-height:1.4}
+  .card-head p{margin:2px 0 0; font-size:.85rem; color:var(--muted)}
+
+  /* photo stage */
+  .stage{position:relative; background:var(--black); border-radius:12px; overflow:hidden; min-height:220px;
+         display:flex; align-items:center; justify-content:center}
+  .stage canvas{max-width:100%; height:auto; display:block}
+  .empty{text-align:center; color:#fff; padding:36px 20px}
+  .empty .ring{width:58px; height:58px; border-radius:50%; border:1px solid rgba(255,255,255,.22);
+               display:grid; place-items:center; margin:0 auto 14px}
+  .empty .ring svg{width:24px; height:24px}
+  .empty strong{display:block; font-weight:600; font-size:.98rem; letter-spacing:-.01em}
+  .empty span{display:block; color:var(--faint); font-size:.85rem; margin-top:3px}
+
+  /* buttons */
+  .row{display:flex; gap:10px}
+  .row>*{flex:1 1 0; min-width:0}
+  .btn{
+    font-family:var(--font); font-size:15px; font-weight:600; letter-spacing:-.005em;
+    min-height:48px; padding:0 14px; border-radius:var(--radius-sm); cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    border:1px solid var(--black); background:var(--black); color:#fff;
+    transition:background-color .15s, border-color .15s, transform .08s;
+  }
+  .btn svg{width:18px; height:18px; flex:none}
+  .btn:active{transform:scale(.98)}
+  .btn:focus-visible{outline:2px solid var(--black); outline-offset:2px}
+  .btn:disabled{opacity:.45; cursor:default}
+  .btn-outline{background:var(--white); color:var(--ink); border-color:var(--line-2)}
+  @media (hover:hover){
+    .btn:hover{background:#262626; border-color:#262626}
+    .btn-outline:hover{background:var(--page); border-color:var(--ink)}
+  }
+  .btn-block{width:100%}
+  .mt{margin-top:12px}
+
+  /* fields */
+  .fld{display:block; margin-top:14px}
+  .card-head + .fld{margin-top:0}
+  .fld>span{display:block; font-size:.8rem; font-weight:500; color:var(--muted); margin-bottom:6px}
+  .fld-head{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px}
+  .fld-head label{font-size:.8rem; font-weight:500; color:var(--muted)}
+  .link{display:inline-flex; align-items:center; gap:5px; border:0; background:none; cursor:pointer;
+        font-family:var(--font); font-size:.82rem; font-weight:600; color:var(--ink);
+        min-height:32px; padding:4px 8px; margin-right:-8px; border-radius:8px}
+  .link svg{width:15px; height:15px}
+  .link:active{background:var(--page)}
+  .link:focus-visible{outline:2px solid var(--black); outline-offset:1px}
+  @media (hover:hover){ .link:hover{background:var(--page)} }
+  input[type=text], input[type=datetime-local]{
+    width:100%; min-width:0; max-width:100%;
+    font-family:var(--font); font-size:16px;     /* >=16px: no iOS zoom on focus */
+    color:var(--ink); background:var(--white); border:1px solid var(--line-2);
+    border-radius:var(--radius-sm); min-height:48px; padding:0 14px;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input::placeholder{color:var(--faint)}
+  input:focus{outline:none; border-color:var(--black); box-shadow:0 0 0 3px rgba(10,10,10,.08)}
+  #dt{font-family:var(--mono)}
+
+  /* live stamp preview */
+  .preview{margin-top:18px}
+  .preview>span{display:block; font-size:.8rem; font-weight:500; color:var(--muted); margin-bottom:6px}
+  .stampbox{background:var(--black); color:#fff; border-radius:var(--radius-sm); padding:14px 16px;
+            text-align:right; font-size:.95rem; line-height:1.5; min-height:54px}
+  .stampbox .ph{color:var(--muted)}
+
+  /* map (grayscale to match) */
+  #map{position:relative; z-index:0; height:260px; margin-top:12px; border:1px solid var(--line); border-radius:12px}
+  .leaflet-container{font-family:var(--font); background:#EDEDED}
+  .leaflet-tile-pane{filter:grayscale(1) contrast(1.05)}
+  .leaflet-marker-icon{filter:grayscale(1) brightness(.35)}
+  .leaflet-bar{border:1px solid var(--line-2) !important; border-radius:9px !important; box-shadow:none !important; overflow:hidden}
+  .leaflet-bar a{color:var(--ink) !important}
+  .help{font-size:.85rem; color:var(--muted); margin:10px 0 0}
+
+  .privacy{display:flex; align-items:center; justify-content:center; gap:6px;
+           font-size:.8rem; color:var(--muted); margin:18px 0 0}
+  .privacy svg{width:14px; height:14px}
+
+  /* fixed bottom action bar */
+  .bar{position:fixed; left:0; right:0; bottom:0; z-index:500;
+       background:rgba(255,255,255,.92); -webkit-backdrop-filter:saturate(1.2) blur(12px); backdrop-filter:saturate(1.2) blur(12px);
+       border-top:1px solid var(--line); padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px))}
+  .bar .row{max-width:588px; margin:0 auto}
+
+  /* toast */
+  .toast{position:fixed; left:50%; bottom:calc(var(--bar-h) + 14px + env(safe-area-inset-bottom,0px));
+         transform:translate(-50%,6px); z-index:1000; max-width:calc(100vw - 32px); text-align:center;
+         background:var(--black); color:#fff; font-size:.86rem; font-weight:500;
+         padding:10px 16px; border-radius:999px; box-shadow:0 8px 24px rgba(0,0,0,.18);
+         opacity:0; pointer-events:none; transition:opacity .2s, transform .2s}
+  .toast.show{opacity:1; transform:translate(-50%,0)}
+
+  @media (prefers-reduced-motion:reduce){ .btn, input, .toast{transition:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.6-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.4"/></svg>
+    </div>
+    <div class="brand">
+      <h1>GPS Photo Stamp</h1>
+      <p>Date &amp; location watermark for your photos</p>
+    </div>
+  </header>
+
+  <!-- 1. photo -->
+  <section class="card">
+    <div class="card-head">
+      <span class="step">1</span>
+      <div><h2>Add a photo</h2><p>Take a new photo or choose one from your gallery.</p></div>
+    </div>
+    <div class="stage" id="stage">
+      <div class="empty" id="placeholder">
+        <div class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg></div>
+        <strong>No photo selected</strong>
+        <span>Your stamped preview appears here</span>
+      </div>
+      <canvas id="canvas" hidden></canvas>
+    </div>
+    <div class="row mt">
+      <button class="btn" id="btnCamera" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        Take photo
+      </button>
+      <button class="btn btn-outline" id="btnPick" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="9" cy="9" r="1.8"/><path d="m21 15-3.6-3.6a1.8 1.8 0 0 0-2.5 0L5.5 21"/></svg>
+        Gallery
+      </button>
+    </div>
+    <input type="file" id="fileCamera" accept="image/*" capture="environment" hidden>
+    <input type="file" id="filePick" accept="image/*" hidden>
+  </section>
+
+  <!-- 2. stamp details -->
+  <section class="card">
+    <div class="card-head">
+      <span class="step">2</span>
+      <div><h2>Stamp details</h2><p>Printed in the bottom-right corner. Edit anything.</p></div>
+    </div>
+    <div class="fld">
+      <div class="fld-head">
+        <label for="dt">Date &amp; time</label>
+        <button class="link" id="btnNow" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          Set to now
+        </button>
+      </div>
+      <input type="datetime-local" id="dt" step="1">
+    </div>
+    <label class="fld"><span>Place / area</span><input type="text" id="area" placeholder="e.g. Mathur" autocomplete="off" value="Tirupathur"></label>
+    <label class="fld"><span>State / region</span><input type="text" id="state" placeholder="e.g. Tamil Nadu" autocomplete="off" value="Tamil Nadu"></label>
+    <div class="preview">
+      <span>Stamp preview</span>
+      <div class="stampbox" id="stampPreview"></div>
+    </div>
+  </section>
+
+  <!-- 3. location -->
+  <section class="card">
+    <div class="card-head">
+      <span class="step">3</span>
+      <div><h2>Location</h2><p>Use your current position or pick a spot on the map.</p></div>
+    </div>
+    <button class="btn btn-outline btn-block" id="btnGps" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+      Use current location
+    </button>
+    <div id="map"></div>
+    <p class="help">Tap the map or drag the pin &mdash; place and state fill in automatically.</p>
+  </section>
+
+  <p class="privacy">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+    Photos are processed on your device & supported by <b>SyncHub</b>
+  </p>
+</div>
+
+<!-- fixed action bar -->
+<div class="bar">
+  <div class="row">
+    <button class="btn" id="btnDownload" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      Download
+    </button>
+    <button class="btn btn-outline" id="btnShare" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7.5 7.5 4.5-4.5 4.5 4.5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
+      Share
+    </button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function(){
+  "use strict";
+  var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sept","Oct","Nov","Dec"];
+  var img = null;                       // ImageBitmap or HTMLImageElement
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+  var placeholder = document.getElementById('placeholder');
+  var dtInput = document.getElementById('dt');
+  var areaInput = document.getElementById('area');
+  var stateInput = document.getElementById('state');
+  var stampPreview = document.getElementById('stampPreview');
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+
+  function toLocalInput(d){
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+
+           pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+  }
+  function dateTimeString(){
+    if(!dtInput.value) return '';
+    var d = new Date(dtInput.value);
+    if(isNaN(d)) return '';
+    var h = d.getHours(), ap = h>=12 ? 'pm':'am';
+    h = h%12; if(h===0) h=12;
+    return pad(d.getDate())+'-'+MONTHS[d.getMonth()]+'-'+d.getFullYear()+' '+
+           pad(h)+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+' '+ap;
+  }
+
+  function toast(msg){
+    var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+    clearTimeout(toast._t); toast._t=setTimeout(function(){t.classList.remove('show');},2800);
+  }
+
+  // ---- live text preview of exactly what will be stamped ----
+  function updatePreview(){
+    var lines = [dateTimeString(), areaInput.value.trim(), stateInput.value.trim()]
+                .filter(function(s){ return s && s.length; });
+    stampPreview.textContent = '';
+    if(!lines.length){ var p=document.createElement('div'); p.className='ph'; p.textContent='Nothing to stamp yet'; stampPreview.appendChild(p); return; }
+    lines.forEach(function(t){ var d=document.createElement('div'); d.textContent=t; stampPreview.appendChild(d); });
+  }
+
+  // ---- draw image + bottom-right watermark at full resolution ----
+  function render(){
+    updatePreview();
+    if(!img) return;
+    var W = img.width, H = img.height;
+    canvas.width = W; canvas.height = H;
+    ctx.drawImage(img, 0, 0, W, H);
+
+    var lines = [dateTimeString(), areaInput.value.trim(), stateInput.value.trim()]
+                .filter(function(s){ return s && s.length; });
+    if(!lines.length) return;
+
+    // sized & placed to match the classic GPS-camera stamp: regular weight,
+    // hugging the bottom-right edge
+    var fs  = Math.max(16, Math.round(W/29.5));
+    var padX = Math.round(fs*0.22);
+    var padY = Math.round(fs*0.32);
+    var lh  = Math.round(fs*1.32);
+
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '400 '+fs+'px Roboto,"Segoe UI",Arial,sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';   // subtle, keeps it legible on bright photos
+    ctx.shadowBlur = Math.round(fs*0.14);
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = Math.max(1, Math.round(fs*0.03));
+
+    var y = H - padY;
+    for(var i=lines.length-1; i>=0; i--){
+      ctx.fillText(lines[i], W - padX, y);
+      y -= lh;
+    }
+    ctx.shadowColor = 'transparent';
+  }
+
+  // ---- load a chosen/captured file (respecting EXIF orientation) ----
+  function loadFile(file){
+    if(!file) return;
+    var done = function(){
+      canvas.hidden = false; placeholder.style.display='none';
+      render();
+    };
+    if(window.createImageBitmap){
+      createImageBitmap(file, {imageOrientation:'from-image'})
+        .then(function(bmp){ img = bmp; done(); })
+        .catch(function(){ loadViaImg(file, done); });
+    } else {
+      loadViaImg(file, done);
+    }
+  }
+  function loadViaImg(file, done){
+    var im = new Image();
+    im.onload = function(){ img = im; done(); };
+    im.onerror = function(){ toast('Could not read that image.'); };
+    im.src = URL.createObjectURL(file);
+  }
+
+  // ---- wiring: capture / pick ----
+  document.getElementById('btnCamera').onclick = function(){ document.getElementById('fileCamera').click(); };
+  document.getElementById('btnPick').onclick   = function(){ document.getElementById('filePick').click(); };
+  document.getElementById('fileCamera').onchange = function(e){ loadFile(e.target.files[0]); };
+  document.getElementById('filePick').onchange   = function(e){ loadFile(e.target.files[0]); };
+
+  // ---- editable fields -> live re-render ----
+  dtInput.value = toLocalInput(new Date());
+  updatePreview();
+  document.getElementById('btnNow').onclick = function(){ dtInput.value = toLocalInput(new Date()); render(); };
+  dtInput.oninput = render;
+  areaInput.oninput = render;
+  stateInput.oninput = render;
+
+  // ---- map (OpenStreetMap, no key) ----
+  delete L.Icon.Default.prototype._getIconUrl;
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+    iconUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+    shadowUrl:'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png'
+  });
+  var map = L.map('map').setView([11.0, 78.0], 5);   // default: Tamil Nadu area
+  L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+    maxZoom:20, subdomains:['mt0','mt1','mt2','mt3'],
+    attribution:'Map &copy; Google &middot; Places &copy; OpenStreetMap'
+  }).addTo(map);
+  setTimeout(function(){ map.invalidateSize(); }, 200);
+
+  var marker = null;
+  function setPin(lat, lng){
+    if(!marker){
+      marker = L.marker([lat,lng], {draggable:true}).addTo(map);
+      marker.on('dragend', function(){ var p=marker.getLatLng(); reverseGeocode(p.lat, p.lng); });
+    } else { marker.setLatLng([lat,lng]); }
+  }
+  map.on('click', function(e){ setPin(e.latlng.lat, e.latlng.lng); reverseGeocode(e.latlng.lat, e.latlng.lng); });
+
+  // ---- reverse geocode via Nominatim (free, no key) ----
+  var geoBusy = false;
+  function reverseGeocode(lat, lng){
+    if(geoBusy) return; geoBusy = true;
+    var url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+lat+'&lon='+lng+'&zoom=14&addressdetails=1';
+    fetch(url, {headers:{'Accept':'application/json'}})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        var a = j.address || {};
+        var area = a.suburb||a.neighbourhood||a.quarter||a.village||a.town||a.city_district||a.city||a.county||'';
+        var state = a.state||a.region||a.state_district||'';
+        if(area){ areaInput.value = area; }
+        if(state){ stateInput.value = state; }
+        render();
+      })
+      .catch(function(){ toast('Could not look up the place name (offline?). Type it in.'); })
+      .finally(function(){ geoBusy = false; });
+  }
+
+  // ---- GPS ----
+  document.getElementById('btnGps').onclick = function(){
+    if(!navigator.geolocation){ toast('Geolocation not supported here.'); return; }
+    toast('Getting your location…');
+    navigator.geolocation.getCurrentPosition(function(p){
+      var lat=p.coords.latitude, lng=p.coords.longitude;
+      map.setView([lat,lng], 16); setPin(lat,lng); reverseGeocode(lat,lng);
+    }, function(err){
+      toast('Location blocked ('+err.message+'). Pick it on the map instead.');
+    }, {enableHighAccuracy:true, timeout:12000, maximumAge:0});
+  };
+
+  // ---- output ----
+  function filename(){
+    var d=new Date();
+    return 'stamped-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+
+           pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())+'.jpg';
+  }
+  document.getElementById('btnDownload').onclick = function(){
+    if(!img){ toast('Add a photo first.'); return; }
+    render();
+    canvas.toBlob(function(b){
+      var a=document.createElement('a');
+      a.href=URL.createObjectURL(b); a.download=filename();
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1500);
+    }, 'image/jpeg', 0.92);
+  };
+  document.getElementById('btnShare').onclick = function(){
+    if(!img){ toast('Add a photo first.'); return; }
+    render();
+    canvas.toBlob(function(b){
+      var file = new File([b], filename(), {type:'image/jpeg'});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        navigator.share({files:[file], title:'Stamped photo'}).catch(function(){});
+      } else {
+        toast('Sharing not supported here — use Download.');
+      }
+    }, 'image/jpeg', 0.92);
+  };
+})();
+</script>
+</body>
+</html>
