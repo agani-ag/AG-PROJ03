@@ -36,6 +36,18 @@ def token_of(profile):
     return (member.syncup_token if member else '') or profile.syncup_token
 
 
+def reachable(queryset):
+    """Narrow a queryset of profiles to the ones with a device token somewhere.
+
+    The same rule as `token_of`, written as a filter: counting and listing are the two things
+    a property cannot do, and every console that tried to do it by hand reached for the
+    profile's own dead column and reported "no token" for people who were being pushed to
+    every quarter of an hour.
+    """
+    from django.db.models import Q
+    return queryset.filter(Q(member__syncup_token__gt='') | Q(syncup_token__gt=''))
+
+
 def remember_token(profile, token):
     """Store `window.SyncUp.token` where every module will look for it. True if it changed.
 

@@ -18,6 +18,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from core import push as core_push
 from core.models import HubSettings
 
 from . import push, service
@@ -84,7 +85,7 @@ def accounts(request):
         'month_in': totals.get(Flow.IN) or Decimal('0.00'),
         'month_out': totals.get(Flow.OUT) or Decimal('0.00'),
         'outstanding': outstanding, 'overdue': overdue, 'open_lines': open_lines,
-        'push_ready': Account.objects.exclude(syncup_token='').count(),
+        'push_ready': core_push.reachable(Account.objects.all()).count(),
     })
 
 
@@ -209,7 +210,7 @@ def account_state(request, pk, what):
 @staff_member_required
 def account_test_push(request, pk):
     account = get_object_or_404(Account, pk=pk)
-    if not account.syncup_token:
+    if not account.push_token:
         messages.warning(request, f'{account.name} has no device token yet. They have to open '
                                   'Pocket Money once inside the SyncUp app.')
         return redirect('pocket_admin_account', pk=account.pk)

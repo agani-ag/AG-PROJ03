@@ -71,7 +71,7 @@
                         {% if item.overdue %}<span class="badge badge-danger"><span class="dot"></span>overdue</span>{% endif %}</td>
                     <td data-label="Last opened">{{ item.row.last_opened_at|ago }}</td>
                     <td data-label="Phone">
-                        {% if item.row.syncup_token %}<span class="badge badge-success">SyncUp</span>
+                        {% if item.row.push_token %}<span class="badge badge-success">SyncUp</span>
                         {% else %}<span class="badge">no token</span>{% endif %}</td>
                     <td data-label=""><a class="btn btn-ghost btn-sm"
                         href="{% url 'pocket_admin_account' item.row.pk %}">Open</a></td>

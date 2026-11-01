@@ -40,7 +40,7 @@
     <div class="row-h">
         <svg class="ic sm faint"><use href="#p-bell"/></svg>
         <div class="mn"><b style="font-size:14px">Notifications</b>
-            <div class="tiny">{% if account.syncup_token %}This phone is registered. They arrive
+            <div class="tiny">{% if account.push_token %}This phone is registered. They arrive
                 even when Pocket Money is closed.{% else %}Open Pocket Money inside the SyncUp app
                 once — that is where the device token comes from.{% endif %}</div></div>
         <label class="switch"><input type="checkbox" name="notify" value="1"

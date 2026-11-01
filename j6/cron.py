@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core import cronhub
+from core import push as core_push
 from core.models import HubSettings
 
 from . import push as pusher
@@ -51,9 +52,8 @@ def push(ctx):
     # A token on the member reaches every module, so an account linked to somebody who
     # registered their phone in the diary is pushable here without J6 ever seeing a token.
     # An unlinked account has no member, and keeps its own.
-    with_token = (Account.objects.filter(is_active=True, notify=True)
-                  .filter(Q(member__syncup_token__gt='') | Q(syncup_token__gt=''))
-                  .select_related('member'))
+    with_token = core_push.reachable(
+        Account.objects.filter(is_active=True, notify=True)).select_related('member')
     if not with_token.exists():
         return {'items': 0, 'note': 'no account has a device token yet — J6 has to be opened '
                                     'once inside the SyncUp app before anything can be pushed'}

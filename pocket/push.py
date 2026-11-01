@@ -222,17 +222,26 @@ def run_month_summary(config=None, now=None):
     if not config.push_enabled or now.day != 1 or now.hour < config.reminder_hour:
         return {'sent': 0, 'skipped': 'not the 1st'}
 
-    last = (now.date().replace(day=1) - timedelta(days=1))
+    # The tick runs every fifteen minutes and `now.day == 1` is true for all of them, so
+    # without a record of having sent this the summary goes out ninety-odd times on the 1st.
+    # `due_pushed_on` is the same idea one model down.
+    today = now.date()
+    last = (today.replace(day=1) - timedelta(days=1))
     sent = 0
-    for account in Account.objects.filter(is_active=True, is_archived=False):
+    rows = (Account.objects.filter(is_active=True, is_archived=False)
+            .exclude(month_pushed_on=today).select_related('member'))
+    for account in rows:
         if not can_push(account, config):
-            continue
+            continue              # no token yet: leave it unstamped, in case one arrives today
         month = service.tracker_month(account, last.year, last.month, config)
         position = service.account_position(account)
         if not month['count'] and not position['owed_to_you'] and not position['you_owe']:
             continue
         body = (f"Tracker: {money(month['in'], config)} in, {money(month['out'], config)} out. "
                 f"Ledger: {money(position['owed_to_you'], config)} owed to you.")
+        # Stamped before it goes, not after: two overlapping ticks must not both send, and a
+        # delivery that fails is not worth repeating ninety times.
+        Account.objects.filter(pk=account.pk).update(month_pushed_on=today)
         _spawn(account, last.strftime('%B'), body)
         sent += 1
     return {'sent': sent}

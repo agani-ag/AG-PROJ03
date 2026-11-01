@@ -91,9 +91,9 @@
     </div>
     <div class="stat">
         <span class="stat-label">{% icon "bell" %}SyncUp push</span>
-        <span class="stat-value" style="font-size:17px">{% if person.syncup_token %}Ready{% else %}No token{% endif %}</span>
+        <span class="stat-value" style="font-size:17px">{% if person.push_token %}Ready{% else %}No token{% endif %}</span>
         <span class="stat-meta">
-            {% if person.syncup_token %}
+            {% if person.push_token %}
             <form method="POST" action="{% url 'j6_account_test_push' person.pk %}"
                   data-confirm="Send a test message to {{ person.name }}?"
                   data-confirm-text="A real notification goes to their device now, saying it is a test from the console."

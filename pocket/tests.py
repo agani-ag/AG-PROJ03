@@ -682,6 +682,119 @@ class PushTests(TestCase):
             self.assertEqual(push.run_due_reminders(now=_daytime())['sent'], 0)
 
 
+class MonthSummaryTests(TestCase):
+    """The 1st-of-the-month summary, and the date stamp it had no idea it needed.
+
+    The tick runs every fifteen minutes and `now.day == 1` is true for all ninety-odd of them.
+    With nothing recording that the summary had gone, everybody with a token got it again
+    every quarter of an hour for the whole of the 1st — which is exactly what happened on
+    1 November 2026, roughly forty times, before this test existed.
+    """
+
+    def setUp(self):
+        self.anand = make_account('Anand')
+        Member.objects.filter(pk=self.anand.member_id).update(syncup_token='tok')
+        self.folder = make_folder(self.anand)
+        self.mani = make_person(self.folder)
+        entry(self.folder, self.mani, Kind.LENT, '2000')
+        hub = HubSettings.load()
+        hub.syncup_base = 'https://syncup.example.com'
+        hub.site_base = 'https://synchub.example.com'
+        hub.save()
+
+    def first(self, hour=12):
+        config = Settings.load()
+        return config.now_local().replace(day=1, hour=max(config.reminder_hour, hour),
+                                          minute=0, second=0, microsecond=0)
+
+    def run_tick(self, when=None):
+        fake = FakeSyncUp()
+        with patch('pocket.push.threading.Thread', RunInline),              patch('core.push.urllib.request.urlopen', fake):
+            out = push.run_month_summary(now=when or self.first())
+        return fake, out
+
+    def test_it_goes_once_however_many_ticks_run(self):
+        first, out = self.run_tick()
+        self.assertEqual(out['sent'], 1)
+        self.assertEqual(len(first.payloads), 1)
+        for _ in range(5):                      # the rest of the 1st, every quarter hour
+            again, out = self.run_tick()
+            self.assertEqual(out['sent'], 0)
+            self.assertEqual(len(again.payloads), 0)
+
+    def test_the_stamp_is_the_day_it_went(self):
+        when = self.first()
+        self.run_tick(when)
+        self.anand.refresh_from_db()
+        self.assertEqual(self.anand.month_pushed_on, when.date())
+
+    def test_next_month_comes_round_again(self):
+        self.run_tick()
+        # Wind the stamp back a month: the 1st after this one is a different date, so the
+        # guard re-arms on its own rather than needing anything cleared.
+        Account.objects.filter(pk=self.anand.pk).update(
+            month_pushed_on=date(2020, 1, 1))
+        _, out = self.run_tick()
+        self.assertEqual(out['sent'], 1)
+
+    def test_nothing_goes_out_on_the_second(self):
+        _, out = self.run_tick(self.first().replace(day=2))
+        self.assertEqual(out, {'sent': 0, 'skipped': 'not the 1st'})
+
+    def test_nothing_goes_out_before_the_reminder_hour(self):
+        early = self.first().replace(hour=Settings.load().reminder_hour - 1)
+        _, out = self.run_tick(early)
+        self.assertEqual(out, {'sent': 0, 'skipped': 'not the 1st'})
+
+    def test_somebody_with_no_token_is_left_unstamped(self):
+        """So a phone registered later on the 1st still gets the summary that day."""
+        Member.objects.filter(pk=self.anand.member_id).update(syncup_token='')
+        _, out = self.run_tick()
+        self.assertEqual(out['sent'], 0)
+        self.anand.refresh_from_db()
+        self.assertIsNone(self.anand.month_pushed_on)
+
+        Member.objects.filter(pk=self.anand.member_id).update(syncup_token='tok')
+        _, out = self.run_tick()
+        self.assertEqual(out['sent'], 1)
+
+
+class TokenOnTheMemberTests(TestCase):
+    """The console said "no token" for people it was pushing to every quarter of an hour.
+
+    Both counts read the module's own column, which stopped being written when the token
+    moved to the Member. A property cannot be counted, so `core.push.reachable` is the same
+    rule as a filter.
+    """
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.anand = make_account('Anand')
+        Member.objects.filter(pk=self.anand.member_id).update(syncup_token='tok')
+
+    def test_the_account_is_reachable_through_the_member(self):
+        account = Account.objects.get(pk=self.anand.pk)
+        self.assertEqual(account.push_token, 'tok')
+        self.assertTrue(account.can_be_pushed)
+        self.assertEqual(account.syncup_token, '')      # nothing writes this any more
+
+    def test_the_list_counts_it_and_says_so(self):
+        r = self.client.get(reverse('pocket_accounts'))
+        self.assertEqual(r.context['push_ready'], 1)
+        self.assertContains(r, 'SyncUp')
+        self.assertNotContains(r, 'no token')
+
+    def test_one_persons_page_says_registered(self):
+        r = self.client.get(reverse('pocket_admin_account', args=[self.anand.pk]))
+        self.assertContains(r, 'SyncUp registered')
+
+    def test_somebody_with_no_token_anywhere_still_reads_as_none(self):
+        Member.objects.filter(pk=self.anand.member_id).update(syncup_token='')
+        r = self.client.get(reverse('pocket_accounts'))
+        self.assertEqual(r.context['push_ready'], 0)
+
+
 class CronTests(TestCase):
     def setUp(self):
         self.anand = make_account()

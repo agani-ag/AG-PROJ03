@@ -19,6 +19,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from core import push as core_push
 from core.models import HubSettings
 from core.views import admin_required
 
@@ -52,7 +53,7 @@ def accounts(request):
         'chats': Chat.objects.count(),
         'chats_today': Chat.objects.filter(last_message_at__date=timezone.localdate()).count(),
         'messages_week': Message.objects.filter(created_at__gte=week).count(),
-        'push_ready': Account.objects.exclude(syncup_token='').count(),
+        'push_ready': core_push.reachable(Account.objects.all()).count(),
         'suspended': Account.objects.filter(is_active=False).count(),
     })
 

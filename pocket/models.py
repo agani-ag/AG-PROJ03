@@ -210,6 +210,11 @@ class Account(models.Model):
     opening_on = models.DateField(null=True, blank=True)
 
     syncup_token = models.TextField(blank=True)
+    month_pushed_on = models.DateField(
+        null=True, blank=True,
+        help_text='The 1st that the month summary last went out on. Without it the summary '
+                  'has no memory, and the tick resends it every quarter of an hour for the '
+                  'whole of the 1st.')
     notify = models.BooleanField(default=True)
     theme = models.CharField(max_length=10, choices=THEMES, default='system')
 
