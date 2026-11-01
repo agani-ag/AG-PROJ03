@@ -376,7 +376,10 @@ dialog.palette::backdrop { background: rgba(8, 12, 20, .45); }
 .auth-card .seg { align-self: stretch; }
 .auth-card .seg button { flex: 1; justify-content: center; }
 .pin { display: flex; justify-content: center; gap: 10px; }
-.pin .input { width: 48px; height: 54px; padding: 0; text-align: center; font-size: 22px; font-weight: 600; text-transform: uppercase; }
+/* The boxes show "*" rather than the character typed (see auth/login.html). An asterisk
+   hangs near the top of its line box, so it needs nudging down to sit centred; this is for
+   the 54px box at 22px below, and would want re-measuring if either changed. */
+.pin .input { width: 48px; height: 54px; padding: 6px 0 0; text-align: center; font-size: 22px; font-weight: 600; text-transform: uppercase; }
 @media (max-width: 400px) { .pin { gap: 6px; } .pin .input { width: 44px; } .auth-card { padding: 22px 18px; } }
 
 /* ---------- More layout helpers ---------- */

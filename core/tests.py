@@ -45,6 +45,29 @@ class AdminPinTests(TestCase):
         self.assertEqual(r.status_code, 401)
         self.assertEqual(self.client.get(reverse('dashboard')).status_code, 302)
 
+    def test_the_pin_boxes_send_the_characters_and_not_the_mask(self):
+        """The boxes show "*" and hold the real character on the element.
+
+        The one way this breaks is something in the submit path reading `.value` again, which
+        assembles "*****". That does not even reach the server — it fails the page's own
+        format check — so the symptom is a PIN box that silently does nothing, which is a
+        miserable thing to debug. The rule is narrow enough to assert: whatever submitPin
+        reads, it is not `.value`.
+        """
+        from pathlib import Path
+
+        from django.conf import settings
+
+        page = (Path(settings.BASE_DIR) / 'core' / 'templates' / 'auth' / 'login.html'
+                ).read_text(encoding='utf-8')
+        body = page.split('function submitPin()', 1)[1].split('pins.forEach', 1)[0]
+        self.assertIn('dataset.real', body)
+        self.assertNotIn('p.value', body)
+        # And the two places that write the mask keep the real character beside it.
+        self.assertIn('input.dataset.real = typed', page)
+        self.assertIn('p.dataset.real = text[j]', page)
+        self.assertIn('p.dataset.real = ""', page)      # cleared on a failed attempt
+
 
 class CronLockTests(TestCase):
     def test_second_run_cannot_take_a_held_lock(self):
