@@ -94,6 +94,20 @@
             </tbody>
         </table>
     </div>
+    {% if page.has_other_pages %}
+    <div class="card-foot bordered">
+        <div class="row">
+            {% if page.has_previous %}
+            <a class="btn btn-sm" href="?page={{ page.previous_page_number }}{% if search %}&q={{ search }}{% endif %}">{% icon "arrow-left" %}Previous</a>
+            {% endif %}
+            <span class="small muted">Page {{ page.number }} of {{ page.paginator.num_pages }} ·
+                {{ page.paginator.count }} {{ page.paginator.count|pluralize:"person,people" }}</span>
+            {% if page.has_next %}
+            <a class="btn btn-sm ml-auto" href="?page={{ page.next_page_number }}{% if search %}&q={{ search }}{% endif %}">Next{% icon "arrow-right" %}</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
     <div class="card-foot bordered">
         <span class="small muted">Archiving here stops somebody signing in at all. Whether they
             may use a particular module is a separate switch, on that module's own page.</span>

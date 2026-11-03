@@ -6,6 +6,7 @@ identity. Now there is one row per human, and the module consoles stay where the
 things only they know about — cycles, folders, chats.
 """
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
@@ -18,12 +19,29 @@ from .modules import MODULES
 from .views import admin_required
 
 
+#: One page of people. Enough to scan, small enough that the queries below stay flat.
+PER_PAGE = 100
+
+
+def _live_modules():
+    return [m for m in MODULES if m.is_live]
+
+
+def _with_profiles(queryset):
+    """The same rows, with every module's profile already fetched.
+
+    Each module's profile is a reverse one-to-one, so reading them per member is one query
+    per member per module — three each here, and exactly linear. That was invisible while
+    this server had three people on it and becomes a timeout at a few thousand, which is
+    where the SyncUp people sync is heading.
+    """
+    return queryset.select_related(*[m.key for m in _live_modules()])
+
+
 def _profiles_of(member):
     """What this person has here, module by module, without asking the modules anything."""
     out = []
-    for module in MODULES:
-        if not module.is_live:
-            continue
+    for module in _live_modules():
         out.append({'module': module, 'profile': getattr(member, module.key, None)})
     return out
 
@@ -45,8 +63,12 @@ def people(request):
         rows = rows.filter(Q(name__icontains=search) | Q(email__icontains=search)
                            | Q(phone__icontains=search))
 
+    # Paged, not truncated. It used to stop at 300 while the counter above went on
+    # counting, so past that people were simply not on the page and nothing said so.
+    page = Paginator(_with_profiles(rows.order_by('-last_opened_at', 'name')), PER_PAGE
+                     ).get_page(request.GET.get('page'))
     shown = []
-    for member in rows.order_by('-last_opened_at', 'name')[:300]:
+    for member in page:
         profiles = _profiles_of(member)
         shown.append({'member': member, 'profiles': profiles,
                       'ways': _how_they_sign_in(member),
@@ -54,7 +76,7 @@ def people(request):
 
     unmerged = sum(1 for module in MODULES if module.is_live)
     return render(request, 'core/people.html', {
-        'rows': shown, 'search': search,
+        'rows': shown, 'page': page, 'search': search,
         'total': Member.objects.count(),
         'no_handle': _no_handle(),
         'with_password': Member.objects.exclude(password_hash='').count(),

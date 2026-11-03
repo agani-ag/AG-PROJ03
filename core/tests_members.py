@@ -9,6 +9,8 @@ from datetime import timedelta
 from io import StringIO
 
 from django.contrib.auth.hashers import make_password
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.core.management import call_command
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
@@ -307,6 +309,47 @@ class PeoplePageTests(TestCase):
         self.client.post(reverse('person_action', args=[member.pk, 'archive']))
         member.refresh_from_db()
         self.assertTrue(member.is_archived)
+
+    def test_the_page_costs_the_same_whoever_many_people_there_are(self):
+        """It asked each module for each person's profile, one at a time.
+
+        Three queries per member, exactly linear: 910 of them at 300 people. Invisible on a
+        server with three, and a timeout at the few thousand the SyncUp people sync is
+        heading for. The number below is a ceiling, not a target — what matters is that it
+        does not move when the second argument does.
+        """
+        def load(n):
+            Member.objects.all().delete()
+            Member.objects.bulk_create(
+                [Member(name=f'P{i}', email=f'p{i}@example.com') for i in range(n)])
+            with CaptureQueriesContext(connection) as caught:
+                self.assertEqual(self.client.get(reverse('people')).status_code, 200)
+            return len(caught.captured_queries)
+
+        self.assertEqual(load(5), load(200))
+
+    def test_nobody_falls_off_the_end_of_the_list(self):
+        """It stopped at 300 rows while the counter above carried on counting."""
+        Member.objects.bulk_create(
+            [Member(name=f'P{i}', email=f'p{i}@example.com') for i in range(250)])
+        r = self.client.get(reverse('people'))
+        page = r.context['page']
+        self.assertEqual(page.paginator.count, 250)
+        # has_next() is a method on Django's Page — a template calls it for you, a test
+        # does not, and `assertTrue(page.has_next)` passes on the bound method either way.
+        self.assertTrue(page.has_next())
+        last = self.client.get(reverse('people') + f'?page={page.paginator.num_pages}')
+        self.assertFalse(last.context['page'].has_next())
+        seen = sum(len(self.client.get(reverse('people') + f'?page={n}').context['rows'])
+                   for n in range(1, page.paginator.num_pages + 1))
+        self.assertEqual(seen, 250)
+
+    def test_a_search_survives_the_pager(self):
+        Member.objects.bulk_create(
+            [Member(name=f'Anand {i}', email=f'a{i}@example.com') for i in range(120)]
+            + [Member(name='Divya', email='d@example.com')])
+        r = self.client.get(reverse('people') + '?q=Anand')
+        self.assertEqual(r.context['page'].paginator.count, 120)
 
     def test_the_page_needs_an_admin(self):
         self.client.logout()
