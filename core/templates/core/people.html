@@ -29,12 +29,22 @@ copy did, so it says it plainly rather than only when something went wrong.
         <p class="small muted">{{ syncup.problem }} The same key that puts this hub's tools in
             the SyncUp app also copies its people here.</p>
         {% else %}
+{% comment %}
+Every number here is counted as the page loads. The line underneath used to be a sentence
+written by the last run that changed something — which read as the current state and was
+wrong within minutes of anybody joining: "6 waiting to join" stayed up long after all six
+had. That line is now only ever an exception worth seeing.
+{% endcomment %}
         <p class="small muted">{{ syncup.synced }} copied from SyncUp{% if syncup.unused %},
             {{ syncup.unused }} not used yet{% endif %}{% if syncup.waiting %},
             {{ syncup.waiting }} waiting to join{% endif %}{% if syncup.off %},
             {{ syncup.off }} switched off{% endif %}.
-            {% if syncup.at %}Last run {{ syncup.at|ago }}.{% else %}Not run yet.{% endif %}</p>
-        {% if syncup.note %}<p class="small faint" style="margin-top:4px">{{ syncup.note }}</p>{% endif %}
+            {% if syncup.at %}Checked {{ syncup.at|ago }}, and every quarter of an hour.
+            {% else %}Not checked yet — the next tick will.{% endif %}</p>
+        {% if syncup.note %}
+        <div class="alert alert-warning" style="margin-top:10px">{% icon "circle-alert" %}
+            <div class="alert-body">{{ syncup.note }}</div></div>
+        {% endif %}
         {% if syncup.clashes %}
         <div class="alert alert-warning" style="margin-top:10px">{% icon "circle-alert" %}
             <div class="alert-body"><b>{{ syncup.clashes }} could not be copied in full</b>

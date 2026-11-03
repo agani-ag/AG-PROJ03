@@ -452,6 +452,20 @@ def switch_off_the_missing(seen_ids):
     return gone.update(is_active=False)
 
 
+def _checked(hub, note=None):
+    """Record that SyncUp was asked, and anything worth telling the admin.
+
+    `note` is for problems only — an error, a half-finished import, a refused empty list.
+    A routine summary written here reads as the current state and is wrong within minutes
+    of somebody joining, which is exactly what it did: "6 waiting to join" sat on the page
+    long after all six had. The live counts beside it are the current state; this is only
+    ever the exception.
+    """
+    hub.syncup_people_at = timezone.now()
+    hub.syncup_people_note = (note or '')[:200]
+    hub.save(update_fields=['syncup_people_at', 'syncup_people_note'])
+
+
 def run(ctx=None, limit=None, hub=None):
     """One pass. Returns a summary dict; never raises.
 
@@ -464,9 +478,12 @@ def run(ctx=None, limit=None, hub=None):
     if error:
         hub.syncup_people_note = error[:200]
         hub.save(update_fields=['syncup_people_note'])
-        return {'items': 0, 'error': error}
+        return {'items': 0, 'error': error}       # no timestamp: it was not reached
 
     if data.get('unchanged'):
+        # Still a run. Stamping only when something changed made "last run" mean "last run
+        # that did something", so a working cron looked like a stopped one.
+        _checked(hub)
         return {'items': 0, 'unchanged': True}
 
     people = data.get('people') or []
@@ -478,8 +495,7 @@ def run(ctx=None, limit=None, hub=None):
     if not people and Member.objects.filter(syncup_id__isnull=False).exists():
         note = 'SyncUp returned no people while this site has some. Nobody was switched off.'
         logger.warning('syncup people: %s', note)
-        hub.syncup_people_note = note
-        hub.save(update_fields=['syncup_people_note'])
+        _checked(hub, note)
         return {**out, 'refused_empty': True}
 
     seen, done = [], 0
@@ -497,17 +513,14 @@ def run(ctx=None, limit=None, hub=None):
             # Stop here and keep the version unset, so the next tick asks for the whole list
             # again and carries on. Half a list stored as "done" is how people go missing.
             out['more_to_do'] = True
-            hub.syncup_people_note = (f'Copied {done} of {len(people)}; the rest on the next '
-                                      f'run.')[:200]
-            hub.save(update_fields=['syncup_people_note'])
+            _checked(hub, f'Copied {done} of {len(people)}; the rest on the next run.')
             return out
 
     out['switched_off'] = switch_off_the_missing(seen)
 
     hub.syncup_people_version = str(data.get('version') or '')[:80]
-    hub.syncup_people_at = timezone.now()
-    hub.syncup_people_note = (
-        f"{out['items']} from SyncUp · {out['created']} new, {out['updated']} updated, "
-        f"{out['waiting']} waiting to join, {out['switched_off']} switched off")[:200]
-    hub.save(update_fields=['syncup_people_version', 'syncup_people_at', 'syncup_people_note'])
+    hub.save(update_fields=['syncup_people_version'])
+    # Nothing to report: the counts on the page are live and say it better than a sentence
+    # written minutes ago can. Any warning left by an earlier run is cleared here.
+    _checked(hub)
     return out

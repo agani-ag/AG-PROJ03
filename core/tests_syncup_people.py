@@ -406,3 +406,37 @@ class AdminJoinsThemTests(_Synced):
         self.assertEqual(self.client.get(self.url()).status_code, 302)
         self.older.refresh_from_db()
         self.assertIsNone(self.older.syncup_id)
+
+
+class WhatThePageSaysTests(_Synced):
+    """The card has to be true when it is read, not when it was written."""
+
+    def test_a_run_that_changed_nothing_still_moves_the_clock(self):
+        """It only stamped the time when something changed, so a working cron that had
+        nothing to do looked like a cron that had stopped."""
+        self.run_with(listing(person()))
+        HubSettings.objects.filter(pk=1).update(syncup_people_at=None)
+        with mock.patch(POST, return_value=({'success': True, 'unchanged': True}, '')):
+            syncup_people.run()
+        self.assertIsNotNone(HubSettings.load().syncup_people_at)
+
+    def test_a_routine_run_leaves_no_sentence_behind(self):
+        """It used to write "6 waiting to join", which stayed on the page after all six
+        had joined. The counts beside it are live and say it properly."""
+        self.run_with(listing(person()))
+        self.assertEqual(HubSettings.load().syncup_people_note, '')
+
+    def test_a_warning_is_kept_and_then_cleared_when_it_resolves(self):
+        self.run_with(listing(person()))
+        self.run_with(listing(version='v2'))                    # empty list, refused
+        self.assertIn('Nobody was switched off', HubSettings.load().syncup_people_note)
+        self.run_with(listing(person(), version='v3'))          # back to normal
+        self.assertEqual(HubSettings.load().syncup_people_note, '')
+
+    def test_being_unable_to_reach_syncup_does_not_count_as_a_check(self):
+        self.run_with(listing(person()))
+        was = HubSettings.load().syncup_people_at
+        with mock.patch(POST, return_value=(None, 'URLError: no route')):
+            syncup_people.run()
+        self.assertEqual(HubSettings.load().syncup_people_at, was)
+        self.assertIn('URLError', HubSettings.load().syncup_people_note)
