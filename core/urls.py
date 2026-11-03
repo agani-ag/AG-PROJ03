@@ -16,6 +16,7 @@ urlpatterns = [
     path('in/token', views_member.token_sign_in, name='member_token'),
     path('in/token/join', views_member.token_join, name='member_token_join'),
     path('in/token/first', views_member.token_first, name='member_token_first'),
+    path('in/connect', views_member.connect, name='member_connect'),
     path('out', views_member.sign_out, name='member_logout'),
     path('apps/', views_member.apps, name='member_apps'),
     path('you/', views_member.you, name='member_you'),

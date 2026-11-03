@@ -361,17 +361,66 @@ def token_changed(request, token):
     if came_from_token:
         ends = now_id != (member.syncup_id or '')
     else:
-        # Somebody else's *linked* account being on the phone is the only thing that unseats
-        # a password session. An unknown token, or a phone nobody is signed in on, is not.
+        # Somebody else's account being *in use* on the phone is the only thing that
+        # unseats a password session. Not an unknown token, not a phone nobody is signed in
+        # on — and not an account the sync made ahead and nobody has ever opened. That last
+        # one matters more than it sounds: a placeholder is a row the cron wrote, not a
+        # person using this phone, and counting it would sign people out of their own
+        # accounts and make the connect card unreachable in the very case it exists for.
         ends = bool(now_id) and now_id != (member.syncup_id or '') and Member.objects.filter(
-            syncup_id=now_id).exists()
+            syncup_id=now_id, syncup_unused=False).exists()
 
     if not ends:
+        _maybe_offer_connect(request, member, person)
         return False
 
     _close_chat(request, member)
     auth.sign_out(request)
     return True
+
+
+#: The SyncUp person this session could connect the signed-in account to, and the "not now"
+#: that hides the offer until the browser is closed.
+CONNECT_KEY = 'synchub_connect'
+CONNECT_HIDDEN = 'synchub_connect_hidden'
+
+
+def _maybe_offer_connect(request, member, person):
+    """Remember that this session could join these two, so `/apps/` can offer it.
+
+    Only when all four are true: the signed-in account is SyncHub's own, the phone holds a
+    real SyncUp person, that person has no used account here already, and the pair has not
+    been refused. Anything else and there is nothing to offer.
+
+    The person's details are kept in the session rather than looked up later from
+    `waiting_for`, and that is deliberate: joining hands an account over for good, so it
+    should rest on SyncUp confirming who is on the phone *now*, not on an id this site wrote
+    down at some point in the past.
+    """
+    if member.syncup_id or not person:
+        return
+    fields = clean(person)
+    if not fields['syncup_id']:
+        return
+    theirs = Member.objects.filter(syncup_id=fields['syncup_id']).first()
+    if theirs is not None and not theirs.syncup_unused:
+        return
+    if _refused(member, fields['syncup_id']):
+        return
+    request.session[CONNECT_KEY] = fields
+    request.session.pop(CONNECT_HIDDEN, None)
+
+
+def connect_offer(request, member):
+    """What `/apps/` should show, or None."""
+    if not member or member.syncup_id or request.session.get(CONNECT_HIDDEN):
+        return None
+    fields = request.session.get(CONNECT_KEY)
+    if not isinstance(fields, dict) or not fields.get('syncup_id'):
+        return None
+    if _refused(member, fields['syncup_id']):
+        return None
+    return fields
 
 
 def _close_chat(request, member):

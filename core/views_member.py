@@ -150,7 +150,49 @@ def apps(request):
     return _page(request, 'core/member/apps.html',
                  {'joined': joined, 'available': available,
                   'has_password': bool(request.member.password_hash),
+                  'connect': syncup_people.connect_offer(request, request.member),
                   'greeted': request.session.pop(auth.GREET_KEY, False)})
+
+
+@require_POST
+@never_cache
+@auth.member_required
+def connect(request):
+    """The connect card: this account and the SyncUp person on this phone, joined.
+
+    Three answers, and two of them are not "yes". Somebody using their own account on a
+    family phone must be able to say so once and never be asked again — which is what
+    `refuse` records — and somebody who simply has not decided should be able to get on with
+    what they opened the app for.
+    """
+    member = request.member
+    fields = syncup_people.connect_offer(request, member)
+    if not fields:
+        return redirect('member_apps')
+
+    what = request.POST.get('what')
+    if what == 'not-now':
+        request.session[syncup_people.CONNECT_HIDDEN] = True
+        return redirect('member_apps')
+    if what == 'different':
+        syncup_people.refuse(member, fields['syncup_id'])
+        request.session.pop(syncup_people.CONNECT_KEY, None)
+        messages.success(request, 'Noted — you will not be asked about that one again.')
+        return redirect('member_apps')
+
+    password = request.POST.get('password')
+    if not auth.check_member_password(member, password):
+        messages.error(request, 'That password is not right, so nothing was joined.')
+        return redirect('member_apps')
+
+    ok, why = syncup_people.join(member, fields)
+    if not ok:
+        messages.error(request, why)
+        return redirect('member_apps')
+    request.session.pop(syncup_people.CONNECT_KEY, None)
+    messages.success(request, 'Joined. From now on your SyncUp password signs you in here '
+                              'too, and your name comes from SyncUp.')
+    return redirect('member_apps')
 
 
 # --------------------------------------------------------------------------- #

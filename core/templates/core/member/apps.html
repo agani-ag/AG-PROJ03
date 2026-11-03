@@ -11,6 +11,31 @@
         <svg class="ic sm"><use href="#m-user"/></svg>You</a>
 </div>
 
+{% if connect %}
+{% comment %}
+Shown to somebody using their own SyncHub account inside the SyncUp app, where the page token
+says a SyncUp person is signed in on this phone and nothing here is linked to them yet. The
+password is asked for the same reason it is asked everywhere else in this flow: a shared
+phone is the ordinary case, not the odd one.
+{% endcomment %}
+<form method="POST" action="{% url 'member_connect' %}" class="card" novalidate>
+    {% csrf_token %}
+    <h2 style="font-size:15px;margin:0 0 4px">Is your SyncUp account yours?</h2>
+    <p class="tiny">You are signed in to SyncUp as <b>{{ connect.name|default:"someone" }}</b> on
+        this phone. Join the two and your SyncUp password will sign you in here as well.</p>
+    <label class="label" for="connect_pw">Your SyncHub password</label>
+    <input class="input" id="connect_pw" name="password" type="password"
+           autocomplete="current-password">
+    <p class="tiny" style="margin-top:6px">Afterwards your name, email and phone come from
+        SyncUp, and this password stops working.</p>
+    <div class="row" style="margin-top:12px;gap:10px">
+        <button class="btn sm" type="submit">Join them</button>
+        <button class="link" type="submit" name="what" value="not-now">Not now</button>
+        <button class="link" type="submit" name="what" value="different">These are different people</button>
+    </div>
+</form>
+{% endif %}
+
 {% if not has_password %}
 {% comment %}
 Stays until a password exists, rather than appearing once and being missed. Somebody who got in

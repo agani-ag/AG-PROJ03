@@ -374,3 +374,116 @@ class WhatSyncUpOwnsTests(_App):
         self.client.post(reverse('member_you'), {'what': 'theme', 'theme': 'dark'})
         row.refresh_from_db()
         self.assertEqual(row.theme, 'dark')
+
+
+class ConnectCardTests(_App):
+    """Somebody using their own SyncHub account inside the app, on a phone SyncUp knows.
+
+    The card is the only path that does not begin with Use token, so it carries the same
+    safeguard by a different route: the account proves itself with its own password before
+    it is handed over.
+    """
+
+    def signed_in(self, **fields):
+        row = self.mine(email='own@example.com', **fields)
+        self.client.post(reverse('member_login'),
+                         {'sign_in_id': 'own@example.com', 'password': 'my-own-password'})
+        return row
+
+    def phone_says(self, p=None, token='su_tok_1'):
+        """The token handshake noticing who is on the phone."""
+        request = self.client.request().wsgi_request
+        request.session = self.client.session
+        with mock.patch(WHO, return_value=found(p if p is not None else person())):
+            syncup_people.token_changed(request, token)
+        request.session.save()
+        self.client.cookies['sessionid'] = request.session.session_key
+
+    def test_the_card_appears_once_the_phone_says_who_is_on_it(self):
+        self.signed_in()
+        self.assertNotContains(self.client.get(reverse('member_apps')), 'different people')
+        self.phone_says()
+        self.assertContains(self.client.get(reverse('member_apps')), 'different people')
+
+    def test_the_right_password_joins_them(self):
+        row = self.signed_in()
+        self.phone_says()
+        self.client.post(reverse('member_connect'), {'password': 'my-own-password'})
+        row.refresh_from_db()
+        self.assertEqual(row.syncup_id, 'su-1')
+        self.assertEqual(Member.objects.count(), 1)
+        self.assertTrue(auth.check_member_password(row, 'their-syncup-password'))
+
+    def test_the_wrong_password_joins_nothing(self):
+        row = self.signed_in()
+        self.phone_says()
+        r = self.client.post(reverse('member_connect'), {'password': 'a-guess'}, follow=True)
+        row.refresh_from_db()
+        self.assertIsNone(row.syncup_id)
+        self.assertContains(r, 'not right')
+
+    def test_not_now_hides_it_without_deciding_anything(self):
+        row = self.signed_in()
+        self.phone_says()
+        self.client.post(reverse('member_connect'), {'what': 'not-now'})
+        row.refresh_from_db()
+        self.assertNotContains(self.client.get(reverse('member_apps')), 'different people')
+        self.assertIsNone(row.syncup_id)
+        self.assertFalse(SyncUpRefusal.objects.exists())
+
+    def test_different_people_is_remembered_for_good(self):
+        row = self.signed_in()
+        self.phone_says()
+        self.client.post(reverse('member_connect'), {'what': 'different'})
+        self.assertTrue(SyncUpRefusal.objects.filter(member=row, syncup_id='su-1').exists())
+        # and it does not come back, even after the phone says the same thing again
+        self.phone_says()
+        self.assertNotContains(self.client.get(reverse('member_apps')), 'different people')
+
+    def test_a_refusal_clears_the_waiting_mark_the_cron_left(self):
+        row = self.signed_in()
+        Member.objects.filter(pk=row.pk).update(waiting_for='su-1', waiting_why='token')
+        self.phone_says()
+        self.client.post(reverse('member_connect'), {'what': 'different'})
+        row.refresh_from_db()
+        self.assertEqual(row.waiting_for, '')
+
+    def test_somebody_else_s_account_in_use_ends_the_session_instead(self):
+        """Nothing is offered, because this is the shared-phone case rather than the
+        same-person one: that SyncUp account already has a SyncHub account in use, so the
+        person on the phone is somebody else and the session goes."""
+        self.signed_in()
+        Member.objects.create(syncup_id='su-1', name='Anand', syncup_unused=False)
+        self.phone_says()
+        self.assertEqual(self.client.get(reverse('member_apps')).status_code, 302)
+
+    def test_an_account_made_ahead_and_unused_does_not_block_it(self):
+        self.signed_in()
+        Member.objects.create(syncup_id='su-1', name='Anand', syncup_unused=True)
+        self.phone_says()
+        self.assertContains(self.client.get(reverse('member_apps')), 'different people')
+
+    def test_a_synced_account_is_never_asked(self):
+        row = self.mine(email='own@example.com')
+        Member.objects.filter(pk=row.pk).update(syncup_id='su-9')
+        self.client.post(reverse('member_login'),
+                         {'sign_in_id': 'own@example.com', 'password': 'my-own-password'})
+        self.phone_says()
+        self.assertNotContains(self.client.get(reverse('member_apps')), 'different people')
+
+    def test_a_phone_nobody_is_signed_in_on_offers_nothing(self):
+        self.signed_in()
+        request = self.client.request().wsgi_request
+        request.session = self.client.session
+        with mock.patch(WHO, return_value=NOBODY):
+            syncup_people.token_changed(request, 'a-plain-phone-token')
+        request.session.save()
+        self.client.cookies['sessionid'] = request.session.session_key
+        self.assertNotContains(self.client.get(reverse('member_apps')), 'different people')
+
+    def test_posting_to_it_with_no_offer_standing_does_nothing(self):
+        row = self.signed_in()
+        r = self.client.post(reverse('member_connect'), {'password': 'my-own-password'})
+        row.refresh_from_db()
+        self.assertRedirects(r, reverse('member_apps'))
+        self.assertIsNone(row.syncup_id)
