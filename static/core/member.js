@@ -17,14 +17,27 @@
     if (divider) { divider.hidden = false; }
   }
 
-  var api = window.SyncUp;
-  if (api && api.v === 1 && api.token) { show(api.token); }
-
-  // The app can hand the token over after the page has loaded, so listen as well as look.
-  window.addEventListener("syncuptoken", function (event) {
-    var token = event && event.detail && event.detail.token;
-    if (token) { show(token); }
-  });
+  // Look, then keep looking. On an older WebView the app injects its script in
+  // onPageFinished — after this one has run — and sends no event to say so, so a single
+  // check at load time finds nothing and the button never appears. Same poll as the push
+  // handshake in hibiscus/user.js, which has been doing it correctly all along.
+  //
+  // What is NOT checked is a version: the app sets `window.SyncUp = Object.assign(
+  // window.SyncUp || {}, { token: "..." })` and nothing else. An earlier draft of this file
+  // required `SyncUp.v === 1`, which came from the SSO design that was removed from the app
+  // in October. It is never set, so the test was always false and the button never showed on
+  // any phone.
+  var tries = 0;
+  var timer = setInterval(function () {
+    tries += 1;
+    var token = window.SyncUp && window.SyncUp.token;
+    if (typeof token === "string" && token) {
+      clearInterval(timer);
+      show(token);
+    } else if (tries > 10) {
+      clearInterval(timer);                 // not inside the app; there is nothing to offer
+    }
+  }, 500);
 })();
 
 /* The "Add a password?" card can be put away. Per browser, and it comes back on the next one —

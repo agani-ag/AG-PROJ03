@@ -65,6 +65,31 @@ class TheButtonTests(_App):
         self.assertIn('id="token-form"', page)
         self.assertIn('hidden', page.split('id="token-form"')[1][:60])
 
+    def test_the_button_asks_for_nothing_the_app_does_not_send(self):
+        """It required `window.SyncUp.v === 1`, and the app has never set it.
+
+        That version came from the SSO design removed from the app in October. The app
+        injects `window.SyncUp = Object.assign(window.SyncUp || {}, {token: "..."})` and
+        nothing else, so the test was always false and the button appeared on no phone at
+        all. The screens behind it were fine; nobody could reach them.
+        """
+        from pathlib import Path
+
+        from django.conf import settings
+
+        js = (Path(settings.BASE_DIR) / 'static' / 'core' / 'member.js'
+              ).read_text(encoding='utf-8')
+        button = js.split('token-form', 1)[1].split('data-dismiss', 1)[0]
+        # Comments only, stripped — the comment above the fix names the old check on
+        # purpose, and a test that greps the prose would fail on its own explanation.
+        code = '\n'.join(line.split('//')[0] for line in button.splitlines())
+        self.assertNotIn('.v ===', code)
+        self.assertNotIn('.v===', code)
+        self.assertIn('window.SyncUp && window.SyncUp.token', code)
+        # And it keeps looking: an older WebView injects after this script has run and
+        # sends no event, so a single check at load time finds nothing.
+        self.assertIn('setInterval', button)
+
     def test_a_phone_nobody_is_signed_in_on_never_signs_anybody_in(self):
         r = self.press(NOBODY)
         self.assertRedirects(r, reverse('member_login'))
