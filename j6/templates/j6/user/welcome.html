@@ -29,6 +29,22 @@
 </div>
 {% endif %}
 
+{% comment %}
+Only inside the SyncUp app, where the page is handed a token — user.js reveals it. It posts
+to the hub's own endpoint, which asks SyncUp whose token it is and sends them on to
+/j6/start, so a SyncUp person reaches J6 the same way they reach the diary and the ledger.
+
+It does not change what J6 is. The account it opens or makes still has a Self-ID, still
+carries no email or number, and whoever they chat with still sees a name and an Account ID.
+{% endcomment %}
+<div class="or" data-j6-token-wrap hidden>or</div>
+<form method="POST" action="{% url 'member_token' %}" id="j6-token-form" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="token">
+    <input type="hidden" name="next" value="{% url 'j6_start_hub' %}">
+    <button class="btn ghost" type="submit">Use my SyncUp sign-in</button>
+</form>
+
 <p class="center"><a class="link" href="{% url 'j6_login' %}">I already have a Self-ID</a></p>
 <p class="center"><a class="link" href="{% url 'j6_start_hub' %}">Use my SyncHub account instead</a></p>
 <p class="tiny center fade">Two doors. The one above asks for nothing and gives you no way back

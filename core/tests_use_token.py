@@ -512,3 +512,84 @@ class ConnectCardTests(_App):
         row.refresh_from_db()
         self.assertRedirects(r, reverse('member_apps'))
         self.assertIsNone(row.syncup_id)
+
+
+class IntoJ6Tests(_App):
+    """A SyncUp person reaching J6 the same way they reach the diary and the ledger.
+
+    The hub route already existed — welcome, then "Use my SyncHub account", then the hub's
+    sign-in — but it took three screens, and the button that starts it lives on `/in/`. Now
+    it is on J6's own way-in screens and goes straight there.
+
+    What it does not do is change what J6 is: the account it opens still has a Self-ID,
+    carries no email or number, and shows a name and an Account ID to whoever is chatting.
+    """
+
+    def test_both_way_in_screens_carry_the_button(self):
+        for name in ('j6_welcome', 'j6_login'):
+            page = self.client.get(reverse(name)).content.decode()
+            self.assertIn('id="j6-token-form"', page, name)
+            self.assertIn(reverse('member_token'), page, name)
+            self.assertIn(reverse('j6_start_hub'), page, name)
+
+    def test_it_ships_hidden_like_every_other_one(self):
+        page = self.client.get(reverse('j6_welcome')).content.decode()
+        self.assertIn('hidden', page.split('id="j6-token-form"')[1][:60])
+
+    def test_the_welcome_screen_still_promises_what_it_always_did(self):
+        """A third door must not quietly turn J6 into something that wants an account."""
+        page = self.client.get(reverse('j6_welcome')).content.decode()
+        self.assertIn('no email, no number, no password', page)
+
+    def into_j6(self, p=None):
+        """Press the button on a J6 screen, then answer the first-time question."""
+        with mock.patch(WHO, return_value=found(p or person())):
+            first = self.client.post(reverse('member_token'),
+                                     {'token': 'su_tok_1', 'next': reverse('j6_start_hub')})
+        return first, self.client.post(reverse('member_token_first'), {'what': 'new'})
+
+    def test_somebody_new_is_asked_once_and_then_sent_to_j6(self):
+        """Where they were going has to survive the question in between. It is carried in
+        the session, because that screen posts no `next` of its own — without which they
+        arrive on /apps/ wondering where the chat went."""
+        first, after = self.into_j6()
+        # Not fetched: `into_j6` has already answered that screen, which clears the pending
+        # question, so following it now would only find the redirect it leaves behind.
+        self.assertRedirects(first, reverse('member_token_first'),
+                             fetch_redirect_response=False)
+        self.assertRedirects(after, reverse('j6_start_hub'), target_status_code=200)
+        self.assertContains(self.client.get(reverse('j6_start_hub')), 'call you')
+
+    def test_their_chat_name_is_theirs_to_pick_not_syncup_s(self):
+        """The one thing that would be unforgivable: publishing their real name to the
+        people they chat with."""
+        self.into_j6(person(name='Anand Kumar'))
+        self.client.post(reverse('j6_start_hub'), {'name': 'Bluejay'})
+        from j6.models import Account as Chat
+        chat = Chat.objects.get()
+        self.assertEqual(chat.name, 'BLUEJAY')
+        self.assertNotIn('Anand', chat.name)
+
+    def test_coming_back_opens_the_chat_account_they_already_have(self):
+        from j6.models import Account as Chat
+        self.into_j6()
+        self.client.post(reverse('j6_start_hub'), {'name': 'Bluejay'})
+        mine = Chat.objects.get()
+        self.client.post(reverse('member_logout'))
+
+        with mock.patch(WHO, return_value=found(person())):
+            self.client.post(reverse('member_token'),
+                             {'token': 'su_tok_1', 'next': reverse('j6_start_hub')})
+        r = self.client.get(reverse('j6_inbox'))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(Chat.objects.count(), 1)       # the same one, not a second
+        self.assertEqual(Chat.objects.get().pk, mine.pk)
+
+    def test_the_self_id_still_works_afterwards(self):
+        from j6.models import Account as Chat
+        self.into_j6()
+        self.client.post(reverse('j6_start_hub'), {'name': 'Bluejay'})
+        chat = Chat.objects.get()
+        self.client.post(reverse('member_logout'))
+        self.client.post(reverse('j6_login'), {'self_id': chat.self_id})
+        self.assertEqual(self.client.get(reverse('j6_inbox')).status_code, 200)

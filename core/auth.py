@@ -240,10 +240,19 @@ def next_value(request):
 
 def safe_next(request, fallback='member_apps'):
     """Where to go after signing in, when the URL says. Never off-site."""
-    nxt = request.POST.get('next') or request.GET.get('next') or ''
-    if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()},
-                                               require_https=request.is_secure()):
-        return nxt
+    return safe_url(request, next_value(request), fallback)
+
+
+def safe_url(request, value, fallback='member_apps'):
+    """`value` if it is a path on this site, else the fallback.
+
+    Split out from `safe_next` because the Use token flow carries its destination through a
+    screen or two in the session rather than on the request, and a remembered destination
+    needs checking exactly as hard as one off a form.
+    """
+    if value and url_has_allowed_host_and_scheme(value, allowed_hosts={request.get_host()},
+                                                 require_https=request.is_secure()):
+        return value
     return reverse(fallback)
 
 

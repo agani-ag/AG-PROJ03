@@ -24,6 +24,22 @@ The second door, and the reason it is here rather than only on the welcome scree
 bookmarked this page and lost their Self-ID had nothing to do but start again. If they linked
 the account to SyncHub, their email or phone and password opens it.
 {% endcomment %}
+{% comment %}
+Only inside the SyncUp app, where the page is handed a token — user.js reveals it. It posts
+to the hub's own endpoint, which asks SyncUp whose token it is and sends them on to
+/j6/start, so a SyncUp person reaches J6 the same way they reach the diary and the ledger.
+
+It does not change what J6 is. The account it opens or makes still has a Self-ID, still
+carries no email or number, and whoever they chat with still sees a name and an Account ID.
+{% endcomment %}
+<div class="or" data-j6-token-wrap hidden>or</div>
+<form method="POST" action="{% url 'member_token' %}" id="j6-token-form" hidden>
+    {% csrf_token %}
+    <input type="hidden" name="token">
+    <input type="hidden" name="next" value="{% url 'j6_start_hub' %}">
+    <button class="btn ghost" type="submit">Use my SyncUp sign-in</button>
+</form>
+
 <div class="or">or</div>
 <a class="btn ghost" href="{% url 'j6_start_hub' %}">Sign in with SyncHub</a>
 <p class="tiny center fade">Only if you linked this chat account to a SyncHub account already.

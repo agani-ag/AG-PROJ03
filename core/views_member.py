@@ -218,7 +218,13 @@ def _pending(request):
 
 
 def _landed(request, member, fields):
-    """Join this member to the SyncUp person and sign them in."""
+    """Join this member to the SyncUp person and sign them in.
+
+    Where they were going is carried in the session, because the question screens in between
+    post nothing of their own. Without it, somebody who opened J6, pressed Use token and
+    answered "I am new" arrives on /apps/ wondering where the chat went.
+    """
+    going = (_pending(request) or {}).get('next') or ''
     ok, why = syncup_people.join(member, fields)
     if not ok:
         messages.error(request, why)
@@ -226,7 +232,7 @@ def _landed(request, member, fields):
     request.session.pop(PENDING, None)
     auth.sign_in(request, member, via='token')
     request.session[auth.TOKEN_SEEN_KEY] = fields['syncup_token']
-    return redirect(auth.safe_next(request))
+    return redirect(auth.safe_url(request, going))
 
 
 @require_POST

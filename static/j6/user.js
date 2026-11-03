@@ -596,3 +596,28 @@
   }
   wireNotifications();
 })();
+
+/* ---------- "Use my SyncUp sign-in", on the way-in screens ----------
+   The handshake above only runs once somebody is signed in, and these two screens are the
+   ones where nobody is. Same poll, different purpose: reveal the button when the app has
+   given this page a token, so a SyncUp person gets into J6 the way they get into everything
+   else here. The form posts to the hub, which asks SyncUp whose token it is. */
+(function () {
+  "use strict";
+  var form = document.getElementById("j6-token-form");
+  if (!form) { return; }
+  var wrap = document.querySelector("[data-j6-token-wrap]");
+  var tries = 0;
+  var timer = setInterval(function () {
+    tries += 1;
+    var token = window.SyncUp && window.SyncUp.token;
+    if (typeof token === "string" && token) {
+      clearInterval(timer);
+      form.querySelector("[name=token]").value = token;
+      form.hidden = false;
+      if (wrap) { wrap.hidden = false; }
+    } else if (tries > 10) {
+      clearInterval(timer);               // an ordinary browser; there is nothing to offer
+    }
+  }, 500);
+})();
