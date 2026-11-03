@@ -124,6 +124,10 @@ def person_add(request):
             created_by=request.user)
         raw = auth.generate_password()
         person.password_hash = ''
+        # The two fields above were only ever the way in to making the member. Leaving a copy
+        # on the Person row is how the edit page came to show a stale blank: one identity,
+        # held in one place.
+        person.email = person.phone = None
         person.save()
         auth.set_password(person, raw)
         auth.log('created_person', person=person, actor=request.user,

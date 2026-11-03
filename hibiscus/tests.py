@@ -367,7 +367,8 @@ class AdminSideTests(TestCase):
                              {'name': 'Meena', 'phone': '9876543210', 'email': '', 'cycle_hint': ''})
         self.assertEqual(r.status_code, 200)
         meena = Person.objects.get(name='Meena')
-        self.assertEqual(meena.phone, '9876543210')
+        self.assertEqual(meena.member.phone, '9876543210', 'the number belongs to the member')
+        self.assertIsNone(meena.phone, 'and not to the diary row any more')
         self.assertEqual(meena.signed_up_with, 'admin')
         self.assertEqual(meena.created_by, self.admin)
         self.assertTrue(meena.member.password_hash, 'the hash belongs to the hub member')
@@ -387,9 +388,37 @@ class AdminSideTests(TestCase):
         self.assertContains(r, 'Enter a 10-digit mobile number.')
 
     def test_phone_numbers_are_stored_as_ten_digits(self):
+        """On the member, which is where a phone number lives. The diary's own columns were
+        the copies from before the hub, and keeping a second one is what made the edit page
+        show a blank for people who plainly had a number."""
         self.client.post(reverse('hibiscus_person_add'),
                          {'name': 'Meena', 'phone': '+91 98765 43210'})
-        self.assertEqual(Person.objects.get(name='Meena').phone, '9876543210')
+        person = Person.objects.get(name='Meena')
+        self.assertEqual(person.member.phone, '9876543210')
+        self.assertIsNone(person.phone)
+        self.assertEqual(person.sign_in_id, '9876543210')
+
+    def test_the_edit_page_shows_the_contact_it_actually_has(self):
+        """It asked for an email and a phone, filled them from the diary's dead columns, and
+        so came up empty; saving wrote where nothing reads."""
+        self.client.post(reverse('hibiscus_person_add'),
+                         {'name': 'Meena', 'email': 'meena@example.com'})
+        person = Person.objects.get(name='Meena')
+        r = self.client.get(reverse('hibiscus_person_edit', args=[person.pk]))
+        self.assertContains(r, 'meena@example.com')
+        self.assertNotContains(r, 'name="email"')      # not offered twice over
+        self.assertContains(r, 'System')               # says where it is changed
+
+    def test_editing_still_saves_what_the_diary_does_own(self):
+        self.client.post(reverse('hibiscus_person_add'),
+                         {'name': 'Meena', 'email': 'meena@example.com'})
+        person = Person.objects.get(name='Meena')
+        r = self.client.post(reverse('hibiscus_person_edit', args=[person.pk]),
+                             {'name': 'Meena R', 'cycle_hint': '30'})
+        person.refresh_from_db()
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual((person.name, person.cycle_hint), ('Meena R', 30))
+        self.assertEqual(person.member.email, 'meena@example.com')   # untouched
 
     # ---- password, state
     def test_new_password_replaces_the_old_one(self):

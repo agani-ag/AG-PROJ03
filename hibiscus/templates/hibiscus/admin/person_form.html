@@ -24,6 +24,13 @@
             {% for e in form.name.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
         </div>
 
+{% comment %}
+Asked when adding, because the new hub member is made from one of them. Not asked when
+editing: these were the diary's own copies from before identity moved to the hub, nothing
+has written to them since, so the boxes came up blank for people who plainly had both and
+saving them wrote where nothing reads. Shown instead, from where they actually live.
+{% endcomment %}
+        {% if form.is_adding %}
         <div class="form-grid">
             <div class="field{% if form.email.errors %} invalid{% endif %}">
                 <label class="label" for="{{ form.email.id_for_label }}">Email <span class="opt">optional</span></label>
@@ -37,6 +44,21 @@
             </div>
         </div>
         <span class="help">One of the two is needed — it is what they sign in with.</span>
+        {% else %}
+        <div class="field">
+            <label class="label">Signs in as</label>
+            <p style="margin:2px 0 0">
+                <code class="small">{{ person.member.email|default:"—" }}</code>
+                {% if person.member.phone %} or <code class="small">{{ person.member.phone }}</code>{% endif %}</p>
+            <span class="help">
+                {% if person.member.syncup_id %}From SyncUp — their name, email, phone and
+                    password are changed in SyncUp and arrive here within a few minutes.
+                {% else %}Held once for the whole hub. Change it at
+                    <a href="{% url 'person_edit' person.member.pk %}">System → People</a>,
+                    where the same address cannot be given to two accounts by accident.
+                {% endif %}</span>
+        </div>
+        {% endif %}
 
         <div class="field{% if form.cycle_hint.errors %} invalid{% endif %}" style="max-width:220px">
             <label class="label" for="{{ form.cycle_hint.id_for_label }}">Usual cycle length <span class="opt">optional</span></label>

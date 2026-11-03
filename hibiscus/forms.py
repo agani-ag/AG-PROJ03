@@ -17,7 +17,17 @@ def _style(form):
 
 
 class PersonForm(forms.ModelForm):
-    """Add or edit someone. An email address or a phone number — at least one of the two."""
+    """Add or edit someone in the diary's console.
+
+    **Adding** asks for an email or a phone, because that is what the new hub member is made
+    from — there is nothing to sign in with otherwise.
+
+    **Editing** does not, and that is the fix for a quiet bug: `Person.email` and
+    `Person.phone` are the old per-module copies from before identity moved to `core.Member`,
+    and nothing has written to them since. So the edit form came up blank for people who
+    plainly had both, and saving it wrote to columns nothing reads. One identity, one place
+    to change it, and the page says where that is.
+    """
 
     class Meta:
         model = Person
@@ -36,7 +46,14 @@ class PersonForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            for gone in ('email', 'phone'):
+                self.fields.pop(gone)
         _style(self)
+
+    @property
+    def is_adding(self):
+        return not self.instance.pk
 
     def clean_email(self):
         email = (self.cleaned_data.get('email') or '').strip().lower()
@@ -53,7 +70,7 @@ class PersonForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
-        if not data.get('email') and not data.get('phone'):
+        if self.is_adding and not data.get('email') and not data.get('phone'):
             raise forms.ValidationError('Add an email address or a phone number.')
         return data
 
