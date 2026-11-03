@@ -1,41 +1,84 @@
 /* The hub's public pages need almost nothing from JavaScript, and every screen works with this
    file blocked. */
 
-/* "Use my SyncUp sign-in", which only exists inside the SyncUp app.
-   The app puts `window.SyncUp.token` on the page; this reveals the button and posts that
-   token. It is not a credential and nothing here treats it as one — the server asks SyncUp
-   whose it is, and a phone nobody is signed in on never signs anybody in. */
+/* The sign-in page, inside the SyncUp app.
+
+   Three states ship in the document and this chooses between them. The app puts
+   `window.SyncUp.token` on the page; that is not a credential and nothing here treats it as
+   one — it is posted to our server, which asks SyncUp whose it is.
+
+   What is NOT checked is a version. The app sets `window.SyncUp = Object.assign(
+   window.SyncUp || {}, { token: "..." })` and nothing else. An earlier draft required
+   `SyncUp.v === 1`, left over from the SSO design removed from the app in October, and since
+   it is never set the button appeared on no phone at all.
+
+   The poll is the same one hibiscus/user.js uses for the push handshake: an older WebView
+   injects in onPageFinished, after this script has run, and sends no event to say so. */
 (function () {
   "use strict";
   var form = document.getElementById("token-form");
-  var divider = document.querySelector("[data-token-wrap]");
-  if (!form) { return; }
+  var page = document.getElementById("sign-in-page");
+  if (!form || !page) { return; }
 
-  function show(token) {
-    form.querySelector("[name=token]").value = token;
-    form.hidden = false;
-    if (divider) { divider.hidden = false; }
+  var waiting = document.getElementById("signing-in");
+  var oneButton = document.getElementById("one-button");
+  var backLink = document.querySelector("[data-back-to-button]");
+  var mayGoAlone = page.dataset.auto === "1";
+
+  function csrf() {
+    var m = document.cookie.match(/(^|;\s*)csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[2]) : "";
   }
 
-  // Look, then keep looking. On an older WebView the app injects its script in
-  // onPageFinished — after this one has run — and sends no event to say so, so a single
-  // check at load time finds nothing and the button never appears. Same poll as the push
-  // handshake in hibiscus/user.js, which has been doing it correctly all along.
-  //
-  // What is NOT checked is a version: the app sets `window.SyncUp = Object.assign(
-  // window.SyncUp || {}, { token: "..." })` and nothing else. An earlier draft of this file
-  // required `SyncUp.v === 1`, which came from the SSO design that was removed from the app
-  // in October. It is never set, so the test was always false and the button never showed on
-  // any phone.
-  // Inside the app, sign in without being asked to. The page is swapped for a "signing you
-  // in" line rather than merely hidden, so nobody sits looking at a form they are not meant
-  // to fill in. `data-auto` is the server's permission: the marker that Sign out leaves is
-  // httponly, so this script cannot see it and must be told. Without permission the button
-  // is simply revealed and waits to be pressed, which is how somebody gets back in on
-  // purpose after signing out.
-  var page = document.getElementById("sign-in-page");
-  var waiting = document.getElementById("signing-in");
-  var mayGoAlone = !!(page && waiting && page.dataset.auto === "1");
+  /* The name on the who-card. Fetched after the button is already on screen and never
+     waited for: a name is a decoration, and the button works without one. */
+  function fillName(token) {
+    var body = new URLSearchParams({ token: token, csrfmiddlewaretoken: csrf() });
+    fetch("/in/whose", { method: "POST", body: body, headers: { "X-CSRFToken": csrf() } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.name) { return; }
+        document.querySelectorAll("[data-whose-name]").forEach(function (el) {
+          el.textContent = d.name;
+        });
+        document.querySelectorAll("[data-whose-initials]").forEach(function (el) {
+          var bits = d.name.split(" ").filter(Boolean);
+          el.textContent = (bits.length > 1 ? bits[0][0] + bits[1][0] : d.name.slice(0, 2));
+        });
+        document.querySelectorAll("[data-whose-line]").forEach(function (el) {
+          el.textContent = "as " + d.name;
+        });
+      })
+      .catch(function () { /* the plain button is a complete answer on its own */ });
+  }
+
+  function goAlone(token) {
+    page.hidden = true;
+    if (waiting) { waiting.hidden = false; }
+    fillName(token);
+    form.submit();
+  }
+
+  function askFirst(token) {
+    page.hidden = true;
+    if (oneButton) { oneButton.hidden = false; }
+    if (backLink) { backLink.hidden = false; }
+    fillName(token);
+  }
+
+  // "Not you? Use another account", and the way back from it.
+  document.querySelectorAll("[data-show-form]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (oneButton) { oneButton.hidden = true; }
+      page.hidden = false;
+    });
+  });
+  document.querySelectorAll("[data-hide-form]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      page.hidden = true;
+      if (oneButton) { oneButton.hidden = false; }
+    });
+  });
 
   var tries = 0;
   var timer = setInterval(function () {
@@ -43,14 +86,10 @@
     var token = window.SyncUp && window.SyncUp.token;
     if (typeof token === "string" && token) {
       clearInterval(timer);
-      show(token);
-      if (mayGoAlone) {
-        page.hidden = true;
-        waiting.hidden = false;
-        form.submit();
-      }
+      form.querySelector("[name=token]").value = token;
+      if (mayGoAlone) { goAlone(token); } else { askFirst(token); }
     } else if (tries > 10) {
-      clearInterval(timer);                 // not inside the app; there is nothing to offer
+      clearInterval(timer);               // an ordinary browser: the form is already right
     }
   }, 500);
 })();

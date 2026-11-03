@@ -15,6 +15,7 @@ Run: python manage.py test core.tests_use_token
 from unittest import mock
 
 from django.contrib.auth.hashers import make_password
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
@@ -42,6 +43,7 @@ class _App(TestCase):
     """A browser inside the SyncUp app, with a token on the page."""
 
     def setUp(self):
+        cache.clear()           # /in/whose keeps names for two minutes, by token
         hub = HubSettings.load()
         hub.syncup_base = 'https://syncup.example.com'
         hub.syncup_links_key = 'a-key'
@@ -205,7 +207,7 @@ class NobodyKnownTests(_App):
         r = self.press()
         self.assertRedirects(r, reverse('member_token_first'))
         self.assertContains(self.client.get(reverse('member_token_first')),
-                            'already have a SyncHub account')
+                            'used SyncHub before')
 
     def test_i_am_new_makes_one_account_and_signs_in(self):
         self.press()
@@ -720,3 +722,75 @@ class SigningInByItselfTests(_App):
         self.assertRedirects(r, reverse('member_login'))
         page = self.client.get(reverse('member_login')).content.decode()
         self.assertLess(page.index('name="password"'), page.index('I am new here'))
+
+
+class TheOneButtonScreenTests(_App):
+    """What somebody sees on the one screen a SyncUp person ever meets: after Sign out."""
+
+    def test_all_three_states_ship_in_the_page(self):
+        """Nothing is fetched to build a screen. The script chooses between them."""
+        page = self.client.get(reverse('member_login')).content.decode()
+        for part in ('id="signing-in"', 'id="one-button"', 'id="sign-in-page"',
+                     'Continue with SyncUp', 'Not you? Use another account',
+                     'Back to Continue with SyncUp'):
+            self.assertIn(part, page, part)
+
+    def test_the_ordinary_form_is_in_there_too(self):
+        """"Not you?" reveals it rather than fetching it, and a phone with no scripting
+        gets it straight away."""
+        page = self.client.get(reverse('member_login')).content.decode()
+        self.assertIn('name="sign_in_id"', page)
+        self.assertIn('name="password"', page)
+        wrapper = page.split('id="sign-in-page"', 1)[1][:40]
+        self.assertNotIn('hidden', wrapper)
+
+    def test_the_name_is_asked_for_separately_and_signs_nobody_in(self):
+        Member.objects.create(syncup_id='su-1', name='Ravi Kumar', email='r@example.com')
+        with mock.patch(WHO, return_value=found(person(name='Ravi Kumar'))):
+            r = self.client.post(reverse('member_whose'), {'token': 'su_tok_1'})
+        self.assertEqual(r.json(), {'name': 'Ravi Kumar'})
+        self.assertNotIn(auth.SESSION_KEY, self.client.session)
+
+    def test_the_name_is_remembered_so_a_refresh_costs_nothing(self):
+        with mock.patch(WHO, return_value=found(person(name='Ravi Kumar'))) as asked:
+            self.client.post(reverse('member_whose'), {'token': 'su_tok_1'})
+            self.client.post(reverse('member_whose'), {'token': 'su_tok_1'})
+        self.assertEqual(asked.call_count, 1)
+
+    def test_a_phone_nobody_is_signed_in_on_has_no_name_to_show(self):
+        with mock.patch(WHO, return_value=NOBODY):
+            r = self.client.post(reverse('member_whose'), {'token': 'a-plain-phone'})
+        self.assertEqual(r.json(), {})
+
+    def test_syncup_being_unreachable_is_not_an_error_the_page_must_handle(self):
+        """A name is a decoration; the button is complete without one."""
+        with mock.patch(WHO, return_value=(None, 'URLError: no route')):
+            r = self.client.post(reverse('member_whose'), {'token': 'su_tok_1'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json(), {})
+
+    def test_the_join_screen_shows_enough_to_recognise_and_no_more(self):
+        self.mine(email='anand@example.com')
+        self.press()
+        page = self.client.get(reverse('member_token_join')).content.decode()
+        self.assertIn('an•••@example.com', page)
+        self.assertNotIn('anand@example.com', page)
+        self.assertIn('Join and continue', page)
+
+    def test_the_join_screen_promises_no_link_this_server_cannot_send(self):
+        """There is no mail here at all: a link is minted and handed over by the admin, and
+        opening one signs them in without joining anything."""
+        self.mine(email='anand@example.com')
+        self.press()
+        page = self.client.get(reverse('member_token_join')).content.decode()
+        self.assertNotIn('Send me a link', page)
+        self.assertNotIn('Forgot', page)
+
+    def test_a_moment_of_silence_from_syncup_is_not_remembered_for_two_minutes(self):
+        """The blank an outage returns looks exactly like "nobody", and keeping it would
+        leave the card nameless long after SyncUp came back."""
+        with mock.patch(WHO, return_value=(None, 'URLError: no route')):
+            self.client.post(reverse('member_whose'), {'token': 'su_tok_1'})
+        with mock.patch(WHO, return_value=found(person(name='Ravi Kumar'))):
+            r = self.client.post(reverse('member_whose'), {'token': 'su_tok_1'})
+        self.assertEqual(r.json(), {'name': 'Ravi Kumar'})

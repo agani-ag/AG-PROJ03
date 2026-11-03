@@ -3,39 +3,44 @@
 {% block wrap_class %} plain{% endblock %}
 
 {% block content %}
+{% comment %}
+Asked once, and never again whatever they answer. It is the duplicate guard: nothing here
+matches their email, their number or this phone, so the only person who knows whether an
+older account exists is the one reading it. "No, I'm new here" leads, because most people are.
+{% endcomment %}
 <div class="brand">
     <span class="mark"><svg class="ic" style="width:27px;height:27px;stroke:#fff"><use href="#m-hub"/></svg></span>
-    <h1>Hello, {{ person.name|default:"there" }}</h1>
-    <p>Do you already have a SyncHub account?</p>
+    <h1>Welcome{% if person.name %}, {{ person.name }}{% endif %}</h1>
+    <p>Have you used SyncHub before?</p>
 </div>
 
-{% comment %}
-Asked rather than guessed. Nothing here matches their email, their number or this phone, so
-the only person who knows whether an older account exists is the one reading this.
-{% endcomment %}
 <form method="POST" class="card" novalidate>
     {% csrf_token %}
-    <h2 style="font-size:15px;margin:0 0 4px">Yes, I have one</h2>
-    <p class="tiny">Sign in to it once and your SyncUp account takes it over.</p>
-    <label class="label" for="sign_in_id">Its email or phone</label>
-    <input class="input" id="sign_in_id" name="sign_in_id" autocomplete="username"
-           value="{{ request.POST.sign_in_id|default:'' }}">
-    <label class="label" for="password">Its password</label>
-    <input class="input" id="password" name="password" type="password"
-           autocomplete="current-password">
-    {% if error %}<p class="err">{{ error }}</p>{% endif %}
-    <div style="margin-top:14px"><button class="btn" type="submit">Join that account</button></div>
+    <button class="btn" type="submit" name="what" value="new">No, I'm new here</button>
+    <p class="tiny center" style="margin-top:9px">Your SyncUp name and password come with you.
+        Nothing else to fill in.</p>
 </form>
 
-<form method="POST" class="card" style="border-style:dashed">
-    {% csrf_token %}<input type="hidden" name="what" value="new">
-    <div class="row">
-        <svg class="ic sm" style="color:var(--mut)"><use href="#m-plus"/></svg>
-        <div class="mn"><b style="font-size:13.5px">No, I am new here</b>
-            <div class="tiny">Start fresh. Your SyncUp name and password come with you.</div></div>
-        <button class="link" type="submit">Start</button>
-    </div>
-</form>
+<div class="or">or</div>
 
+<details class="card" {% if error %}open{% endif %}>
+    <summary style="cursor:pointer;font-weight:650;font-size:14.5px">Yes, I already have one</summary>
+    <form method="POST" class="stack" novalidate style="margin-top:12px">
+        {% csrf_token %}
+        <p class="tiny">Sign in to it once and your SyncUp account takes it over.</p>
+        <label class="label" for="sign_in_id">Its email or phone</label>
+        <input class="input" id="sign_in_id" name="sign_in_id" autocomplete="username"
+               value="{{ request.POST.sign_in_id|default:'' }}">
+        <label class="label" for="password">Its password</label>
+        <input class="input" id="password" name="password" type="password"
+               autocomplete="current-password">
+        {% if error %}<p class="err">{{ error }}</p>{% endif %}
+        <div style="margin-top:14px"><button class="btn ghost" type="submit">Join that account</button></div>
+    </form>
+</details>
+
+<div class="center" style="margin-top:14px">
+    <form method="POST" style="display:inline">{% csrf_token %}
+        <button class="link" type="submit" name="what" value="not-now">Not now</button></form></div>
 <p class="tiny center">Either way you will sign in with your SyncUp password from now on.</p>
 {% endblock %}

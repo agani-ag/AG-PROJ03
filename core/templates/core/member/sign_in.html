@@ -4,22 +4,55 @@
 
 {% block content %}
 {% comment %}
-Inside the SyncUp app the page signs the person in by itself, with no button and no screen.
-`auto` is the server's answer to "may it?" — the marker it reads is httponly, so the page
-cannot see it, and after a deliberate Sign out the answer is no until they press the button.
+Three states in one document, because the right one depends on things only the browser knows.
 
-Everything below ships VISIBLE. A phone with scripting off must still get a sign-in page, so
-the script hides the form once it sees a token rather than the template shipping it hidden.
-On almost every phone the token is there before this script runs and the swap happens before
-first paint; on an older WebView that injects late there is a brief flash of the form first,
-which is better than a blank page.
+Inside the SyncUp app the page signs the person in by itself and they see `#signing-in` for
+about a second. After they press Sign out it must not do that — `auto` is the server's answer,
+read from an httponly cookie the page cannot see — so they get `#one-button` instead: who the
+phone is signed in to SyncUp as, and one thing to press.
+
+Everything ships in the page and nothing is fetched later. The ordinary form below is the
+fallback for a phone with scripting off, which is why it starts visible and is hidden by
+member.js rather than the other way round.
 {% endcomment %}
+
 <div id="signing-in" class="card center" hidden>
-    <p style="margin:0;font-weight:600">Signing you in with SyncUp…</p>
-    <p class="tiny" style="margin-top:4px">One moment.</p>
+    <div class="brand" style="gap:0">
+        <span class="mark"><svg class="ic" style="width:27px;height:27px;stroke:#fff"><use href="#m-hub"/></svg></span>
+    </div>
+    <p style="margin:14px 0 0;font-weight:650">Signing you in with SyncUp…</p>
+    <p class="tiny" data-whose-line style="margin-top:3px">One moment.</p>
+    <div class="spinner" aria-hidden="true" style="margin:14px auto 2px"></div>
+</div>
+
+<div id="one-button" hidden>
+    <div class="brand">
+        <span class="mark"><svg class="ic" style="width:27px;height:27px;stroke:#fff"><use href="#m-hub"/></svg></span>
+        <h1>SyncHub</h1>
+        <p>This phone is signed in to SyncUp as</p>
+    </div>
+
+    <div class="card row" style="margin-top:4px">
+        <span class="who-mark" data-whose-initials>·</span>
+        <div class="mn"><b style="font-size:15.5px" data-whose-name>Your SyncUp account</b>
+            <div><span class="chip-su">SyncUp</span></div></div>
+    </div>
+
+    <form method="POST" action="{% url 'member_token' %}" id="token-form">
+        {% csrf_token %}
+        <input type="hidden" name="token"><input type="hidden" name="next" value="{{ next }}">
+        <button class="btn" type="submit" style="margin-top:12px">Continue with SyncUp
+            <svg class="ic sm"><use href="#m-right"/></svg></button>
+    </form>
+
+    <p class="center" style="margin-top:14px">
+        <button class="link" type="button" data-show-form>Not you? Use another account</button></p>
 </div>
 
 <div id="sign-in-page"{% if auto %} data-auto="1"{% endif %}>
+<p class="center" data-back-to-button hidden style="margin:0 0 10px">
+    <button class="link" type="button" data-hide-form>← Back to Continue with SyncUp</button></p>
+
 <div class="brand">
     <span class="mark"><svg class="ic" style="width:27px;height:27px;stroke:#fff"><use href="#m-hub"/></svg></span>
     <h1>Sign in to SyncHub</h1>
@@ -30,25 +63,13 @@ which is better than a blank page.
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ next }}">
     <label class="label" for="sign_in_id">Email or phone</label>
-    <input class="input" id="sign_in_id" name="sign_in_id" autofocus autocomplete="username"
+    <input class="input" id="sign_in_id" name="sign_in_id" autocomplete="username"
            value="{{ request.POST.sign_in_id|default:'' }}">
     <label class="label" for="password">Password</label>
     <input class="input" id="password" name="password" type="password"
            autocomplete="current-password">
     {% if error %}<p class="err">{{ error }}</p>{% endif %}
     <div style="margin-top:14px"><button class="btn" type="submit">Sign in</button></div>
-</form>
-
-{% comment %}
-Only inside the SyncUp app, and only when the app has given this page a token — member.js
-reveals it rather than the template guessing, because a button that cannot work is worse
-than no button. The token is not a credential: the server asks SyncUp whose it is.
-{% endcomment %}
-<div class="or" data-token-wrap hidden>or</div>
-<form method="POST" action="{% url 'member_token' %}" id="token-form" hidden>
-    {% csrf_token %}<input type="hidden" name="token"><input type="hidden" name="next" value="{{ next }}">
-    <button class="btn ghost btn-block" type="submit" data-token>
-        <svg class="ic lg"><use href="#m-key"/></svg>Use my SyncUp sign-in</button>
 </form>
 
 <form method="POST" action="{% url 'member_link' %}" class="card" style="border-style:dashed">

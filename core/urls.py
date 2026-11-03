@@ -13,6 +13,7 @@ urlpatterns = [
     path('join/', views_member.join, name='member_join'),
     path('in/link', views_member.ask_for_link, name='member_link'),
     path('in/k/<str:key>', views_member.magic, name='member_magic'),
+    path('in/whose', views_member.whose, name='member_whose'),
     path('in/token', views_member.token_sign_in, name='member_token'),
     path('in/token/join', views_member.token_join, name='member_token_join'),
     path('in/token/first', views_member.token_first, name='member_token_first'),

@@ -6,7 +6,11 @@ session it starts works everywhere.
 
 Nothing here knows what a diary or a ledger is. It knows people.
 """
+import hashlib
+
 from django.contrib import messages
+from django.core.cache import cache
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
@@ -265,6 +269,45 @@ def _landed(request, member, fields):
     auth.sign_in(request, member, via='token')
     request.session[auth.TOKEN_SEEN_KEY] = fields['syncup_token']
     return _clear_no_auto(redirect(auth.safe_url(request, going)))
+
+
+#: Whose name the page may show, remembered briefly so a refresh costs nothing. SyncUp
+#: rate-limits `who` per calling IP and this whole site is one IP to it.
+WHOSE_SECONDS = 120
+
+
+@require_POST
+@never_cache
+def whose(request):
+    """The name on the phone, for the page to show. Signs nobody in — on purpose.
+
+    ============================= READ THIS BEFORE EDITING =============================
+    This runs on the screen somebody sees *after pressing Sign out*, where the automatic
+    sign-in is deliberately switched off. It looks like a missed opportunity: the server
+    already knows who is on the phone, so why make them press anything?
+
+    Because that press is the only thing between Sign out and signing straight back in.
+    This project has shipped that loop twice and fixed it twice. Knowing who somebody is
+    and deciding to let them in are different acts, and this endpoint does only the first.
+    ====================================================================================
+
+    Answers `{"name": "..."}` or `{}`. Never an error the page has to handle: a name is a
+    decoration, and the button works perfectly well without one.
+    """
+    token = (request.POST.get('token') or '').strip()
+    if not token:
+        return JsonResponse({})
+    key = f'whose:{hashlib.sha256(token.encode()).hexdigest()[:32]}'
+    name = cache.get(key)
+    if name is None:
+        person, why = syncup_people.person_for_token(token)
+        name = ((person or {}).get('name') or '').strip()[:80]
+        # Only an answer is worth keeping. SyncUp being unreachable for a moment also
+        # arrives as "no name", and caching that would leave the card blank for two
+        # minutes after it came back.
+        if person or why == syncup_people.NO_ONE:
+            cache.set(key, name, WHOSE_SECONDS)
+    return JsonResponse({'name': name} if name else {})
 
 
 @require_POST

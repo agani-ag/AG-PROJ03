@@ -313,6 +313,22 @@ class Member(models.Model):
         return self.email or self.phone or ''
 
     @property
+    def masked_sign_in_id(self):
+        """Enough of the address to recognise, not enough to copy down.
+
+        Shown on the join screen, which somebody may be looking at on a phone that is not
+        theirs: it has to say “yes, that is my account” to its owner without handing a
+        stranger a working address.
+        """
+        if self.email:
+            name, _, host = self.email.partition('@')
+            keep = name[:2] if len(name) > 3 else name[:1]
+            return f'{keep}{"•" * 3}@{host}'
+        if self.phone:
+            return f'{"•" * 6}{self.phone[-4:]}'
+        return 'no email or phone on file'
+
+    @property
     def can_sign_in(self):
         return self.is_active and not self.is_archived
 
