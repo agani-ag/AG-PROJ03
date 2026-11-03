@@ -22,6 +22,18 @@
     <div style="margin-top:14px"><button class="btn" type="submit">Sign in</button></div>
 </form>
 
+{% comment %}
+Only inside the SyncUp app, and only when the app has given this page a token — member.js
+reveals it rather than the template guessing, because a button that cannot work is worse
+than no button. The token is not a credential: the server asks SyncUp whose it is.
+{% endcomment %}
+<div class="or" data-token-wrap hidden>or</div>
+<form method="POST" action="{% url 'member_token' %}" id="token-form" hidden>
+    {% csrf_token %}<input type="hidden" name="token"><input type="hidden" name="next" value="{{ next }}">
+    <button class="btn ghost btn-block" type="submit" data-token>
+        <svg class="ic lg"><use href="#m-key"/></svg>Use my SyncUp sign-in</button>
+</form>
+
 <form method="POST" action="{% url 'member_link' %}" class="card" style="border-style:dashed">
     {% csrf_token %}
     <input type="hidden" name="sign_in_id" value="{{ request.POST.sign_in_id|default:'' }}">

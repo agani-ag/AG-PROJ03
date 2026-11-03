@@ -1,0 +1,41 @@
+{% extends "core/member/base.html" %}
+{% block title %}Welcome{% endblock %}
+{% block wrap_class %} plain{% endblock %}
+
+{% block content %}
+<div class="brand">
+    <span class="mark"><svg class="ic" style="width:27px;height:27px;stroke:#fff"><use href="#m-hub"/></svg></span>
+    <h1>Hello, {{ person.name|default:"there" }}</h1>
+    <p>Do you already have a SyncHub account?</p>
+</div>
+
+{% comment %}
+Asked rather than guessed. Nothing here matches their email, their number or this phone, so
+the only person who knows whether an older account exists is the one reading this.
+{% endcomment %}
+<form method="POST" class="card" novalidate>
+    {% csrf_token %}
+    <h2 style="font-size:15px;margin:0 0 4px">Yes, I have one</h2>
+    <p class="tiny">Sign in to it once and your SyncUp account takes it over.</p>
+    <label class="label" for="sign_in_id">Its email or phone</label>
+    <input class="input" id="sign_in_id" name="sign_in_id" autocomplete="username"
+           value="{{ request.POST.sign_in_id|default:'' }}">
+    <label class="label" for="password">Its password</label>
+    <input class="input" id="password" name="password" type="password"
+           autocomplete="current-password">
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+    <div style="margin-top:14px"><button class="btn" type="submit">Join that account</button></div>
+</form>
+
+<form method="POST" class="card" style="border-style:dashed">
+    {% csrf_token %}<input type="hidden" name="what" value="new">
+    <div class="row">
+        <svg class="ic sm" style="color:var(--mut)"><use href="#m-plus"/></svg>
+        <div class="mn"><b style="font-size:13.5px">No, I am new here</b>
+            <div class="tiny">Start fresh. Your SyncUp name and password come with you.</div></div>
+        <button class="link" type="submit">Start</button>
+    </div>
+</form>
+
+<p class="tiny center">Either way you will sign in with your SyncUp password from now on.</p>
+{% endblock %}

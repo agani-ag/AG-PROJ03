@@ -1,0 +1,54 @@
+{% extends "core/member/base.html" %}
+{% block title %}Is this you?{% endblock %}
+{% block wrap_class %} plain{% endblock %}
+
+{% block content %}
+<div class="brand">
+    <span class="mark"><svg class="ic" style="width:27px;height:27px;stroke:#fff"><use href="#m-hub"/></svg></span>
+    <h1>You may already be here</h1>
+    <p>An account on this site looks like yours.</p>
+</div>
+
+{% comment %}
+The password is the whole safeguard. A match on an email, a number or a shared phone is a
+good guess and nothing more — on a family phone it is exactly how one person would end up
+holding another's diary. So the older account proves itself, once, and then belongs to the
+SyncUp account for good.
+{% endcomment %}
+<form method="POST" class="card" novalidate>
+    {% csrf_token %}
+    <div class="row">
+        <span class="mark" style="width:42px;height:42px;border-radius:13px;background:var(--me);
+              display:grid;place-items:center;color:#fff;font-weight:700">{{ older.initials }}</span>
+        <div class="mn"><b style="font-size:15px">{{ older.name }}</b>
+            <div class="tiny">{{ older.sign_in_id|default:"no email or phone on file" }}</div></div>
+    </div>
+    <p class="tiny" style="margin-top:10px">
+        {% if why == 'email' %}It has the same email address as your SyncUp account.
+        {% elif why == 'phone' %}It has the same phone number as your SyncUp account.
+        {% else %}It was being used on this phone.{% endif %}
+        Type its password once and the two become one account.</p>
+
+    <label class="label" for="password">That account's SyncHub password</label>
+    <input class="input" id="password" name="password" type="password" autofocus
+           autocomplete="current-password">
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+    <p class="tiny" style="margin-top:8px">Afterwards you sign in with your <b>SyncUp</b>
+        password — this one stops working, and your name, email and phone come from SyncUp.</p>
+    <div style="margin-top:14px"><button class="btn" type="submit">Yes, join them</button></div>
+</form>
+
+{% if can_refuse %}
+<form method="POST" class="card" style="border-style:dashed">
+    {% csrf_token %}<input type="hidden" name="what" value="not-mine">
+    <div class="row">
+        <div class="mn"><b style="font-size:13.5px">That is not my account</b>
+            <div class="tiny">Somebody else uses this phone. You will be asked nothing about
+                it again, and you get an account of your own.</div></div>
+        <button class="link" type="submit">Not mine</button>
+    </div>
+</form>
+{% endif %}
+
+<p class="center"><a class="link" href="{% url 'member_token_first' %}">I have a different account here</a></p>
+{% endblock %}

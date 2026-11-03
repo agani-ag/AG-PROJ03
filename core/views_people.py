@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 from . import auth as hub
 from . import push as core_push
 from .forms import MemberForm
-from .models import Member
+from .models import HubSettings, Member
 from .modules import MODULES
 from .views import admin_required
 
@@ -46,6 +46,19 @@ def _profiles_of(member):
     return out
 
 
+def _where_from(member):
+    """One badge saying where this person came from and what state they are in."""
+    if member.syncup_id and not member.is_active:
+        return 'Switched off · left SyncUp', 'badge-warning'
+    if member.syncup_id and member.syncup_unused:
+        return 'From SyncUp · not used yet', ''
+    if member.syncup_id:
+        return 'From SyncUp', 'badge-success'
+    if member.waiting_for:
+        return f'Waiting to join · {member.get_waiting_why_display().lower()}', 'badge-warning'
+    return 'SyncHub only', ''
+
+
 def _how_they_sign_in(member):
     ways = []
     if member.password_hash:
@@ -70,8 +83,10 @@ def people(request):
     shown = []
     for member in page:
         profiles = _profiles_of(member)
+        label, badge = _where_from(member)
         shown.append({'member': member, 'profiles': profiles,
                       'ways': _how_they_sign_in(member),
+                      'from_label': label, 'from_badge': badge,
                       'count': len([p for p in profiles if p['profile']])})
 
     unmerged = sum(1 for module in MODULES if module.is_live)
@@ -85,7 +100,39 @@ def people(request):
         'modules': [m for m in MODULES if m.is_live],
         'unmerged': _unmerged_counts(),
         'module_count': unmerged,
+        'syncup': _syncup_state(),
     })
+
+
+def _syncup_state():
+    """What the People page says about the SyncUp copy: counts, when, and any clashes."""
+    from . import syncup_people
+    hub = HubSettings.load()
+    return {
+        'problem': syncup_people.problem(hub),
+        'synced': Member.objects.filter(syncup_id__isnull=False).count(),
+        'unused': Member.objects.filter(syncup_id__isnull=False, syncup_unused=True).count(),
+        'waiting': Member.objects.exclude(waiting_for='').count(),
+        'clashes': Member.objects.exclude(syncup_clash='').count(),
+        'off': Member.objects.filter(syncup_id__isnull=False, is_active=False).count(),
+        'at': hub.syncup_people_at,
+        'note': hub.syncup_people_note,
+    }
+
+
+@require_POST
+@admin_required
+def syncup_sync_now(request):
+    """Run the people sync on demand, with an admin watching rather than a cron."""
+    from . import cronhub
+    out = cronhub.run(cronhub.TICK, budget_seconds=25, only='core.syncup_people',
+                      triggered_by=request.user.username)
+    hook = (out.get('hooks') or {}).get('core.syncup_people') or {}
+    if hook.get('error'):
+        messages.error(request, f"SyncUp said no: {hook['error']}")
+    else:
+        messages.success(request, HubSettings.load().syncup_people_note or 'Nothing to do.')
+    return redirect('people')
 
 
 @admin_required

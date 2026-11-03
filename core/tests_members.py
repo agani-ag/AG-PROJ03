@@ -318,6 +318,12 @@ class PeoplePageTests(TestCase):
         heading for. The number below is a ceiling, not a target — what matters is that it
         does not move when the second argument does.
         """
+        # One warm-up first: HubSettings.load() creates its singleton row on the very first
+        # call, so a cold page costs three queries a warm one does not. That is not scaling,
+        # and comparing a cold call to a warm one would have this test failing for a reason
+        # it is not about.
+        self.client.get(reverse('people'))
+
         def load(n):
             Member.objects.all().delete()
             Member.objects.bulk_create(

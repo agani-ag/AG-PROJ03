@@ -12,6 +12,39 @@
     </div>
 </div>
 
+{% comment %}
+SyncUp owns these people; this card is the only place on the site that says what the last
+copy did, so it says it plainly rather than only when something went wrong.
+{% endcomment %}
+<div class="card" style="margin-top:14px">
+    <div class="card-head">{% icon "refresh-cw" %}<h2>People from SyncUp</h2>
+        {% if not syncup.problem %}
+        <form method="POST" action="{% url 'syncup_sync_now' %}" class="ml-auto">{% csrf_token %}
+            <button class="btn btn-sm" type="submit">{% icon "refresh-cw" %}Sync now</button>
+        </form>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        {% if syncup.problem %}
+        <p class="small muted">{{ syncup.problem }} The same key that puts this hub's tools in
+            the SyncUp app also copies its people here.</p>
+        {% else %}
+        <p class="small muted">{{ syncup.synced }} copied from SyncUp{% if syncup.unused %},
+            {{ syncup.unused }} not used yet{% endif %}{% if syncup.waiting %},
+            {{ syncup.waiting }} waiting to join{% endif %}{% if syncup.off %},
+            {{ syncup.off }} switched off{% endif %}.
+            {% if syncup.at %}Last run {{ syncup.at|ago }}.{% else %}Not run yet.{% endif %}</p>
+        {% if syncup.note %}<p class="small faint" style="margin-top:4px">{{ syncup.note }}</p>{% endif %}
+        {% if syncup.clashes %}
+        <div class="alert alert-warning" style="margin-top:10px">{% icon "circle-alert" %}
+            <div class="alert-body"><b>{{ syncup.clashes }} could not be copied in full</b>
+                A changed email or phone that another account here already holds is left
+                alone rather than forced. Search below for the people marked with it.</div></div>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+
 {% if no_handle %}
 <div class="alert alert-warning" style="margin-top:14px">{% icon "circle-alert" %}
     <div class="alert-body"><b>{{ no_handle|length }} {{ no_handle|pluralize:"person has,people have" }} no email and no phone</b>
@@ -68,7 +101,10 @@
                         {% if row.member.is_archived %}<span class="badge">archived</span>{% endif %}
                         <div class="small faint">joined {{ row.member.created_at|date:"d M Y" }}</div></td>
                     <td data-label="Signs in with">
-                        {% for way in row.ways %}<span class="badge">{{ way }}</span> {% endfor %}</td>
+                        {% for way in row.ways %}<span class="badge">{{ way }}</span> {% endfor %}
+                        <div style="margin-top:3px"><span class="badge {{ row.from_badge }}">{{ row.from_label }}</span></div>
+                        {% if row.member.syncup_clash %}
+                        <div class="small faint">{{ row.member.syncup_clash }}</div>{% endif %}</td>
                     <td data-label="Signs in as">
                         {% if row.member.email %}<code class="small">{{ row.member.email }}</code>{% endif %}
                         {% if row.member.phone %}{% if row.member.email %}<br>{% endif %}

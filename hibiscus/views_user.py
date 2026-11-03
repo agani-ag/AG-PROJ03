@@ -524,6 +524,11 @@ def save_syncup_token(request):
     # all of them reachable. `core.push` owns that rule.
     if core_push.remember_token(person, token):
         auth.log('syncup_token_saved', person=person)
+    # The same handshake is where a change of SyncUp account shows up, so the session rules
+    # are checked here rather than on every page view.
+    from core import syncup_people
+    if syncup_people.token_changed(request, token):
+        return HttpResponse(status=205)        # reset: the page should reload itself out
     return HttpResponse(status=204)
 
 def moved_from_me(request, rest=''):

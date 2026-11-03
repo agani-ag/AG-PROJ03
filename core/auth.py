@@ -25,6 +25,13 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from .models import Member
 
 SESSION_KEY = 'synchub_member'
+#: How this session was started: 'password', 'link' or 'token'. It decides what a change of
+#: SyncUp account on the phone does — a session that came from Use token belongs to that
+#: token, while one started with a password is the person's own and survives.
+VIA_KEY = 'synchub_via'
+#: The SyncUp page token this session last saw, so the check below runs when it changes
+#: rather than on every page.
+TOKEN_SEEN_KEY = 'synchub_token_seen'
 #: Set when a session begins and popped by the first page that asks, so a greeting fires on
 #: arrival rather than on every page.
 GREET_KEY = 'synchub_greet'
@@ -106,11 +113,25 @@ def check_identity(name, email, phone, exclude=None):
     if phone and len(phone) < 10:
         return 'phone', 'That phone number looks too short.'
     rows = Member.objects.exclude(pk=exclude) if exclude else Member.objects.all()
-    if email and rows.filter(email__iexact=email).exists():
-        return 'email', 'There is already an account with that email address.'
-    if phone and rows.filter(phone__endswith=phone).exists():
-        return 'phone', 'There is already an account with that phone number.'
+    clash = rows.filter(email__iexact=email).first() if email else None
+    if clash:
+        return 'email', _taken(clash, 'email address')
+    clash = rows.filter(phone__endswith=phone).first() if phone else None
+    if clash:
+        return 'phone', _taken(clash, 'phone number')
     return '', ''
+
+
+def _taken(member, what):
+    """Why this address or number cannot be used — and what to do instead.
+
+    Somebody copied from SyncUp has an account here already without ever having made one, so
+    “there is already an account” would read as a mistake rather than as an instruction.
+    """
+    if member.syncup_id:
+        return ('You already have SyncHub through SyncUp. Sign in with your SyncUp password, '
+                'or press Use my SyncUp sign-in in the app.')
+    return f'There is already an account with that {what}.'
 
 
 def check_password_value(password):
@@ -174,7 +195,7 @@ def spend_login_key(member):
 # --------------------------------------------------------------------------- #
 # Sessions
 # --------------------------------------------------------------------------- #
-def sign_in(request, member):
+def sign_in(request, member, via='password'):
     """Start a session.
 
     `cycle_key()` first: a fresh session id on every sign-in, so a cookie somebody else already
@@ -183,6 +204,7 @@ def sign_in(request, member):
     """
     request.session.cycle_key()
     request.session[SESSION_KEY] = member.pk
+    request.session[VIA_KEY] = via
     request.session[GREET_KEY] = True
     request.session.set_expiry(60 * 60 * 24 * SESSION_DAYS)
     Member.objects.filter(pk=member.pk).update(last_opened_at=timezone.now(),
@@ -190,8 +212,12 @@ def sign_in(request, member):
 
 
 def sign_out(request):
-    for key in (SESSION_KEY, GREET_KEY):
+    for key in (SESSION_KEY, GREET_KEY, VIA_KEY, TOKEN_SEEN_KEY):
         request.session.pop(key, None)
+
+
+def signed_in_via(request):
+    return request.session.get(VIA_KEY, '')
 
 
 def current(request):

@@ -16,6 +16,14 @@
         <div class="tiny">In {{ joined|length }} app{{ joined|length|pluralize }}</div></div>
 </div>
 
+{% if member.syncup_id %}
+<div class="card">
+    <h2>Your name</h2>
+    <p style="margin:6px 0 0;font-size:15px"><b>{{ member.name }}</b></p>
+    <p class="tiny" style="margin-top:8px">From SyncUp · change it in SyncUp and it arrives
+        here within a few minutes. Your email, phone and password come from there too.</p>
+</div>
+{% else %}
 <form method="POST" class="card">
     {% csrf_token %}<input type="hidden" name="what" value="name">
     <label class="label" for="name">Your name</label>
@@ -24,7 +32,9 @@
         diary both use it; your J6 chat name is separate and stays separate.</p>
     <div style="margin-top:12px"><button class="btn ghost sm" type="submit">Save</button></div>
 </form>
+{% endif %}
 
+{% if not member.syncup_id %}
 <form method="POST" class="card">
     {% csrf_token %}<input type="hidden" name="what" value="password">
     <h2>{% if has_password %}Change your password{% else %}Set a password{% endif %}</h2>
@@ -42,6 +52,7 @@
            autocomplete="new-password">
     <div style="margin-top:12px"><button class="btn ghost sm" type="submit">Save</button></div>
 </form>
+{% endif %}
 
 <form method="POST" class="card">
     {% csrf_token %}<input type="hidden" name="what" value="theme">

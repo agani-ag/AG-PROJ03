@@ -263,6 +263,132 @@ def take(fields, created_by=None):
 
 
 # --------------------------------------------------------------------------- #
+# One person, now — the Use token path
+# --------------------------------------------------------------------------- #
+#: Said to somebody holding a phone, so it says what to do next rather than what went wrong.
+NO_ONE = 'No SyncUp sign-in on this phone. Sign in or sign up.'
+
+
+def person_for_token(token):
+    """Whose SyncUp account this page token is. Returns `(person, why_not)`.
+
+    A phone that nobody is signed in on has a token of its own, and it never signs anybody
+    in — that is SyncUp's rule and this is where it is honoured. A brand-new SyncUp person
+    the cron has not copied yet comes back here in full, so they do not have to wait for the
+    next run.
+    """
+    token = (token or '').strip()
+    if not token:
+        return None, NO_ONE
+    data, error = who_is(token)
+    if error:
+        logger.info('syncup who: %s', error)
+        return None, NO_ONE if error.startswith('SyncUp said 404') else (
+            'SyncUp could not be reached just now. Sign in with your password instead.')
+    person = (data or {}).get('person')
+    if not person or not str(person.get('id') or '').strip():
+        return None, NO_ONE
+    return person, ''
+
+
+def refuse(member, syncup_id):
+    """"These are different people." Remembered, and never asked again."""
+    SyncUpRefusal.objects.get_or_create(member=member, syncup_id=syncup_id)
+    if member.waiting_for == syncup_id:
+        member.waiting_for, member.waiting_why = '', ''
+        member.save(update_fields=['waiting_for', 'waiting_why'])
+
+
+def join(member, fields):
+    """Tie this SyncHub account to that SyncUp person, for good.
+
+    From here SyncUp owns the name, email, phone and password — the SyncHub password the
+    person just typed stops working, which the screen tells them before they press it.
+
+    An account the sync made ahead for the same person is in the way, and what to do about
+    it depends on whether anybody has used it: an unused one is empty and is deleted, a used
+    one holds somebody's diary and is left for an admin to merge by hand.
+    """
+    made_ahead = Member.objects.filter(syncup_id=fields['syncup_id']).exclude(
+        pk=member.pk).first()
+    if made_ahead is not None:
+        if made_ahead.syncup_unused:
+            made_ahead.delete()
+        else:
+            return False, ('That SyncUp account already has a SyncHub account here with '
+                           'things in it. The admin joins these two on the People page.')
+
+    member.syncup_id = fields['syncup_id']
+    member.syncup_unused = False
+    member.waiting_for, member.waiting_why = '', ''
+    member.save(update_fields=['syncup_id', 'syncup_unused', 'waiting_for', 'waiting_why'])
+    _apply(member, fields)              # name, email, phone, password — SyncUp's, now
+    return True, ''
+
+
+# --------------------------------------------------------------------------- #
+# Whose phone is this now?
+# --------------------------------------------------------------------------- #
+def token_changed(request, token):
+    """Called when a page sees a SyncUp token this session has not seen before.
+
+    Two rules, different on purpose:
+
+    * A session that came from **Use token** belongs to that token. When the token is no
+      longer that person's — they signed out of SyncUp, or somebody else signed in — the
+      session ends.
+    * A session started with a **password** is the person's own. It ends only if a *different*
+      linked SyncUp person is now on the phone, which on a shared phone is the case that
+      matters.
+
+    Returns True when the session was ended. Never raises: a SyncUp that cannot be reached
+    must not sign anybody out.
+    """
+    from . import auth
+
+    token = (token or '').strip()
+    member = auth.current(request)
+    if not member or not token:
+        return False
+    if request.session.get(auth.TOKEN_SEEN_KEY) == token:
+        return False
+    request.session[auth.TOKEN_SEEN_KEY] = token
+
+    person, _ = person_for_token(token)
+    now_id = str((person or {}).get('id') or '').strip()
+    came_from_token = auth.signed_in_via(request) == 'token'
+
+    if came_from_token:
+        ends = now_id != (member.syncup_id or '')
+    else:
+        # Somebody else's *linked* account being on the phone is the only thing that unseats
+        # a password session. An unknown token, or a phone nobody is signed in on, is not.
+        ends = bool(now_id) and now_id != (member.syncup_id or '') and Member.objects.filter(
+            syncup_id=now_id).exists()
+
+    if not ends:
+        return False
+
+    _close_chat(request, member)
+    auth.sign_out(request)
+    return True
+
+
+def _close_chat(request, member):
+    """J6 keeps a session of its own and follows the hub, so it has to go too.
+
+    The same reasoning as signing out by hand: a chat account *linked* to the person leaving
+    is that person, and leaving it open on a phone that has changed hands is the leak this
+    whole check exists to prevent.
+    """
+    try:
+        from core.views_member import _close_linked_chat
+    except Exception:                   # pragma: no cover - J6 is optional
+        return
+    _close_linked_chat(request, member)
+
+
+# --------------------------------------------------------------------------- #
 # A whole run
 # --------------------------------------------------------------------------- #
 def switch_off_the_missing(seen_ids):
