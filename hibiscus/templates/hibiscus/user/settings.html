@@ -7,6 +7,19 @@
 {% endblock %}
 
 {% block content %}
+{% comment %}
+Only for somebody whose account came from SyncUp. Everybody else signed up here and owns
+their own details, so saying this to them would be a puzzle rather than an explanation.
+{% endcomment %}
+{% if person.member.syncup_id %}
+<div class="card" style="margin-bottom:12px">
+    <b>You are synced with SyncUp</b>
+    <p class="sub" style="margin-top:4px">The same account, in both places. Your name, email,
+        phone and password live in SyncUp — change them there and they arrive here within a
+        few minutes. Your SyncUp password signs you in to this site too.</p>
+</div>
+{% endif %}
+
 <div class="card">
     <form method="POST" class="stack" novalidate>
         {% csrf_token %}

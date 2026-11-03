@@ -593,3 +593,57 @@ class IntoJ6Tests(_App):
         self.client.post(reverse('member_logout'))
         self.client.post(reverse('j6_login'), {'self_id': chat.self_id})
         self.assertEqual(self.client.get(reverse('j6_inbox')).status_code, 200)
+
+
+class SyncedPeopleAreToldTests(_App):
+    """Every module's own settings page says where the account came from.
+
+    Somebody copied in from SyncUp never signed up here, so "change it in SyncUp" is the
+    only answer that helps when they go looking for a password field. Said once per module,
+    because that is where they are when the question occurs to them.
+    """
+
+    def synced(self):
+        row = Member.objects.create(syncup_id='su-1', name='Anand', email='a@example.com')
+        auth.set_password(row, 'pw-for-tests')
+        self.client.post(reverse('member_login'),
+                         {'sign_in_id': 'a@example.com', 'password': 'pw-for-tests'})
+        return row
+
+    def mine(self, email='own@example.com', password='my-own-password', **fields):
+        row = super().mine(email=email, password=password, **fields)
+        self.client.post(reverse('member_login'),
+                         {'sign_in_id': email, 'password': password})
+        return row
+
+    def test_the_diary_says_so(self):
+        from hibiscus.models import Person
+        Person.objects.create(member=self.synced(), name='Anand')
+        self.assertContains(self.client.get(reverse('hibiscus_me_settings')),
+                            'synced with SyncUp')
+
+    def test_pocket_money_says_so(self):
+        from pocket import service as money
+        money.join(self.synced())
+        self.assertContains(self.client.get(reverse('pocket_me')), 'synced with SyncUp')
+
+    def test_the_chat_says_so_without_claiming_the_chat_is_syncup_s(self):
+        from j6 import service as chat_service
+        from j6.models import Account as Chat
+        row = self.synced()
+        account = chat_service.create_account('Bluejay')
+        Chat.objects.filter(pk=account.pk).update(member=row)
+        self.client.get(reverse('j6_start_hub'))
+        page = self.client.get(reverse('j6_profile')).content.decode()
+        self.assertIn('synced with SyncUp', page)
+        # and the promise J6 makes is repeated rather than quietly dropped
+        self.assertIn('Self-ID is what it runs on', page)
+
+    def test_somebody_who_signed_up_here_is_told_nothing_of_the_sort(self):
+        from hibiscus.models import Person
+        from pocket import service as money
+        row = self.mine()
+        Person.objects.create(member=row, name='Mine')
+        money.join(row)
+        for name in ('hibiscus_me_settings', 'pocket_me'):
+            self.assertNotContains(self.client.get(reverse(name)), 'synced with SyncUp', msg_prefix=name)

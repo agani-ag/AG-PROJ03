@@ -5,6 +5,15 @@
     <b>Remembered on SyncHub</b>
     <p class="sub">Linked to <b>{{ account.member.name }}</b>. If you lose the Self-ID, signing
         in to SyncHub gets you back into this account.</p>
+    {% comment %}
+Only for somebody whose account came from SyncUp. Everybody else signed up here and owns
+their own details, so saying this to them would be a puzzle rather than an explanation.
+{% endcomment %}
+{% if account.member.syncup_id %}
+    <p class="tiny">That SyncHub account is <b>synced with SyncUp</b>, so your SyncUp sign-in
+        opens it. This chat account is still its own thing: the Self-ID is what it runs on,
+        and no email or number is ever written to it.</p>
+    {% endif %}
     <p class="tiny">Whoever you chat with still sees only your J6 name and Account ID.</p>
     <form method="POST" action="{% url 'j6_unclaim' %}">{% csrf_token %}
         <button class="btn ghost" type="submit">Forget it — keep this account unlinked</button>

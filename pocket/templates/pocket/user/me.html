@@ -7,6 +7,19 @@
 {% endblock %}
 
 {% block content %}
+{% comment %}
+Only for somebody whose account came from SyncUp. Everybody else signed up here and owns
+their own details, so saying this to them would be a puzzle rather than an explanation.
+{% endcomment %}
+{% if account.member.syncup_id %}
+<div class="card">
+    <b>You are synced with SyncUp</b>
+    <div class="tiny" style="margin-top:4px">The same account, in both places. Your name,
+        email, phone and password live in SyncUp — change them there and they arrive here
+        within a few minutes. Your SyncUp password signs you in to this site too.</div>
+</div>
+{% endif %}
+
 <a class="card row-h" href="{% url 'member_you' %}">
     <span class="av lg" style="background:var(--me)">{{ member.initials }}</span>
     <div class="mn"><div style="font-weight:750;font-size:17px">{{ member.name }}</div>
