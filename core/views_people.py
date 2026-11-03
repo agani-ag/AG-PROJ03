@@ -260,6 +260,62 @@ def person(request, pk):
     })
 
 
+@admin_required
+def person_join_syncup(request, pk):
+    """Join a waiting SyncHub account to the SyncUp person it matches — the admin's way.
+
+    Ordinarily the person does this themselves and types their own SyncHub password, which is
+    what stops one family member taking over another's account. An admin needs no such proof:
+    they can already read, reset and delete any of this. What they *do* need is to see both
+    sides before deciding, because the match is on an email or a number and the whole point of
+    this screen is the verifying.
+
+    It is also the answer to a whole list of people who were here before SyncUp was: asking
+    seventeen of them each to open the app and remember an old password is a poor substitute
+    for an admin who knows they are the same people.
+    """
+    from . import syncup_people
+
+    member = get_object_or_404(Member, pk=pk)
+    if not member.waiting_for:
+        messages.info(request, f'{member.name} is not waiting to join anybody.')
+        return redirect('person', pk=member.pk)
+
+    data, error = syncup_people.fetch_people()
+    theirs = None
+    if not error:
+        theirs = next((p for p in (data.get('people') or [])
+                       if str(p.get('id') or '') == member.waiting_for), None)
+
+    if request.method == 'POST':
+        if error:
+            messages.error(request, f'SyncUp could not be reached: {error}')
+            return redirect('person', pk=member.pk)
+        if theirs is None:
+            messages.error(request, "That person is no longer in SyncUp's list. Run the sync "
+                                    'again and see what it says.')
+            return redirect('person', pk=member.pk)
+        if request.POST.get('what') == 'different':
+            syncup_people.refuse(member, member.waiting_for)
+            messages.success(request, f'Noted — {member.name} and that SyncUp account are '
+                                      'different people, and will not be offered again.')
+            return redirect('person', pk=member.pk)
+
+        ok, why = syncup_people.join(member, syncup_people.clean(theirs))
+        if not ok:
+            messages.error(request, why)
+        else:
+            messages.success(request, f'{member.name} is now the SyncUp account. They sign in '
+                                      'with their SyncUp password from here on, and everything '
+                                      'in the modules stayed where it was.')
+        return redirect('person', pk=member.pk)
+
+    return render(request, 'core/person_join.html', {
+        'member': member, 'theirs': theirs, 'error': error,
+        'keeps': _what_would_go(member),
+    })
+
+
 @require_POST
 @admin_required
 def person_action(request, pk, what):

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Join {{ member.name }} to SyncUp{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'person' member.pk %}">{% icon "arrow-left" %}{{ member.name }}</a>
+        <h1>Are these the same person?</h1>
+        <p class="page-sub">The sync matched them on {{ member.get_waiting_why_display|lower }}</p>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger" style="margin-top:14px">{% icon "circle-alert" %}
+    <div class="alert-body"><b>SyncUp could not be reached</b>{{ error }} Nothing has been
+        joined. Try again when it is back.</div></div>
+{% elif not theirs %}
+<div class="alert alert-warning" style="margin-top:14px">{% icon "circle-alert" %}
+    <div class="alert-body"><b>That SyncUp account is no longer in the list</b>They may have
+        been switched off or made a partner user. Run the sync again to see where things
+        stand.</div></div>
+{% else %}
+
+{% comment %}
+Both sides, side by side, because the match is a guess made on one field and this screen is
+the verifying. Ordinarily the person proves it themselves with their own password; an admin
+needs no proof — they can already read and reset any of this — so what they need instead is
+to see what they are about to agree to.
+{% endcomment %}
+<div class="grid-2" style="margin-top:14px">
+    <div class="card">
+        <div class="card-head">{% icon "user-round" %}<h2>Here, on SyncHub</h2></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Name</dt><dd>{{ member.name }}</dd>
+                <dt>Email</dt><dd><code class="small">{{ member.email|default:"—" }}</code></dd>
+                <dt>Phone</dt><dd><code class="small">{{ member.phone|default:"—" }}</code></dd>
+                <dt>Joined</dt><dd>{{ member.created_at|date:"d M Y" }}</dd>
+                <dt>Last opened</dt><dd>{{ member.last_opened_at|ago }}</dd>
+            </dl>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head">{% icon "smartphone" %}<h2>There, in SyncUp</h2></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Name</dt><dd>{{ theirs.name|default:"—" }}</dd>
+                <dt>Email</dt><dd><code class="small">{{ theirs.email|default:"—" }}</code></dd>
+                <dt>Phone</dt><dd><code class="small">{{ theirs.phone|default:"—" }}</code></dd>
+                <dt>SyncUp id</dt><dd><code class="small">{{ theirs.id }}</code></dd>
+            </dl>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "check" %}<h2>What joining them does</h2></div>
+    <div class="card-body">
+        <ul class="small" style="margin:0">
+            <li><b>Nothing in the modules moves.</b>
+                {% if keeps %}{% for item in keeps %}{{ item.module }} — {{ item.detail }}{% if not forloop.last %}; {% endif %}{% endfor %}. All of it stays with this account.
+                {% else %}They have not started any module yet.{% endif %}</li>
+            <li>SyncUp takes over the <b>name, email, phone and password</b>. Changing them
+                here stops being possible — they change in SyncUp and arrive within minutes.</li>
+            <li>Their <b>SyncHub password stops working</b>. From then on it is their SyncUp
+                password, on the website as well as in the app. Tell them.</li>
+            <li>If the sync made a spare account for that SyncUp person and nobody has opened
+                it, it is removed — it is empty by definition.</li>
+        </ul>
+
+        <form method="POST" class="row" style="margin-top:14px;gap:10px">
+            {% csrf_token %}
+            <button class="btn btn-primary" type="submit">{% icon "check" %}Yes, the same person</button>
+            <button class="btn btn-ghost" type="submit" name="what" value="different">
+                {% icon "user-x" %}Different people</button>
+            <a class="btn btn-ghost ml-auto" href="{% url 'person' member.pk %}">Not now</a>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

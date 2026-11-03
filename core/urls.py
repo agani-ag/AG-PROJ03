@@ -34,6 +34,8 @@ urlpatterns = [
     path('people/syncup/sync', views_people.syncup_sync_now, name='syncup_sync_now'),
     path('people/<int:pk>/', views_people.person, name='person'),
     path('people/<int:pk>/edit/', views_people.person_edit, name='person_edit'),
+    path('people/<int:pk>/join-syncup/', views_people.person_join_syncup,
+         name='person_join_syncup'),
     path('people/<int:pk>/delete', views_people.person_delete, name='person_delete'),
     path('people/<int:pk>/<slug:what>', views_people.person_action, name='person_action'),
     path('system/', views.system_settings, name='system_settings'),

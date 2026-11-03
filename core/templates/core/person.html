@@ -10,6 +10,9 @@
             {% if member.syncup_token %}<span class="badge badge-success">SyncUp registered</span>{% endif %}</h1>
     </div>
     <div class="page-actions">
+        {% if member.waiting_for %}
+        <a class="btn btn-primary" href="{% url 'person_join_syncup' member.pk %}">{% icon "refresh-cw" %}Check and join to SyncUp</a>
+        {% endif %}
         <a class="btn" href="{% url 'person_edit' member.pk %}">{% icon "pencil" %}Edit</a>
         <form method="POST" action="{% url 'person_action' member.pk 'push' %}">{% csrf_token %}
             <button class="btn" type="submit">{% icon "bell" %}Test push</button></form>
@@ -46,6 +49,16 @@
                         <a href="{% url 'person_edit' member.pk %}">Edit</a>, or they stay
                         dependent on a link that could be lost.</div>{% endif %}</dd>
                 <dt>Signs in with</dt><dd>{% for way in ways %}<span class="badge">{{ way }}</span> {% endfor %}</dd>
+                <dt>From SyncUp</dt><dd>{% if member.syncup_id %}
+                    <span class="badge badge-success">Joined</span>
+                    <div class="small faint">Name, email, phone and password come from SyncUp.</div>
+                    {% elif member.waiting_for %}
+                    <span class="badge badge-warning">Waiting to join</span>
+                    <div class="small faint">Matched on {{ member.get_waiting_why_display|lower }}.
+                        They can join it themselves by pressing Use my SyncUp sign-in in the app,
+                        or <a href="{% url 'person_join_syncup' member.pk %}">check and join it
+                        here</a>.</div>
+                    {% else %}<span class="muted">SyncHub only</span>{% endif %}</dd>
                 <dt>Device token</dt><dd>{% if member.syncup_token %}
                     <code class="small">{{ member.syncup_token|slice:":12" }}…</code>
                     <div class="small faint">One token, used by every module</div>

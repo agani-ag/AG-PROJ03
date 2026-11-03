@@ -11,7 +11,9 @@ Run: python manage.py test core.tests_syncup_people
 from unittest import mock
 
 from django.contrib.auth.hashers import make_password
+from django.contrib.auth.models import User
 from django.test import TestCase
+from django.urls import reverse
 
 from core import auth, syncup_people
 from core.models import HubSettings, Member, SyncUpRefusal
@@ -296,3 +298,111 @@ class NotConfiguredTests(TestCase):
         hub.syncup_base = 'https://syncup.example.com'
         hub.save()
         self.assertIn('links key', syncup_people.problem())
+
+
+class AdminJoinsThemTests(_Synced):
+    """System → People → Check and join to SyncUp.
+
+    Ordinarily the person joins the two accounts themselves and types their own SyncHub
+    password, which is what stops one family member taking over another's. An admin needs no
+    such proof — they can already read, reset and delete any of this — so the screen spends
+    its effort on showing both sides instead, because the match is a guess made on one field.
+
+    It exists because the alternative, on a server that had people before SyncUp did, is
+    asking every one of them to open the app and remember an old password.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-123')
+        self.client.force_login(self.admin)
+        self.older = Member.objects.create(name='Mine', email='anand@example.com')
+        auth.set_password(self.older, 'my-own-password')
+        self.run_with(listing(person()))            # marks it waiting on su-1
+        self.older.refresh_from_db()
+
+    def url(self):
+        return reverse('person_join_syncup', args=[self.older.pk])
+
+    def test_the_page_shows_both_sides_before_deciding(self):
+        with mock.patch(POST, return_value=(listing(person()), '')):
+            r = self.client.get(self.url())
+        self.assertContains(r, 'Mine')              # this side
+        self.assertContains(r, 'Anand')             # their side
+        self.assertContains(r, 'anand@example.com')
+        self.assertContains(r, 'same email address')
+
+    def test_it_says_what_will_happen_to_the_password(self):
+        with mock.patch(POST, return_value=(listing(person()), '')):
+            r = self.client.get(self.url())
+        self.assertContains(r, 'SyncHub password stops working')
+
+    def test_joining_keeps_the_account_and_takes_syncup_s_details(self):
+        with mock.patch(POST, return_value=(listing(person()), '')):
+            self.client.post(self.url())
+        self.older.refresh_from_db()
+        self.assertEqual(self.older.syncup_id, 'su-1')
+        self.assertEqual(self.older.name, 'Anand')
+        self.assertEqual(self.older.waiting_for, '')
+        self.assertEqual(Member.objects.count(), 1)
+        self.assertTrue(auth.check_member_password(self.older, 'their-syncup-password'))
+        self.assertFalse(auth.check_member_password(self.older, 'my-own-password'))
+
+    def test_no_password_is_asked_for_because_an_admin_is_doing_it(self):
+        """Said out loud: the password gate is for the person, not for the admin who can
+        already reset it."""
+        with mock.patch(POST, return_value=(listing(person()), '')):
+            r = self.client.get(self.url())
+        self.assertNotContains(r, 'type="password"')
+
+    def test_different_people_records_the_refusal(self):
+        with mock.patch(POST, return_value=(listing(person()), '')):
+            self.client.post(self.url(), {'what': 'different'})
+        self.older.refresh_from_db()
+        self.assertTrue(SyncUpRefusal.objects.filter(member=self.older,
+                                                     syncup_id='su-1').exists())
+        self.assertEqual(self.older.waiting_for, '')
+        self.assertIsNone(self.older.syncup_id)
+
+    def test_an_unused_account_made_ahead_is_cleared_away(self):
+        spare = Member.objects.create(syncup_id='su-1', name='Anand', syncup_unused=True)
+        Member.objects.filter(pk=self.older.pk).update(waiting_for='su-1', waiting_why='email')
+        with mock.patch(POST, return_value=(listing(person()), '')):
+            self.client.post(self.url())
+        self.older.refresh_from_db()
+        self.assertEqual(self.older.syncup_id, 'su-1')
+        self.assertFalse(Member.objects.filter(pk=spare.pk).exists())
+
+    def test_an_account_already_in_use_is_refused_rather_than_merged(self):
+        Member.objects.create(syncup_id='su-1', name='Anand', syncup_unused=False)
+        Member.objects.filter(pk=self.older.pk).update(waiting_for='su-1', waiting_why='email')
+        with mock.patch(POST, return_value=(listing(person()), '')):
+            r = self.client.post(self.url(), follow=True)
+        self.older.refresh_from_db()
+        self.assertIsNone(self.older.syncup_id)
+        self.assertContains(r, 'admin joins these two')
+
+    def test_syncup_being_unreachable_joins_nothing(self):
+        with mock.patch(POST, return_value=(None, 'URLError: no route')):
+            r = self.client.post(self.url(), follow=True)
+        self.older.refresh_from_db()
+        self.assertIsNone(self.older.syncup_id)
+        self.assertContains(r, 'could not be reached')
+
+    def test_somebody_who_has_left_syncup_cannot_be_joined_to(self):
+        with mock.patch(POST, return_value=(listing(version='v2'), '')):
+            r = self.client.post(self.url(), follow=True)
+        self.older.refresh_from_db()
+        self.assertIsNone(self.older.syncup_id)
+        self.assertContains(r, 'no longer in SyncUp')
+
+    def test_a_person_not_waiting_for_anybody_has_nothing_to_join(self):
+        other = Member.objects.create(name='Nobody', email='n@example.com')
+        r = self.client.get(reverse('person_join_syncup', args=[other.pk]))
+        self.assertRedirects(r, reverse('person', args=[other.pk]))
+
+    def test_it_needs_an_admin(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(self.url()).status_code, 302)
+        self.older.refresh_from_db()
+        self.assertIsNone(self.older.syncup_id)
