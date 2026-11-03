@@ -20,6 +20,22 @@ logger = logging.getLogger(__name__)
 KEEP_RUNS_DAYS = 30
 
 
+@cronhub.tick('core.syncup_people', budget=8)
+def syncup_people(ctx):
+    """Copy SyncUp's people in, before the modules push to them.
+
+    Order is free rather than arranged: `CoreConfig.ready()` calls `autodiscover_modules`,
+    which follows INSTALLED_APPS, and core is listed above hibiscus, j6 and pocket. So this
+    hook registers first and runs first, and a person who arrived in SyncUp a minute ago can
+    be pushed to in the same tick they are copied in.
+    """
+    from . import syncup_people as people
+    why = people.problem()
+    if why:
+        return {'items': 0, 'skipped': why}
+    return people.run(ctx)
+
+
 @cronhub.cleanup('core.sessions')
 def expired_sessions(ctx):
     """Drop expired session rows. Django never does this on its own."""

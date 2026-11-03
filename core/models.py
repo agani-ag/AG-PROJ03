@@ -58,7 +58,16 @@ class HubSettings(models.Model):
     syncup_links_key = models.CharField(
         max_length=80, blank=True,
         help_text="From SyncUp's admin → General links → SyncUp links key. Lets the buttons below "
-                  "put this hub's tools in the SyncUp app, for everyone.")
+                  "put this hub's tools in the SyncUp app, for everyone, and copies SyncUp's "
+                  "people into this site so their SyncUp password works here.")
+
+    # What the last people sync saw. The version is SyncUp's hash of the whole list: send it
+    # back and an unchanged list answers in a few bytes instead of thousands of rows.
+    syncup_people_version = models.CharField(max_length=80, blank=True)
+    syncup_people_at = models.DateTimeField(null=True, blank=True)
+    syncup_people_note = models.CharField(
+        max_length=200, blank=True,
+        help_text='What the last run did, or why it did nothing. Shown on System → People.')
 
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
@@ -218,6 +227,38 @@ class Member(models.Model):
         blank=True, help_text='One per person, not one per module: opening any module inside the '
                               'SyncUp app now makes all of them reachable.')
 
+    # ------------------------------------------------------------------ #
+    # Copied from SyncUp
+    #
+    # SyncUp owns these people: their name, email, phone and password live there and are
+    # copied here, so the SyncUp password works on this website too. The hard rule is that
+    # one person never becomes two accounts, and `syncup_id` being unique is what enforces
+    # it — if the cron and a Use token press reach the same person at once, the second finds
+    # the first instead of making another.
+    # ------------------------------------------------------------------ #
+    class Waiting(models.TextChoices):
+        EMAIL = 'email', 'Same email address'
+        PHONE = 'phone', 'Same phone number'
+        TOKEN = 'token', 'Signed in on the same phone'
+
+    syncup_id = models.CharField(
+        max_length=64, unique=True, null=True, blank=True,
+        help_text="SyncUp's account id. Unique, and that is the no-duplicates rule itself.")
+    syncup_unused = models.BooleanField(
+        default=False,
+        help_text='Made ahead of them by the sync and never opened. Deleted if they turn out '
+                  'to have an older account of their own, because nothing is in it.')
+    waiting_for = models.CharField(
+        max_length=64, blank=True,
+        help_text='A SyncUp id this SyncHub-only account looks like, waiting for its owner to '
+                  "join the two with that account's own password. Nothing is created for a "
+                  'person who is already here under another name.')
+    waiting_why = models.CharField(max_length=10, choices=Waiting.choices, blank=True)
+    syncup_clash = models.CharField(
+        max_length=200, blank=True,
+        help_text='A field SyncUp changed that could not be copied, because another account '
+                  'here already has it. Shown on System → People.')
+
     theme = models.CharField(max_length=10, choices=THEMES, default='light')
     is_active = models.BooleanField(
         default=True, help_text='Can sign in at all. A module profile has its own switch for '
@@ -278,3 +319,22 @@ class Member(models.Model):
     @property
     def can_be_pushed(self):
         return bool(self.syncup_token) and self.can_sign_in
+
+
+class SyncUpRefusal(models.Model):
+    """“These are different people”, remembered.
+
+    Said once on the connect card, or by “It isn’t mine” on a same-phone match, and never
+    asked again: the SyncUp person then gets an account of their own at the next run. Two
+    people sharing a phone is the ordinary case this exists for.
+    """
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='syncup_refusals')
+    syncup_id = models.CharField(max_length=64)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['member', 'syncup_id'],
+                                               name='one_refusal_per_pair')]
+
+    def __str__(self):
+        return f'{self.member_id} is not {self.syncup_id}'
