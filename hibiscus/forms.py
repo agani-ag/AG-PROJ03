@@ -186,7 +186,36 @@ class SignInForm(forms.Form):
         _style(self)
 
 
-class MySettingsForm(forms.Form):
+class KeptForMixin:
+    """The one question that decides how every other line is worded.
+
+    Asked at the start and changeable afterwards, because people are given this app by a
+    partner as often as they find it themselves.
+    """
+
+    @staticmethod
+    def add_kept_for(form):
+        # required=False on purpose. A radio group always posts something from the real
+        # page, so the only way this arrives empty is a form that predates the question —
+        # and rejecting the whole submission then would also throw away the password change
+        # sitting next to it. Empty means "leave the answer alone".
+        form.fields['kept_for'] = forms.ChoiceField(
+            label='Who is this diary for?', choices=Person.KeptFor.choices,
+            initial=Person.KeptFor.SELF, required=False, widget=forms.RadioSelect)
+        form.fields['subject_name'] = forms.CharField(
+            label='Their name', max_length=80, required=False,
+            help_text='Optional. Used to word the diary and its reminders — '
+                      '“Priya’s period” rather than “your period”.')
+
+    def clean_subject_name(self):
+        """A name only means anything on a diary kept for somebody else."""
+        name = (self.cleaned_data.get('subject_name') or '').strip()
+        if self.data.get('kept_for') != Person.KeptFor.SOMEONE:
+            return ''
+        return name
+
+
+class MySettingsForm(KeptForMixin, forms.Form):
     """What a person may change about their own account."""
     name = forms.CharField(label='Your name', max_length=80)
     cycle_hint = forms.IntegerField(label='Usual cycle length', required=False, min_value=15,
@@ -198,7 +227,10 @@ class MySettingsForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.add_kept_for(self)
         _style(self)
+        # Radios and the plain text box want different classes from the rest.
+        self.fields['kept_for'].widget.attrs.pop('class', None)
 
 
 class StockItemForm(forms.ModelForm):

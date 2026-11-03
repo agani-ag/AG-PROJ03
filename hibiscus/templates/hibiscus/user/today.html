@@ -2,6 +2,14 @@
 {% block title %}Today{% endblock %}
 
 {% block content %}
+{% comment %}
+Said once, at the top, when the diary is not about the reader. Everything below reads the
+same either way — "Next period expected", "cycle day 14" — which is fine as long as it is
+clear whose. Without this line it is not.
+{% endcomment %}
+{% if person.for_someone_else %}
+<p class="label" style="margin:0 0 10px">Keeping this for {{ person.subject }}</p>
+{% endif %}
 {% if stats.predicted_next %}
 <div class="hero">
     <div class="label">Next period expected</div>
@@ -13,7 +21,7 @@
         {% if stats.cycle_day %} · cycle day {{ stats.cycle_day }} of ~{{ stats.cycle_len }}{% endif %}
     </div>
     <div class="bar"><i style="width:{{ progress }}%"></i></div>
-    {% if stats.estimated %}<div class="sub" style="margin-top:8px">Using {{ stats.cycle_len }} days until you have logged two periods.</div>{% endif %}
+    {% if stats.estimated %}<div class="sub" style="margin-top:8px">Using {{ stats.cycle_len }} days until two periods are logged.</div>{% endif %}
 </div>
 {% else %}
 <div class="hero">

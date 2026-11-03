@@ -94,8 +94,14 @@ def join(request):
                                     {'config': config, 'member': member,
                                      'error': 'That invite code is not right.'}))
         hint = (request.POST.get('cycle_hint') or '').strip()
+        kept_for = (request.POST.get('kept_for') or '').strip()
+        if kept_for not in dict(Person.KeptFor.choices):
+            kept_for = Person.KeptFor.SELF
+        subject = ((request.POST.get('subject_name') or '').strip()[:80]
+                   if kept_for == Person.KeptFor.SOMEONE else '')
         person = Person.objects.create(
             member=member, name=member.name,
+            kept_for=kept_for, subject_name=subject,
             cycle_hint=int(hint) if hint.isdigit() and 15 <= int(hint) <= 60 else None,
             signed_up_with='hub')
         auth.log('signed_up', person=person, detail=member.sign_in_id)
@@ -439,11 +445,20 @@ def my_settings(request):
     config = Settings.load()
     person = request.person
     form = MySettingsForm(request.POST or None, initial={
-        'name': person.name, 'cycle_hint': person.cycle_hint})
+        'name': person.name, 'cycle_hint': person.cycle_hint,
+        'kept_for': person.kept_for, 'subject_name': person.subject_name})
     if request.method == 'POST' and form.is_valid():
         person.name = form.cleaned_data['name']
         person.cycle_hint = form.cleaned_data.get('cycle_hint') or None
-        person.save(update_fields=['name', 'cycle_hint'])
+        # The two move together or not at all. An empty `kept_for` means the form never
+        # asked — an older page, say — and answering for them would be guessing; worse,
+        # clearing the name while leaving "for someone" standing would make the diary talk
+        # about a person it can no longer name.
+        answered = form.cleaned_data.get('kept_for')
+        if answered:
+            person.kept_for = answered
+            person.subject_name = form.cleaned_data.get('subject_name') or ''
+        person.save(update_fields=['name', 'cycle_hint', 'kept_for', 'subject_name'])
         if form.cleaned_data.get('new_password'):
             auth.set_password(person, form.cleaned_data['new_password'])
             messages.success(request, 'Saved, and your password is changed.')

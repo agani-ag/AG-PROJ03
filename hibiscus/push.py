@@ -50,7 +50,15 @@ def situation_for(person, config, today=None):
     stats = cycle.stats(days, today=today, default_cycle=config.default_cycle,
                         default_period=config.default_period, cycle_hint=person.cycle_hint)
     context = {
+        # `name` is the reader's, and stays the reader's: the notification arrives on their
+        # phone and "Hi Bharath" is right whoever the diary is about. The three below are for
+        # the body, where "your period" is wrong if he keeps it for a partner.
         'name': first_name(person),
+        'whose': person.whose,          # your / Priya's
+        'Whose': person.whose.capitalize(),
+        'them': person.them,            # you / Priya
+        'Them': person.them.capitalize(),
+        'subject': person.subject,
         'day': stats.cycle_day or 0,
         'cycle': stats.cycle_len,
         'days': abs(stats.days_until) if stats.days_until is not None else 0,

@@ -128,6 +128,20 @@ class Person(models.Model):
     phone = models.CharField(max_length=15, unique=True, null=True, blank=True)
     password_hash = models.CharField(max_length=128)
 
+    class KeptFor(models.TextChoices):
+        SELF = 'self', 'Myself'
+        SOMEONE = 'someone', 'Someone I look after'
+
+    kept_for = models.CharField(
+        max_length=10, choices=KeptFor.choices, default=KeptFor.SELF,
+        help_text='Men keep this diary too, for a partner or a daughter. Everything written '
+                  'as "your period" reads wrong to them, so the diary asks once and words '
+                  'itself accordingly.')
+    subject_name = models.CharField(
+        max_length=80, blank=True,
+        help_text='Who the diary is about, when that is not the person signed in. Optional — '
+                  'without it the wording simply avoids saying whose.')
+
     cycle_hint = models.PositiveSmallIntegerField(
         null=True, blank=True, validators=[MinValueValidator(15)],
         help_text='Average cycle they told us at sign-up, used until two periods are logged.')
@@ -170,6 +184,42 @@ class Person(models.Model):
         if self.member and self.member.sign_in_id:
             return self.member.sign_in_id
         return self.email or self.phone or f'person-{self.pk}'
+
+    # ------------------------------------------------------------------ #
+    # Whose body this diary is about
+    #
+    # The person signed in is not always the person menstruating, and every line written as
+    # "your period" reads wrong to the other kind of reader. These three answer "whose" once,
+    # so a page or a notification can be worded for either without asking twice.
+    #
+    # No pronouns anywhere: knowing somebody menstruates says nothing about what to call
+    # them, and a name or a plain noun is right either way.
+    # ------------------------------------------------------------------ #
+    @property
+    def for_someone_else(self):
+        return self.kept_for == self.KeptFor.SOMEONE
+
+    @property
+    def subject(self):
+        """The name the diary is *about* — which is not always the reader's."""
+        if self.for_someone_else:
+            return (self.subject_name or '').strip() or 'the person you look after'
+        return (self.name or '').strip().split(' ')[0] or 'you'
+
+    @property
+    def whose(self):
+        """Possessive, for wording that must work both ways: "your" or "Priya's"."""
+        if not self.for_someone_else:
+            return 'your'
+        named = (self.subject_name or '').strip()
+        return f'{named}’s' if named else 'their'
+
+    @property
+    def them(self):
+        """Object form: "you" or "Priya"."""
+        if not self.for_someone_else:
+            return 'you'
+        return (self.subject_name or '').strip() or 'them'
 
     @property
     def push_token(self):

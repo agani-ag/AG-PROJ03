@@ -849,3 +849,129 @@ class RouteTests(TestCase):
 
     def test_the_console_is_not_public(self):
         self.assertEqual(self.client.get('/hibiscus/admin/').status_code, 302)
+
+
+class WhoseDiaryTests(TestCase):
+    """A diary is not always about the person reading it.
+
+    Men keep this for a partner or a daughter, and every line written as "your period" read
+    wrong to them. The question is asked once at the start, changeable afterwards, and the
+    answer is what the wording hangs off.
+    """
+
+    def setUp(self):
+        self.member = Member.objects.create(name='Bharath', email='b@example.com')
+        hub.set_password(self.member, 'pw-for-tests')
+        self.client.post(reverse('member_login'),
+                         {'sign_in_id': 'b@example.com', 'password': 'pw-for-tests'})
+
+    def start(self, **extra):
+        data = {'cycle_hint': ''}
+        data.update(extra)
+        return self.client.post(reverse('hibiscus_join'), data)
+
+    # ---- the question, at the start
+    def test_a_diary_is_for_yourself_unless_you_say_otherwise(self):
+        self.start()
+        person = Person.objects.get(member=self.member)
+        self.assertFalse(person.for_someone_else)
+        self.assertEqual(person.whose, 'your')
+
+    def test_starting_one_for_somebody_else(self):
+        self.start(kept_for='someone', subject_name='Priya')
+        person = Person.objects.get(member=self.member)
+        self.assertTrue(person.for_someone_else)
+        self.assertEqual(person.subject_name, 'Priya')
+
+    def test_a_name_given_for_your_own_diary_is_not_kept(self):
+        """Nothing should quietly hold a second person's name on a diary about yourself."""
+        self.start(kept_for='self', subject_name='Priya')
+        self.assertEqual(Person.objects.get(member=self.member).subject_name, '')
+
+    def test_a_made_up_answer_falls_back_to_yourself(self):
+        self.start(kept_for='the-cat')
+        self.assertFalse(Person.objects.get(member=self.member).for_someone_else)
+
+    def test_the_join_page_asks(self):
+        r = self.client.get(reverse('hibiscus_join'))
+        self.assertContains(r, 'Who is this diary for?')
+        self.assertContains(r, 'Someone I look after')
+
+    # ---- the wording it decides
+    def test_the_words_for_a_diary_about_yourself(self):
+        person = Person.objects.create(member=self.member, name='Bharath')
+        self.assertEqual((person.whose, person.them, person.subject),
+                         ('your', 'you', 'Bharath'))
+
+    def test_the_words_for_a_diary_about_somebody_named(self):
+        person = Person.objects.create(member=self.member, name='Bharath',
+                                       kept_for='someone', subject_name='Priya')
+        self.assertEqual((person.whose, person.them, person.subject),
+                         ('Priya’s', 'Priya', 'Priya'))
+
+    def test_the_words_when_no_name_was_given(self):
+        """No pronoun is invented: knowing somebody menstruates says nothing about that."""
+        person = Person.objects.create(member=self.member, name='Bharath',
+                                       kept_for='someone', subject_name='')
+        self.assertEqual((person.whose, person.them), ('their', 'them'))
+        self.assertNotIn('her', (person.whose, person.them))
+
+    def test_today_says_whose_diary_it_is(self):
+        self.start(kept_for='someone', subject_name='Priya')
+        r = self.client.get(reverse('hibiscus_me_home'))
+        self.assertContains(r, 'Keeping this for Priya')
+
+    def test_today_says_nothing_extra_on_your_own_diary(self):
+        self.start()
+        self.assertNotContains(self.client.get(reverse('hibiscus_me_home')), 'Keeping this for')
+
+    # ---- notifications
+    def test_a_line_can_be_written_to_serve_both_readers(self):
+        from hibiscus.models import Settings as DiarySettings
+        from hibiscus.push import situation_for
+        config = DiarySettings.load()
+
+        mine = Person.objects.create(member=self.member, name='Bharath')
+        _, context = situation_for(mine, config)
+        line = 'Maybe keep a pad in {whose} bag today.'
+        self.assertEqual(line.format(**context), 'Maybe keep a pad in your bag today.')
+        self.assertEqual(context['name'], 'Bharath')        # the reader, not the subject
+
+        hers = Member.objects.create(name='Other', email='o@example.com')
+        theirs = Person.objects.create(member=hers, name='Bharath',
+                                       kept_for='someone', subject_name='Priya')
+        _, context = situation_for(theirs, config)
+        self.assertEqual(line.format(**context), 'Maybe keep a pad in Priya’s bag today.')
+        self.assertEqual(context['Whose'], 'Priya’s')
+        self.assertEqual(context['name'], 'Bharath')        # still addressed to the reader
+
+    # ---- changing your mind
+    def test_it_can_be_changed_afterwards(self):
+        self.start()
+        self.client.post(reverse('hibiscus_me_settings'),
+                         {'name': 'Bharath', 'cycle_hint': '', 'new_password': '',
+                          'kept_for': 'someone', 'subject_name': 'Priya'})
+        person = Person.objects.get(member=self.member)
+        self.assertTrue(person.for_someone_else)
+        self.assertEqual(person.subject_name, 'Priya')
+
+    def test_switching_back_drops_the_name(self):
+        self.start(kept_for='someone', subject_name='Priya')
+        self.client.post(reverse('hibiscus_me_settings'),
+                         {'name': 'Bharath', 'cycle_hint': '', 'new_password': '',
+                          'kept_for': 'self', 'subject_name': 'Priya'})
+        person = Person.objects.get(member=self.member)
+        self.assertFalse(person.for_someone_else)
+        self.assertEqual(person.subject_name, '')
+
+    def test_a_form_that_never_asked_changes_neither(self):
+        """An older page posting without the question must not quietly reset the answer —
+        nor wipe the name while leaving the diary talking about somebody it cannot name."""
+        self.start(kept_for='someone', subject_name='Priya')
+        r = self.client.post(reverse('hibiscus_me_settings'),
+                             {'name': 'Bharath R', 'cycle_hint': '', 'new_password': ''})
+        self.assertEqual(r.status_code, 302)                # and the rest of it still saves
+        person = Person.objects.get(member=self.member)
+        self.assertEqual(person.name, 'Bharath R')
+        self.assertTrue(person.for_someone_else)
+        self.assertEqual(person.subject_name, 'Priya')

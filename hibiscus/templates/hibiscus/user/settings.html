@@ -15,6 +15,26 @@
             {{ form.name }}
             {% for e in form.name.errors %}<span class="err">{{ e }}</span>{% endfor %}
         </div>
+        {% comment %}
+        Changeable, not just asked once: people are handed this app by a partner as often as
+        they find it themselves, and the answer decides how every other line is worded.
+        {% endcomment %}
+        <div class="field" id="keptFor">
+            <label>Who is this diary for?</label>
+            {% for choice in form.kept_for %}
+            <label class="pick">{{ choice.tag }}
+                <span><b>{{ choice.choice_label }}</b><small>{% if choice.data.value == 'self' %}I
+                    am the one keeping track of my own cycle{% else %}A partner, a daughter —
+                    the diary is about them{% endif %}</small></span></label>
+            {% endfor %}
+        </div>
+        <div class="field{% if form.subject_name.errors %} bad{% endif %}" id="subjectWrap">
+            <label for="{{ form.subject_name.id_for_label }}">{{ form.subject_name.label }}</label>
+            {{ form.subject_name }}
+            <span class="help">{{ form.subject_name.help_text }}</span>
+            {% for e in form.subject_name.errors %}<span class="err">{{ e }}</span>{% endfor %}
+        </div>
+
         <div class="field{% if form.cycle_hint.errors %} bad{% endif %}">
             <label for="{{ form.cycle_hint.id_for_label }}">Usual cycle length</label>
             {{ form.cycle_hint }}
@@ -79,4 +99,20 @@
     </a>
 </div>
 <p class="tiny center">Signed in as {{ person.sign_in_id }}. Forgotten your password? Ask the admin.</p>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    // The name box is only meaningful on a diary kept for somebody else. Without JS it just
+    // stays visible, and the server clears it when the answer is "myself" either way.
+    var wrap = document.getElementById("subjectWrap"), group = document.getElementById("keptFor");
+    function sync() {
+        var other = group.querySelector('input[value="someone"]');
+        wrap.hidden = !(other && other.checked);
+    }
+    group.addEventListener("change", sync);
+    sync();
+})();
+</script>
 {% endblock %}

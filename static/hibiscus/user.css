@@ -159,6 +159,19 @@ textarea { padding: 11px 13px; min-height: 76px; line-height: 1.45; resize: vert
 :root[data-theme="dark"] .err { color: #ff9fb3; }
 .field.bad .input, .field.bad input { border-color: var(--rose); }
 
+/* A stacked choice that carries a line of explanation — too much for a chip, and used
+   where the answer changes how the rest of the diary is worded. Same trick as .chips: the
+   radio itself is hidden and the box beside it does the showing. */
+.pick { display: block; position: relative; cursor: pointer; }
+.pick + .pick { margin-top: 8px; }
+.pick input { position: absolute; opacity: 0; width: 0; height: 0; }
+.pick span { display: block; padding: 11px 14px; border: 1px solid var(--bd-strong);
+             border-radius: var(--radius-sm); background: var(--card); }
+.pick span b { display: block; font-size: 14.5px; }
+.pick span small { display: block; margin-top: 1px; color: var(--mut); font-size: 12.5px; }
+.pick input:checked + span { border-color: var(--rose); background: var(--rose-soft); }
+.pick input:focus-visible + span { box-shadow: 0 0 0 3px rgba(210, 39, 74, .22); }
+
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chips label { display: inline-flex; align-items: center; gap: 0; cursor: pointer; }
 .chips input { position: absolute; opacity: 0; width: 0; height: 0; }

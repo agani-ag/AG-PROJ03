@@ -4,12 +4,32 @@
 {% block content %}
 <div class="card">
     <h1 class="h1">Start a diary, {{ member.name }}?</h1>
-    <p class="muted">You are already signed in to SyncHub, so there is nothing to fill in.
+    <p class="muted">You are already signed in to SyncHub, so there is little to fill in.
         The diary is yours alone — the admin of this server can see it, and nobody else here can.</p>
 
-    <form method="POST" class="stack" style="margin-top:16px">
+    <form method="POST" class="stack" style="margin-top:16px" id="joinForm">
         {% csrf_token %}
-        <label class="label" for="cycle_hint">How long is your cycle, usually?</label>
+
+        {% comment %}
+        Asked first because it decides how everything else is worded. Plenty of people keep
+        this diary for a partner or a daughter rather than themselves, and until now every
+        line said "your period" to all of them.
+        {% endcomment %}
+        <span class="label">Who is this diary for?</span>
+        <label class="pick"><input type="radio" name="kept_for" value="self" checked>
+            <span><b>Myself</b><small>I am the one keeping track of my own cycle</small></span></label>
+        <label class="pick"><input type="radio" name="kept_for" value="someone">
+            <span><b>Someone I look after</b><small>A partner, a daughter — the diary is about them</small></span></label>
+
+        <div id="subjectWrap" hidden>
+            <label class="label" for="subject_name">Their name</label>
+            <input class="input" id="subject_name" name="subject_name" maxlength="80"
+                   autocomplete="off" placeholder="e.g. Priya">
+            <p class="help">Optional. It is only used to word the diary and its reminders —
+                “Priya’s period” rather than “your period”.</p>
+        </div>
+
+        <label class="label" for="cycle_hint">How long is the cycle, usually?</label>
         <input class="input" id="cycle_hint" name="cycle_hint" type="number" min="15" max="60"
                inputmode="numeric" placeholder="28">
         <p class="help">Optional, and only used until two periods are logged — after that the
@@ -25,4 +45,22 @@
 
 <p class="center muted small" style="margin-top:14px">
     <a href="{% url 'member_apps' %}">Back to your apps</a></p>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    // The name box only exists once the diary is about somebody else. No JS, no box - and
+    // the server ignores the field in that case anyway, so nothing depends on this.
+    var wrap = document.getElementById("subjectWrap");
+    function sync() {
+        var other = document.querySelector('input[name="kept_for"][value="someone"]');
+        wrap.hidden = !(other && other.checked);
+    }
+    document.getElementById("joinForm").addEventListener("change", function (e) {
+        if (e.target.name === "kept_for") sync();
+    });
+    sync();
+})();
+</script>
 {% endblock %}
