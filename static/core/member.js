@@ -27,6 +27,16 @@
   // required `SyncUp.v === 1`, which came from the SSO design that was removed from the app
   // in October. It is never set, so the test was always false and the button never showed on
   // any phone.
+  // Inside the app, sign in without being asked to. The page is swapped for a "signing you
+  // in" line rather than merely hidden, so nobody sits looking at a form they are not meant
+  // to fill in. `data-auto` is the server's permission: the marker that Sign out leaves is
+  // httponly, so this script cannot see it and must be told. Without permission the button
+  // is simply revealed and waits to be pressed, which is how somebody gets back in on
+  // purpose after signing out.
+  var page = document.getElementById("sign-in-page");
+  var waiting = document.getElementById("signing-in");
+  var mayGoAlone = !!(page && waiting && page.dataset.auto === "1");
+
   var tries = 0;
   var timer = setInterval(function () {
     tries += 1;
@@ -34,6 +44,11 @@
     if (typeof token === "string" && token) {
       clearInterval(timer);
       show(token);
+      if (mayGoAlone) {
+        page.hidden = true;
+        waiting.hidden = false;
+        form.submit();
+      }
     } else if (tries > 10) {
       clearInterval(timer);                 // not inside the app; there is nothing to offer
     }

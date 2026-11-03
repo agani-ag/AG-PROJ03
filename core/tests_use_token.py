@@ -647,3 +647,76 @@ class SyncedPeopleAreToldTests(_App):
         money.join(row)
         for name in ('hibiscus_me_settings', 'pocket_me'):
             self.assertNotContains(self.client.get(reverse(name)), 'synced with SyncUp', msg_prefix=name)
+
+
+class SigningInByItselfTests(_App):
+    """Inside the app, no login page and no button: the page posts the token itself.
+
+    The screens behind it are the ones already tested; what is new is that nobody presses
+    anything, and the two ways that can go wrong — a form nobody should be looking at, and
+    signing somebody back in the moment they sign out.
+    """
+
+    def test_the_page_says_the_server_allows_it(self):
+        page = self.client.get(reverse('member_login')).content.decode()
+        self.assertIn('data-auto="1"', page)
+        self.assertIn('id="signing-in"', page)
+
+    def test_the_form_ships_visible_so_a_phone_without_scripting_still_works(self):
+        """The script hides it on seeing a token. Shipping it hidden would leave somebody
+        with no sign-in page at all."""
+        page = self.client.get(reverse('member_login')).content.decode()
+        wrapper = page.split('id="sign-in-page"', 1)[1][:40]
+        self.assertNotIn('hidden', wrapper)
+        self.assertIn('hidden', page.split('id="signing-in"', 1)[1][:40])
+
+    def test_signing_out_stops_it_happening_again(self):
+        """The loop the October build got wrong: signed out, signed straight back in, and
+        Sign out meaning nothing at all."""
+        row = Member.objects.create(syncup_id='su-1', name='Anand', email='a@example.com')
+        auth.set_password(row, 'pw-for-tests')
+        self.client.post(reverse('member_login'),
+                         {'sign_in_id': 'a@example.com', 'password': 'pw-for-tests'})
+        out = self.client.post(reverse('member_logout'))
+        self.assertIn('synchub_no_auto', out.cookies)
+        self.assertNotIn('data-auto="1"',
+                         self.client.get(reverse('member_login')).content.decode())
+
+    def test_pressing_the_button_by_hand_lifts_it_again(self):
+        Member.objects.create(syncup_id='su-1', name='Anand', email='a@example.com')
+        self.client.cookies['synchub_no_auto'] = '1'
+        self.press()
+        self.assertEqual(self.client.cookies['synchub_no_auto'].value, '')
+        self.assertIn(auth.SESSION_KEY, self.client.session)
+
+    def test_an_ordinary_password_sign_in_lifts_it_too(self):
+        row = Member.objects.create(name='Mine', email='own@example.com')
+        auth.set_password(row, 'my-own-password')
+        self.client.cookies['synchub_no_auto'] = '1'
+        self.client.post(reverse('member_login'),
+                         {'sign_in_id': 'own@example.com', 'password': 'my-own-password'})
+        self.assertEqual(self.client.cookies['synchub_no_auto'].value, '')
+
+    def test_not_now_on_the_first_visit_question_is_not_asked_again(self):
+        self.press()
+        r = self.client.post(reverse('member_token_first'), {'what': 'not-now'})
+        self.assertRedirects(r, reverse('member_login'))
+        self.assertNotIn('data-auto="1"',
+                         self.client.get(reverse('member_login')).content.decode())
+        self.assertEqual(Member.objects.count(), 0)
+
+    def test_not_now_on_the_join_screen_is_not_asked_again(self):
+        self.mine(email='anand@example.com')
+        self.press()
+        r = self.client.post(reverse('member_token_join'), {'what': 'not-now'})
+        self.assertRedirects(r, reverse('member_login'))
+        self.assertNotIn('data-auto="1"',
+                         self.client.get(reverse('member_login')).content.decode())
+
+    def test_signed_out_of_syncup_lands_on_sign_in_not_sign_up(self):
+        """The user's call, and it guards the no-duplicates rule: the person most likely to
+        be here is somebody who already has a SyncHub account."""
+        r = self.press(NOBODY)
+        self.assertRedirects(r, reverse('member_login'))
+        page = self.client.get(reverse('member_login')).content.decode()
+        self.assertLess(page.index('name="password"'), page.index('I am new here'))

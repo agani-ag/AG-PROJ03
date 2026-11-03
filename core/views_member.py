@@ -27,9 +27,10 @@ def _page(request, template, context, status=200):
 
 
 def _signed_in(request, member, to):
-    """Sign in and go somewhere."""
+    """Sign in and go somewhere, lifting the "do not do this for me" marker."""
     auth.sign_in(request, member)
-    return redirect(to)
+    request.session.pop(NOT_NOW, None)
+    return _clear_no_auto(redirect(to))
 
 
 def _profiles(member):
@@ -86,7 +87,9 @@ def sign_in(request):
             return _signed_in(request, member, auth.safe_next(request))
         error = 'That email or phone and password do not go together.'
     return _page(request, 'core/member/sign_in.html',
-                 {'error': error, 'next': auth.next_value(request)})
+                 {'error': error, 'next': auth.next_value(request),
+                  # httponly, so the page cannot read the marker — the server says.
+                  'auto': _may_sign_in_by_itself(request)})
 
 
 @require_POST
@@ -140,7 +143,13 @@ def sign_out(request):
     """POST, not GET: a link anybody can put in an <img> should not end your session."""
     _close_linked_chat(request, auth.current(request))
     auth.sign_out(request)
-    return redirect('member_login')
+    response = redirect('member_login')
+    # Leaving a marker matters as much as clearing the session: without it the automatic
+    # sign-in fires on the very next page and puts them straight back in, which is not
+    # signing out, it is a redirect with extra steps.
+    response.set_cookie(NO_AUTO, '1', max_age=60 * 60 * 24 * NO_AUTO_DAYS,
+                        httponly=True, samesite='Lax')
+    return response
 
 
 @never_cache
@@ -211,6 +220,28 @@ def connect(request):
 # --------------------------------------------------------------------------- #
 PENDING = 'synchub_syncup_pending'
 
+#: Set when somebody signs out on purpose, and read before any automatic sign-in is tried.
+#: Without it the silent hand-off fires on the very next page and they can never leave while
+#: signed in to SyncUp — Sign out stops meaning anything. A cookie rather than a session flag,
+#: so closing the browser does not quietly re-enable it, and httponly so the page can neither
+#: read it nor forge one. Any deliberate sign-in clears it.
+#:
+#: This exact loop is what the October build got wrong and then fixed. It is worth the cookie.
+NO_AUTO = 'synchub_no_auto'
+NO_AUTO_DAYS = 30
+#: "Not now", which lasts as long as the browser is open rather than thirty days.
+NOT_NOW = 'synchub_not_now'
+
+
+def _may_sign_in_by_itself(request):
+    """Whether a page inside the app may post its token without being asked to."""
+    return NO_AUTO not in request.COOKIES and not request.session.get(NOT_NOW)
+
+
+def _clear_no_auto(response):
+    response.delete_cookie(NO_AUTO)
+    return response
+
 
 def _pending(request):
     data = request.session.get(PENDING)
@@ -230,9 +261,10 @@ def _landed(request, member, fields):
         messages.error(request, why)
         return redirect('member_login')
     request.session.pop(PENDING, None)
+    request.session.pop(NOT_NOW, None)
     auth.sign_in(request, member, via='token')
     request.session[auth.TOKEN_SEEN_KEY] = fields['syncup_token']
-    return redirect(auth.safe_url(request, going))
+    return _clear_no_auto(redirect(auth.safe_url(request, going)))
 
 
 @require_POST
@@ -255,9 +287,10 @@ def token_sign_in(request):
         syncup_people.take(fields)                  # catch up on anything SyncUp changed
         linked.refresh_from_db()
         request.session.pop(PENDING, None)
+        request.session.pop(NOT_NOW, None)
         auth.sign_in(request, linked, via='token')
         request.session[auth.TOKEN_SEEN_KEY] = fields['syncup_token']
-        return redirect(auth.safe_next(request))
+        return _clear_no_auto(redirect(auth.safe_next(request)))
 
     older, _ = syncup_people.older_account_for(fields)
     return redirect('member_token_join' if older else 'member_token_first')
@@ -280,6 +313,10 @@ def token_join(request):
 
     error = ''
     if request.method == 'POST':
+        if request.POST.get('what') == 'not-now':
+            request.session[NOT_NOW] = True
+            request.session.pop(PENDING, None)
+            return redirect('member_login')
         if request.POST.get('what') == 'not-mine':
             # A same-phone match only ever meant "this phone", never "this person".
             syncup_people.refuse(older, fields['syncup_id'])
@@ -305,6 +342,11 @@ def token_first(request):
 
     error = ''
     if request.method == 'POST':
+        if request.POST.get('what') == 'not-now':
+            # Asked once. Pressing past it must not mean being asked again on every page.
+            request.session[NOT_NOW] = True
+            request.session.pop(PENDING, None)
+            return redirect('member_login')
         if request.POST.get('what') == 'new':
             made = Member.objects.filter(syncup_id=fields['syncup_id']).first()
             if made is None:
