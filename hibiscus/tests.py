@@ -19,9 +19,9 @@ from core import auth as hub
 from core.models import Member
 from core.models import HubSettings
 
-from . import auth, cycle, defaults, push
-from .models import (Audit, Flow, NotifySent, NotifySlot, Person, PeriodDay, Settings,
-                     StockItem, StockMove)
+from . import auth, cycle, defaults, push, reshape
+from .models import (Audit, DaySymptom, Flow, NotifySent, NotifySlot, Person, PeriodDay,
+                     Settings, StockItem, StockMove)
 
 D = date
 
@@ -561,7 +561,8 @@ class AdminSideTests(TestCase):
         PeriodDay.objects.create(person=self.person, date=D(2026, 10, 2), flow=Flow.MEDIUM)
         url = reverse('hibiscus_day_edit', args=[self.person.pk, '2026-10-02'])
         self.assertEqual(self.client.get(url).status_code, 200)
-        r = self.client.post(url, {'flow': int(Flow.SPOTTING), 'symptoms': ['acne'], 'note': 'ok'})
+        r = self.client.post(url, {'date': '2026-10-02', 'flow': int(Flow.SPOTTING),
+                                   'symptoms': ['acne'], 'note': 'ok'})
         self.assertEqual(r.status_code, 302)
         day = self.person.days.get()
         self.assertEqual(day.flow, Flow.SPOTTING)
@@ -618,6 +619,254 @@ class AdminSideTests(TestCase):
             PeriodDay.objects.create(person=self.person, date=D(2026, 10, 1) + timedelta(days=i))
         r = self.client.get(reverse('hibiscus_people'))
         self.assertContains(r, '31 Oct 2026')                      # 1 Oct + 30 days
+
+
+class ReshapeRuleTests(TestCase):
+    """The pure half of a correction: dates in, a plan out. No database, no request.
+
+    These are the worked examples the two screens are worded from, so if the wording and the
+    rules ever drift apart one of these fails.
+    """
+
+    def test_moving_shifts_every_day_by_the_same_amount(self):
+        plan = reshape.move([D(2026, 9, 5), D(2026, 9, 6), D(2026, 9, 7)], D(2026, 9, 8))
+        self.assertEqual(plan.after, (D(2026, 9, 8), D(2026, 9, 9), D(2026, 9, 10)))
+        self.assertEqual((plan.adds, plan.removes), ((), ()))
+
+    def test_moving_forward_starts_from_the_last_day(self):
+        """Row by row, 5 to 6 would land on the 6 that has not moved out of the way yet."""
+        plan = reshape.move([D(2026, 9, 5), D(2026, 9, 6)], D(2026, 9, 6))
+        self.assertEqual([was for was, _ in plan.moves], [D(2026, 9, 6), D(2026, 9, 5)])
+
+    def test_moving_back_starts_from_the_first_day(self):
+        plan = reshape.move([D(2026, 9, 5), D(2026, 9, 6)], D(2026, 9, 4))
+        self.assertEqual([was for was, _ in plan.moves], [D(2026, 9, 5), D(2026, 9, 6)])
+
+    def test_moving_nowhere_is_no_change_at_all(self):
+        self.assertFalse(reshape.move([D(2026, 9, 5)], D(2026, 9, 5)).changes)
+
+    def test_a_gap_inside_a_run_travels_with_it(self):
+        """The 6th is bridged, not logged. After the move the hole is still in the middle."""
+        plan = reshape.move([D(2026, 9, 5), D(2026, 9, 7)], D(2026, 9, 10))
+        self.assertEqual(plan.after, (D(2026, 9, 10), D(2026, 9, 12)))
+
+    def test_resizing_earlier_keeps_the_logged_days_where_they_are(self):
+        """The case that prompted all this: it started before it was written down."""
+        plan = reshape.resize([D(2026, 11, 8)], D(2026, 11, 6), D(2026, 11, 8))
+        self.assertEqual(plan.adds, (D(2026, 11, 6), D(2026, 11, 7)))
+        self.assertEqual(plan.removes, ())
+        self.assertEqual(plan.after, (D(2026, 11, 6), D(2026, 11, 7), D(2026, 11, 8)))
+
+    def test_resizing_longer_fills_the_end(self):
+        plan = reshape.resize([D(2026, 9, 5), D(2026, 9, 6)], D(2026, 9, 5), D(2026, 9, 8))
+        self.assertEqual(plan.adds, (D(2026, 9, 7), D(2026, 9, 8)))
+
+    def test_resizing_shorter_removes_what_falls_outside(self):
+        plan = reshape.resize([D(2026, 9, 5), D(2026, 9, 6), D(2026, 9, 7)],
+                              D(2026, 9, 5), D(2026, 9, 6))
+        self.assertEqual((plan.removes, plan.adds), ((D(2026, 9, 7),), ()))
+
+    def test_a_bridged_day_in_the_middle_is_never_filled_in(self):
+        """Filling it would invent a flow nobody recorded, and the rules bridge it anyway."""
+        plan = reshape.resize([D(2026, 9, 5), D(2026, 9, 7)], D(2026, 9, 5), D(2026, 9, 8))
+        self.assertEqual(plan.adds, (D(2026, 9, 8),))
+
+    def test_dates_with_nothing_of_the_period_in_them_are_refused(self):
+        """That is not a resize, it is a move with the old days thrown away."""
+        self.assertIsNone(reshape.resize([D(2026, 9, 5)], D(2026, 10, 1), D(2026, 10, 3)))
+
+    def test_typing_the_dates_it_already_has_changes_nothing(self):
+        plan = reshape.resize([D(2026, 9, 5), D(2026, 9, 6)], D(2026, 9, 5), D(2026, 9, 6))
+        self.assertFalse(plan.changes)
+
+    def test_a_clash_is_found_before_anything_is_written(self):
+        plan = reshape.move([D(2026, 9, 5)], D(2026, 9, 20))
+        self.assertEqual(reshape.clashes_with(plan, [D(2026, 9, 20)]), [D(2026, 9, 20)])
+        self.assertEqual(reshape.clashes_with(plan, [D(2026, 9, 21)]), [])
+
+
+class PeriodDatesTests(TestCase):
+    """The console side of moving and resizing a period, and moving one day."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@example.com', 'pw-for-tests-1234')
+        self.client.force_login(self.admin)
+        self.person = make_person()
+
+    def log(self, start, length, flow=Flow.MEDIUM):
+        first = D.fromisoformat(start)
+        for i in range(length):
+            PeriodDay.objects.create(person=self.person, date=first + timedelta(days=i), flow=flow)
+
+    def url(self, start):
+        return reverse('hibiscus_period_edit', args=[self.person.pk, start])
+
+    def dates(self):
+        return sorted(d.date for d in self.person.days.all())
+
+    def test_the_page_offers_both_corrections(self):
+        self.log('2026-10-05', 3)
+        r = self.client.get(self.url('2026-10-05'))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Move the whole period')
+        self.assertContains(r, 'Change the first and last day')
+
+    def test_a_period_that_does_not_start_there_is_404(self):
+        self.log('2026-10-05', 3)
+        self.assertEqual(self.client.get(self.url('2026-10-06')).status_code, 404)
+
+    def test_moving_carries_the_flow_of_each_day(self):
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 5), flow=Flow.HEAVY)
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 6), flow=Flow.LIGHT)
+        r = self.client.post(self.url('2026-10-05'), {'what': 'move', 'first_day': '2026-10-07'})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.dates(), [D(2026, 10, 7), D(2026, 10, 8)])
+        self.assertEqual(self.person.days.get(date=D(2026, 10, 7)).flow, Flow.HEAVY)
+        self.assertEqual(self.person.days.get(date=D(2026, 10, 8)).flow, Flow.LIGHT)
+        self.assertTrue(Audit.objects.filter(action='moved_period').exists())
+
+    def test_moving_by_one_day_does_not_trip_over_itself(self):
+        """Old and new spans overlap, so the rows have to move in the right order."""
+        self.log('2026-10-05', 4)
+        self.client.post(self.url('2026-10-05'), {'what': 'move', 'first_day': '2026-10-06'})
+        self.assertEqual(self.dates(), [D(2026, 10, 6), D(2026, 10, 7),
+                                        D(2026, 10, 8), D(2026, 10, 9)])
+
+    def test_moving_keeps_the_symptoms_and_the_note(self):
+        row = PeriodDay.objects.create(person=self.person, date=D(2026, 10, 5), note='bad one')
+        DaySymptom.objects.create(day=row, symptom='cramps')
+        self.client.post(self.url('2026-10-05'), {'what': 'move', 'first_day': '2026-10-08'})
+        moved = self.person.days.get()
+        self.assertEqual((moved.date, moved.note), (D(2026, 10, 8), 'bad one'))
+        self.assertEqual([s.symptom for s in moved.symptoms.all()], ['cramps'])
+
+    def test_a_move_onto_another_period_is_refused_and_writes_nothing(self):
+        self.log('2026-10-05', 2)
+        self.log('2026-11-02', 2)
+        r = self.client.post(self.url('2026-10-05'), {'what': 'move', 'first_day': '2026-11-01'})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'already logged')
+        self.assertEqual(self.dates(), [D(2026, 10, 5), D(2026, 10, 6),
+                                        D(2026, 11, 2), D(2026, 11, 3)])
+
+    def test_a_move_that_would_run_into_the_future_is_refused(self):
+        self.log('2026-10-05', 3)
+        today = Settings.load().today
+        r = self.client.post(self.url('2026-10-05'),
+                             {'what': 'move', 'first_day': (today - timedelta(days=1)).isoformat()})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'in the future')
+        self.assertEqual(len(self.dates()), 3)
+
+    def test_resizing_backwards_adds_the_days_before_it(self):
+        """One day logged on the 8th, and it actually started on the 6th."""
+        PeriodDay.objects.create(person=self.person, date=D(2026, 11, 8), flow=Flow.HEAVY)
+        r = self.client.post(self.url('2026-11-08'), {
+            'what': 'range', 'first_day': '2026-11-06', 'last_day': '2026-11-08',
+            'fill_flow': int(Flow.LIGHT)})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.dates(), [D(2026, 11, 6), D(2026, 11, 7), D(2026, 11, 8)])
+        self.assertEqual(self.person.days.get(date=D(2026, 11, 8)).flow, Flow.HEAVY)
+        self.assertEqual(self.person.days.get(date=D(2026, 11, 6)).flow, Flow.LIGHT)
+        self.assertTrue(Audit.objects.filter(action='resized_period').exists())
+
+    def test_resizing_shorter_deletes_the_days_that_fall_outside(self):
+        self.log('2026-10-05', 5)
+        self.client.post(self.url('2026-10-05'), {
+            'what': 'range', 'first_day': '2026-10-05', 'last_day': '2026-10-07',
+            'fill_flow': int(Flow.MEDIUM)})
+        self.assertEqual(self.dates(), [D(2026, 10, 5), D(2026, 10, 6), D(2026, 10, 7)])
+
+    def test_days_added_by_an_admin_are_recorded_as_theirs(self):
+        PeriodDay.objects.create(person=self.person, date=D(2026, 11, 8))
+        self.client.post(self.url('2026-11-08'), {
+            'what': 'range', 'first_day': '2026-11-07', 'last_day': '2026-11-08',
+            'fill_flow': int(Flow.MEDIUM)})
+        self.assertEqual(self.person.days.get(date=D(2026, 11, 7)).created_by, self.admin)
+
+    def test_a_resize_with_nothing_in_common_says_to_move_it_instead(self):
+        self.log('2026-10-05', 2)
+        r = self.client.post(self.url('2026-10-05'), {
+            'what': 'range', 'first_day': '2026-10-20', 'last_day': '2026-10-21',
+            'fill_flow': int(Flow.MEDIUM)})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Move it instead')
+        self.assertEqual(len(self.dates()), 2)
+
+    def test_the_dates_it_already_has_are_not_a_change(self):
+        self.log('2026-10-05', 2)
+        r = self.client.post(self.url('2026-10-05'), {
+            'what': 'range', 'first_day': '2026-10-05', 'last_day': '2026-10-06',
+            'fill_flow': int(Flow.MEDIUM)})
+        self.assertContains(r, 'already has')
+
+    def test_the_last_day_cannot_come_first(self):
+        self.log('2026-10-05', 2)
+        r = self.client.post(self.url('2026-10-05'), {
+            'what': 'range', 'first_day': '2026-10-06', 'last_day': '2026-10-04',
+            'fill_flow': int(Flow.MEDIUM)})
+        self.assertContains(r, 'cannot be before')
+
+    def test_a_wild_span_is_refused_rather_than_writing_a_month_of_rows(self):
+        self.log('2026-10-05', 2)
+        r = self.client.post(self.url('2026-10-05'), {
+            'what': 'range', 'first_day': '2026-10-05', 'last_day': '2026-11-09',
+            'fill_flow': int(Flow.MEDIUM)})
+        self.assertContains(r, 'check the dates')
+        self.assertEqual(len(self.dates()), 2)
+
+    def test_spotting_days_move_with_the_period_they_belong_to(self):
+        """Day 1 is the 6th, but the run on screen is four days. Both edges travel."""
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 5), flow=Flow.SPOTTING)
+        self.log('2026-10-06', 2)
+        PeriodDay.objects.create(person=self.person, date=D(2026, 10, 8), flow=Flow.SPOTTING)
+        self.client.post(self.url('2026-10-06'), {'what': 'move', 'first_day': '2026-10-10'})
+        self.assertEqual(self.dates(), [D(2026, 10, 10), D(2026, 10, 11),
+                                        D(2026, 10, 12), D(2026, 10, 13)])
+
+    def test_a_resize_that_would_swallow_another_period_is_refused(self):
+        """Stretching one period over the next would quietly make two into one."""
+        self.log('2026-10-05', 2)
+        self.log('2026-10-20', 2)
+        r = self.client.post(self.url('2026-10-05'), {
+            'what': 'range', 'first_day': '2026-10-05', 'last_day': '2026-10-21',
+            'fill_flow': int(Flow.MEDIUM)})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'already logged')
+        self.assertEqual(len(self.dates()), 4)
+
+    def test_the_periods_list_offers_the_way_in(self):
+        self.log('2026-10-05', 2)
+        r = self.client.get(reverse('hibiscus_person_periods', args=[self.person.pk]))
+        self.assertContains(r, self.url('2026-10-05'))
+
+    def test_moving_a_day_on_its_own_takes_its_symptoms_with_it(self):
+        row = PeriodDay.objects.create(person=self.person, date=D(2026, 10, 5), flow=Flow.HEAVY)
+        DaySymptom.objects.create(day=row, symptom='cramps')
+        url = reverse('hibiscus_day_edit', args=[self.person.pk, '2026-10-05'])
+        r = self.client.post(url, {'date': '2026-10-09', 'flow': int(Flow.HEAVY),
+                                   'symptoms': ['cramps'], 'note': ''})
+        self.assertEqual(r.status_code, 302)
+        moved = self.person.days.get()
+        self.assertEqual(moved.date, D(2026, 10, 9))
+        self.assertEqual([s.symptom for s in moved.symptoms.all()], ['cramps'])
+        self.assertTrue(Audit.objects.filter(action='moved_day').exists())
+
+    def test_a_day_cannot_be_moved_onto_a_day_that_is_already_logged(self):
+        self.log('2026-10-05', 2)
+        url = reverse('hibiscus_day_edit', args=[self.person.pk, '2026-10-05'])
+        r = self.client.post(url, {'date': '2026-10-06', 'flow': int(Flow.MEDIUM), 'note': ''})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'already logged')
+        self.assertEqual(self.dates(), [D(2026, 10, 5), D(2026, 10, 6)])
+
+    def test_a_day_cannot_be_moved_into_the_future(self):
+        self.log('2026-10-05', 1)
+        url = reverse('hibiscus_day_edit', args=[self.person.pk, '2026-10-05'])
+        ahead = Settings.load().today + timedelta(days=1)
+        r = self.client.post(url, {'date': ahead.isoformat(), 'flow': int(Flow.MEDIUM), 'note': ''})
+        self.assertContains(r, 'in the future')
+        self.assertEqual(self.dates(), [D(2026, 10, 5)])
 
 
 class MagicLinkAdminTests(TestCase):

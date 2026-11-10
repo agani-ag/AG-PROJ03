@@ -34,3 +34,14 @@
     <input class="input" id="note" name="note" maxlength="300" value="{{ row.note|default:'' }}"
            placeholder="Just for you…">
 </div>
+
+{% if row %}
+{# Only a day already written down can move: there is nothing to carry otherwise, and the
+   calendar is one tap from the right date. Everything on it goes along — flow, symptoms, note. #}
+<div class="field">
+    <label for="day-date">Date</label>
+    <input class="input" id="day-date" name="date" type="date" value="{{ row.date|date:'Y-m-d' }}"
+           max="{{ config.today|date:'Y-m-d' }}">
+    <span class="help">Logged the wrong day? Change this and it all moves with it.</span>
+</div>
+{% endif %}

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block head %}{% include "hibiscus/admin/_flow_css.html" %}{% endblock %}
+{% block title %}{{ run.start|date:"d M Y" }} · {{ person.name }}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'hibiscus_person_periods' person.pk %}">{% icon "arrow-left" %}{{ person.name }} · periods</a>
+        <h1>{{ run.shown_from|date:"d M" }} – {{ run.shown_to|date:"d M Y" }}</h1>
+        <p class="page-sub">
+            {{ run.days }} day{{ run.days|pluralize }} counted, day 1 on {{ run.start|date:"d M" }}.
+            Nothing stores a start or an end here — a period is the run of days, so changing its
+            dates means moving the days themselves.
+        </p>
+    </div>
+</div>
+
+<div class="card pdx">
+    <div class="card-head">{% icon "droplet" %}<h2>As it stands</h2></div>
+    <div class="card-body">
+        <div class="chips">
+            {% for day in days %}
+            {% if day.logged %}
+            <a class="flow f{{ day.flow }}" href="{% url 'hibiscus_day_edit' person.pk day.date|date:'Y-m-d' %}"
+               title="{{ day.date|date:'D d M Y' }} · {{ day.flow_label }}">
+                <b>{{ day.date|date:"j" }}</b><span class="lvl">{% if day.flow == 4 %}H{% elif day.flow == 3 %}M{% elif day.flow == 2 %}L{% elif day.flow == 1 %}S{% else %}·{% endif %}</span>
+            </a>
+            {% else %}
+            <span class="flow gap" title="{{ day.date|date:'D d M Y' }} · not logged, bridged"><b>{{ day.date|date:"j" }}</b><span class="lvl">—</span></span>
+            {% endif %}
+            {% endfor %}
+        </div>
+        <p class="small muted" style="margin-top:10px">Tap a day to change that one on its own.</p>
+    </div>
+</div>
+
+{% comment %}
+Two corrections, two forms, on purpose. Typed dates cannot say which is meant — 5–9 Sep
+becoming 6–10 Sep is a move to one person and a resize to another — and guessing would
+quietly rewrite which day was the heavy one. See hibiscus/reshape.py.
+{% endcomment %}
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "arrow-left-right" %}<h2>Move the whole period</h2></div>
+    <form method="POST" class="card-body form" novalidate>
+        {% csrf_token %}<input type="hidden" name="what" value="move">
+        {% if move_form.non_field_errors %}
+        <div class="alert alert-danger">{% icon "circle-alert" %}<div class="alert-body">{{ move_form.non_field_errors.0 }}</div></div>
+        {% endif %}
+        <p class="small muted" style="margin-bottom:12px">
+            Every day shifts by the same number of days. Nothing is added and nothing is lost —
+            a heavy Tuesday becomes a heavy Wednesday. This is the one for "logged a day late".
+        </p>
+        <div class="field{% if move_form.first_day.errors %} invalid{% endif %}">
+            <label class="label" for="{{ move_form.first_day.id_for_label }}">It actually started on</label>
+            {{ move_form.first_day }}
+            {% for e in move_form.first_day.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+        <div class="row">
+            <button class="btn btn-primary" type="submit">{% icon "arrow-left-right" %}Move these {{ days|length }} day{{ days|length|pluralize }}</button>
+        </div>
+    </form>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "calendar-clock" %}<h2>Change the first and last day</h2></div>
+    <form method="POST" class="card-body form" novalidate>
+        {% csrf_token %}<input type="hidden" name="what" value="range">
+        {% if range_form.non_field_errors %}
+        <div class="alert alert-danger">{% icon "circle-alert" %}<div class="alert-body">{{ range_form.non_field_errors.0 }}</div></div>
+        {% endif %}
+        <p class="small muted" style="margin-bottom:12px">
+            Days still inside the new dates stay exactly as they are. Days outside them are
+            removed, and the stretch out to a new edge is filled in. This is the one for "it
+            started before I logged it" or "it went on two days longer".
+        </p>
+        <div class="form-grid">
+            <div class="field{% if range_form.first_day.errors %} invalid{% endif %}">
+                <label class="label" for="{{ range_form.first_day.id_for_label }}">First day</label>
+                {{ range_form.first_day }}
+                {% for e in range_form.first_day.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="field{% if range_form.last_day.errors %} invalid{% endif %}">
+                <label class="label" for="{{ range_form.last_day.id_for_label }}">Last day</label>
+                {{ range_form.last_day }}
+                {% for e in range_form.last_day.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+        </div>
+        <div class="field">
+            <label class="label">Flow for any day this adds</label>
+            <div class="chips">
+                {% for value, label in range_form.fields.fill_flow.choices %}
+                <label class="chip"><input type="radio" name="fill_flow" value="{{ value }}"
+                        {% if range_form.fill_flow.value|stringformat:"s" == value|stringformat:"s" %}checked{% elif not range_form.fill_flow.value and value == 3 %}checked{% endif %}
+                        style="width:14px;height:14px;accent-color:var(--accent);margin:0">{{ label }}</label>
+                {% endfor %}
+            </div>
+            <span class="help">Only used where a day has to be invented. Days already logged keep their own.</span>
+        </div>
+        <div class="row">
+            <button class="btn btn-primary" type="submit">{% icon "check" %}Save these dates</button>
+            <a class="btn btn-ghost" href="{% url 'hibiscus_person_periods' person.pk %}">Cancel</a>
+        </div>
+    </form>
+    <div class="card-foot bordered">
+        <span class="small muted">
+            Today here is {{ config.today|date:"d M Y" }} ({{ config.time_zone }}); future days are
+            refused, and so is anything that would land on a day belonging to another period. Move
+            one close enough to its neighbour and the two become a single period — that is the
+            bridging rule doing its job, not a mistake.
+        </span>
+    </div>
+</div>
+{% endblock %}

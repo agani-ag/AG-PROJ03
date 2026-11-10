@@ -20,9 +20,9 @@ from core.models import Member
 from core.models import HubSettings
 from core.views import admin_required
 
-from . import auth, cycle, defaults, push
-from .forms import (DayForm, DayRangeForm, PersonForm, SettingsForm, StockItemEditForm,
-                    StockItemForm, StockMoveForm)
+from . import auth, cycle, defaults, push, reshape
+from .forms import (DayForm, DayRangeForm, PeriodMoveForm, PeriodRangeForm, PersonForm,
+                    SettingsForm, StockItemEditForm, StockItemForm, StockMoveForm)
 from .models import (Audit, DaySymptom, Flow, NotifyLine, NotifySent, NotifySlot, Person,
                      PeriodDay, Settings, StockItem, StockMove, Symptom)
 
@@ -373,7 +373,7 @@ def person_periods(request, pk):
 
 @admin_required
 def day_edit(request, pk, on):
-    """One day on its own — change the flow, the symptoms or the note, or remove the day."""
+    """One day on its own — its date, flow, symptoms or note, or remove the day."""
     person = get_object_or_404(Person, pk=pk)
     config = Settings.load()
     try:
@@ -384,25 +384,106 @@ def day_edit(request, pk, on):
     if not row:
         raise Http404('Nothing logged on that day')
 
-    form = DayForm(request.POST or None, initial={
-        'flow': row.flow, 'note': row.note,
-        'symptoms': list(row.symptoms.values_list('symptom', flat=True)),
-    })
+    form = DayForm(request.POST or None, today=config.today,
+                   taken=person.days.exclude(pk=row.pk).values_list('date', flat=True),
+                   initial={
+                       'date': row.date, 'flow': row.flow, 'note': row.note,
+                       'symptoms': list(row.symptoms.values_list('symptom', flat=True)),
+                   })
     if request.method == 'POST' and form.is_valid():
+        was = row.date
+        row.date = form.cleaned_data['date']
         row.flow = form.cleaned_data['flow']
         row.note = form.cleaned_data['note']
-        row.save(update_fields=['flow', 'note', 'updated_at'])
+        row.save(update_fields=['date', 'flow', 'note', 'updated_at'])
         row.symptoms.all().delete()
         DaySymptom.objects.bulk_create(
             [DaySymptom(day=row, symptom=s) for s in form.cleaned_data['symptoms']])
-        auth.log('edited_day', person=person, actor=request.user,
-                 detail=f'{day_date} · {Flow(row.flow).label}')
-        messages.success(request, f'{day_date:%d %b %Y} saved.')
+        if row.date != was:
+            auth.log('moved_day', person=person, actor=request.user,
+                     detail=f'{was} → {row.date} · {Flow(row.flow).label}')
+            messages.success(request, f'{was:%d %b} moved to {row.date:%d %b %Y}.')
+        else:
+            auth.log('edited_day', person=person, actor=request.user,
+                     detail=f'{day_date} · {Flow(row.flow).label}')
+            messages.success(request, f'{day_date:%d %b %Y} saved.')
         return redirect('hibiscus_person_periods', pk=person.pk)
 
     return render(request, 'hibiscus/admin/day_form.html', {
         'person': person, 'config': config, 'form': form, 'day': row,
     })
+
+
+def _run_and_rest(person, start):
+    """The period starting on `start`, the dates it is made of, and this person's other days.
+
+    One query for all three. The caller needs the other days because a correction must not be
+    allowed to land on top of a different period.
+    """
+    try:
+        start_date = date.fromisoformat(start)
+    except ValueError:
+        raise Http404('Not a date')
+
+    days = list(person.days.values_list('date', 'flow'))
+    run = reshape.run_starting(days, start_date)
+    if not run:
+        raise Http404('No period starts on that day')
+    inside = [d for d, _ in days if run.shown_from <= d <= run.shown_to]
+    outside = [d for d, _ in days if not run.shown_from <= d <= run.shown_to]
+    return run, inside, outside
+
+
+@admin_required
+def period_edit(request, pk, start):
+    """A whole period's dates — moved, or trimmed and stretched. See `reshape.py`."""
+    person = get_object_or_404(Person, pk=pk)
+    config = Settings.load()
+    run, inside, outside = _run_and_rest(person, start)
+    what = request.POST.get('what')
+    shared = {'dates': inside, 'taken': outside, 'today': config.today}
+
+    move_form = PeriodMoveForm(request.POST if what == 'move' else None,
+                               initial={'first_day': run.shown_from}, **shared)
+    range_form = PeriodRangeForm(request.POST if what == 'range' else None,
+                                 initial={'first_day': run.shown_from,
+                                          'last_day': run.shown_to,
+                                          'fill_flow': Flow.MEDIUM}, **shared)
+
+    if what == 'move' and move_form.is_valid():
+        reshape.apply(person, move_form.plan, actor=request.user)
+        auth.log('moved_period', person=person, actor=request.user,
+                 detail=f'{run.shown_from} → {move_form.plan.after[0]} · {len(inside)} day(s)')
+        messages.success(request, f'Moved to {move_form.plan.after[0]:%d %b %Y}.')
+        return redirect('hibiscus_person_periods', pk=person.pk)
+
+    if what == 'range' and range_form.is_valid():
+        plan = range_form.plan
+        reshape.apply(person, plan, flow=range_form.cleaned_data['fill_flow'],
+                      actor=request.user)
+        auth.log('resized_period', person=person, actor=request.user,
+                 detail=f'{plan.after[0]} to {plan.after[-1]} · '
+                        f'+{len(plan.adds)} −{len(plan.removes)}')
+        messages.success(request, f'Now {plan.after[0]:%d %b} – {plan.after[-1]:%d %b %Y}.')
+        return redirect('hibiscus_person_periods', pk=person.pk)
+
+    return render(request, 'hibiscus/admin/period_form.html', {
+        'person': person, 'config': config, 'run': run,
+        'days': _run_days(person, run),
+        'move_form': move_form, 'range_form': range_form,
+        'tab_counts': _tab_counts(person),
+    })
+
+
+def _run_days(person, run):
+    """Every date the run spans, with what is logged on it — the bridged ones included."""
+    logged = dict(person.days.filter(date__gte=run.shown_from,
+                                     date__lte=run.shown_to).values_list('date', 'flow'))
+    span = [run.shown_from + timedelta(days=i)
+            for i in range((run.shown_to - run.shown_from).days + 1)]
+    return [{'date': day, 'logged': day in logged, 'flow': logged.get(day),
+             'flow_label': Flow(logged[day]).label if day in logged else 'Not logged'}
+            for day in span]
 
 
 @admin_required
@@ -426,15 +507,7 @@ def day_delete(request, pk, on):
 def period_delete(request, pk, start):
     """Remove a whole period — every day in that run, including its spotting days."""
     person = get_object_or_404(Person, pk=pk)
-    try:
-        start_date = date.fromisoformat(start)
-    except ValueError:
-        raise Http404('Not a date')
-
-    days = list(person.days.values_list('date', 'flow'))
-    run = next((r for r in cycle.periods(days) if r.start == start_date), None)
-    if not run:
-        raise Http404('No period starts on that day')
+    run, _inside, _rest = _run_and_rest(person, start)
     deleted, _ = PeriodDay.objects.filter(person=person,
                                           date__gte=run.shown_from,
                                           date__lte=run.shown_to).delete()

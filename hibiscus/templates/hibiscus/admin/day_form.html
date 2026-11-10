@@ -18,6 +18,13 @@
 <div class="card">
     <form method="POST" class="card-body form" novalidate>
         {% csrf_token %}
+        <div class="field{% if form.date.errors %} invalid{% endif %}">
+            <label class="label" for="{{ form.date.id_for_label }}">Date</label>
+            {{ form.date }}
+            <span class="help">{{ form.date.help_text }}</span>
+            {% for e in form.date.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+
         <div class="field">
             <label class="label">Flow</label>
             <div class="chips">

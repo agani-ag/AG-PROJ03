@@ -57,15 +57,17 @@
 {% if periods %}
 <div class="card pad0">
     {% for p in periods %}
-    <div class="item">
+    <a class="item" href="{% url 'hibiscus_me_period' p.start|date:'Y-m-d' %}">
         <span class="ico"><svg class="ic lg"><use href="#h-drop"/></svg></span>
         <div class="grow">
             <b>{{ p.start|date:"j M" }} – {{ p.end|date:"j M Y" }}</b>
             <div class="sub">{{ p.days }} day{{ p.days|pluralize }}{% if p.shown_from != p.start %} · spotting from {{ p.shown_from|date:"j M" }}{% endif %}</div>
         </div>
-        <span class="pill">{{ p.days }} d</span>
-    </div>
+        <svg class="ic" style="color:var(--mut)"><use href="#h-right"/></svg>
+    </a>
     {% endfor %}
 </div>
+<p class="tiny center">Tap one to fix its dates — if it was the wrong week, or longer or shorter
+    than you logged.</p>
 {% endif %}
 {% endblock %}

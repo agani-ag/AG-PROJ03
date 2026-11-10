@@ -11,8 +11,8 @@ from django.utils import timezone
 
 from . import auth, defaults, push, views_user
 from .cron import notify, retention
-from .models import (Audit, Flow, NotifyLine, NotifyMute, NotifySent, NotifySlot, Person,
-                     PeriodDay, Settings, StockItem, StockMove)
+from .models import (Audit, DaySymptom, Flow, NotifyLine, NotifyMute, NotifySent, NotifySlot,
+                     Person, PeriodDay, Settings, StockItem, StockMove)
 from core import cronhub
 
 
@@ -975,3 +975,144 @@ class WhoseDiaryTests(TestCase):
         self.assertEqual(person.name, 'Bharath R')
         self.assertTrue(person.for_someone_else)
         self.assertEqual(person.subject_name, 'Priya')
+
+
+class FixingDatesTests(TestCase):
+    """The diary's own half: moving one day from the sheet, and a whole period from Log.
+
+    The console has the same two corrections. These check the diary reaches them without an
+    admin, and that a person cannot do to their own diary what the console would refuse.
+    """
+
+    def setUp(self):
+        self.person = make_person()
+        sign_in(self.client, 'd@example.com', 'swan7tide')
+        self.config = Settings.load()
+        self.today = self.config.today
+
+    def log(self, first, length, flow=Flow.MEDIUM):
+        for i in range(length):
+            PeriodDay.objects.create(person=self.person, date=first + timedelta(days=i), flow=flow)
+
+    def dates(self):
+        return sorted(d.date for d in self.person.days.all())
+
+    # ---- one day
+    def test_the_date_can_be_changed_from_the_day_sheet(self):
+        was = self.today - timedelta(days=3)
+        row = PeriodDay.objects.create(person=self.person, date=was, flow=Flow.HEAVY, note='ouch')
+        DaySymptom.objects.create(day=row, symptom='cramps')
+        r = self.client.post(reverse('hibiscus_me_day', args=[was.isoformat()]), {
+            'flow': int(Flow.HEAVY), 'symptoms': ['cramps'], 'note': 'ouch',
+            'date': (was - timedelta(days=1)).isoformat()})
+        self.assertEqual(r.status_code, 302)
+        moved = self.person.days.get()
+        self.assertEqual(moved.date, was - timedelta(days=1))
+        self.assertEqual(moved.note, 'ouch')
+        self.assertEqual([s.symptom for s in moved.symptoms.all()], ['cramps'])
+        self.assertTrue(Audit.objects.filter(action='moved_own_day', actor=None).exists())
+
+    def test_the_date_field_only_shows_for_a_day_that_has_something_on_it(self):
+        """Nothing to carry otherwise, and the calendar is one tap from the right date."""
+        url = reverse('hibiscus_me_day', args=[self.today.isoformat()])
+        self.assertNotContains(self.client.get(url), 'name="date"')
+        PeriodDay.objects.create(person=self.person, date=self.today)
+        self.assertContains(self.client.get(url), 'name="date"')
+
+    def test_a_day_cannot_be_moved_on_top_of_another(self):
+        self.log(self.today - timedelta(days=2), 2)
+        before = self.dates()
+        r = self.client.post(
+            reverse('hibiscus_me_day', args=[(self.today - timedelta(days=2)).isoformat()]),
+            {'flow': int(Flow.MEDIUM), 'date': (self.today - timedelta(days=1)).isoformat()})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.dates(), before)
+
+    def test_a_day_cannot_be_moved_into_the_future(self):
+        PeriodDay.objects.create(person=self.person, date=self.today)
+        self.client.post(reverse('hibiscus_me_day', args=[self.today.isoformat()]),
+                         {'flow': int(Flow.MEDIUM),
+                          'date': (self.today + timedelta(days=1)).isoformat()})
+        self.assertEqual(self.dates(), [self.today])
+
+    def test_clearing_a_day_ignores_the_date_field(self):
+        """"Nothing" wins: they are clearing it, so where it would have moved to is moot."""
+        PeriodDay.objects.create(person=self.person, date=self.today)
+        self.client.post(reverse('hibiscus_me_day', args=[self.today.isoformat()]),
+                         {'flow': 'none', 'date': (self.today + timedelta(days=9)).isoformat()})
+        self.assertEqual(self.person.days.count(), 0)
+
+    def test_nothing_is_half_saved_when_the_date_is_refused(self):
+        """The flow typed alongside a bad date is not written either."""
+        self.log(self.today - timedelta(days=2), 2)
+        self.client.post(
+            reverse('hibiscus_me_day', args=[(self.today - timedelta(days=2)).isoformat()]),
+            {'flow': int(Flow.SPOTTING), 'date': (self.today - timedelta(days=1)).isoformat()})
+        self.assertEqual(self.person.days.get(date=self.today - timedelta(days=2)).flow,
+                         Flow.MEDIUM)
+
+    def test_the_sheet_will_not_send_anybody_off_the_site(self):
+        """`next` is typed into the URL and carried in the form, so it is checked, not obeyed."""
+        PeriodDay.objects.create(person=self.person, date=self.today)
+        r = self.client.post(reverse('hibiscus_me_day', args=[self.today.isoformat()]),
+                             {'flow': int(Flow.MEDIUM), 'next': 'https://example.net/pay'})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r['Location'], reverse('hibiscus_me_calendar'))
+
+    def test_the_sheet_still_goes_back_where_it_came_from(self):
+        start = self.today - timedelta(days=10)
+        self.log(start, 2)
+        back = reverse('hibiscus_me_period', args=[start.isoformat()])
+        r = self.client.post(reverse('hibiscus_me_day', args=[start.isoformat()]),
+                             {'flow': int(Flow.HEAVY), 'next': back})
+        self.assertEqual(r['Location'], back)
+
+    # ---- a whole period
+    def test_log_lists_periods_as_links_to_their_dates(self):
+        start = self.today - timedelta(days=10)
+        self.log(start, 3)
+        r = self.client.get(reverse('hibiscus_me_log'))
+        self.assertContains(r, reverse('hibiscus_me_period', args=[start.isoformat()]))
+
+    def test_the_period_page_offers_both_corrections(self):
+        start = self.today - timedelta(days=10)
+        self.log(start, 3)
+        r = self.client.get(reverse('hibiscus_me_period', args=[start.isoformat()]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'It was the wrong week')
+        self.assertContains(r, 'It was longer or shorter than this')
+
+    def test_moving_a_period_from_the_diary(self):
+        start = self.today - timedelta(days=10)
+        self.log(start, 3, flow=Flow.HEAVY)
+        r = self.client.post(reverse('hibiscus_me_period', args=[start.isoformat()]),
+                             {'what': 'move', 'first_day': (start - timedelta(days=2)).isoformat()})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.dates()[0], start - timedelta(days=2))
+        self.assertEqual(self.person.days.first().flow, Flow.HEAVY)
+        self.assertTrue(Audit.objects.filter(action='moved_own_period', actor=None).exists())
+
+    def test_resizing_a_period_from_the_diary_marks_nobody_as_the_admin(self):
+        start = self.today - timedelta(days=10)
+        self.log(start, 1)
+        self.client.post(reverse('hibiscus_me_period', args=[start.isoformat()]), {
+            'what': 'range', 'first_day': (start - timedelta(days=2)).isoformat(),
+            'last_day': start.isoformat(), 'fill_flow': int(Flow.LIGHT)})
+        added = self.person.days.get(date=start - timedelta(days=2))
+        self.assertEqual(added.flow, Flow.LIGHT)
+        self.assertIsNone(added.created_by)
+
+    def test_one_diary_cannot_reach_another(self):
+        other = make_person(name='Meena', email='m@example.com')
+        start = self.today - timedelta(days=10)
+        PeriodDay.objects.create(person=other, date=start)
+        r = self.client.get(reverse('hibiscus_me_period', args=[start.isoformat()]))
+        self.assertEqual(r.status_code, 404)
+
+    def test_signing_in_is_needed_to_reach_it(self):
+        start = self.today - timedelta(days=10)
+        self.log(start, 2)
+        # Signing out is the hub's and it is a POST, so a fresh browser is the honest way
+        # to ask what somebody not signed in gets.
+        r = Client().get(reverse('hibiscus_me_period', args=[start.isoformat()]))
+        self.assertEqual(r.status_code, 302)

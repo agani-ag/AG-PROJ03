@@ -1,0 +1,84 @@
+{% extends "hibiscus/user/base.html" %}
+{% block title %}{{ run.shown_from|date:"j M" }} – {{ run.shown_to|date:"j M Y" }}{% endblock %}
+
+{% block topbar %}
+<a class="rb" href="{% url 'hibiscus_me_log' %}" aria-label="Back"><svg class="ic"><use href="#h-back"/></svg></a>
+<span class="title">{{ run.shown_from|date:"j M" }} – {{ run.shown_to|date:"j M" }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <b>{{ run.days }} day{{ run.days|pluralize }}</b>
+    <div class="sub">Day 1 was {{ run.start|date:"l j F" }}.</div>
+    <div class="chips flow" style="margin-top:10px">
+        {% for day in days %}
+        {% if day.logged %}
+        <a href="{% url 'hibiscus_me_day' day.date|date:'Y-m-d' %}?next={{ request.path|urlencode }}"><span class="f{{ day.flow }}">{{ day.date|date:"j M" }}</span></a>
+        {% else %}
+        <span>{{ day.date|date:"j M" }} · not logged</span>
+        {% endif %}
+        {% endfor %}
+    </div>
+    <p class="tiny" style="margin-top:10px">Tap a day to change just that one.</p>
+</div>
+
+{% comment %}
+Two corrections rather than one typed range, because "6–10 Sep instead of 5–9" is a move to
+one person and a resize to another, and guessing would rewrite which day was the heavy one.
+The wording here says which is which without saying "move" and "resize". See reshape.py.
+{% endcomment %}
+<div class="card">
+    <form method="POST" class="stack" novalidate>
+        {% csrf_token %}<input type="hidden" name="what" value="move">
+        <b>It was the wrong week</b>
+        <p class="tiny">Every day moves together and keeps its flow — nothing is added or lost.</p>
+        {% if move_form.non_field_errors %}
+        <div class="note soft"><svg class="ic sm"><use href="#h-x"/></svg><div>{{ move_form.non_field_errors.0 }}</div></div>
+        {% endif %}
+        <div class="field{% if move_form.first_day.errors %} bad{% endif %}">
+            <label for="{{ move_form.first_day.id_for_label }}">It actually started on</label>
+            {{ move_form.first_day }}
+            {% for e in move_form.first_day.errors %}<span class="err">{{ e }}</span>{% endfor %}
+        </div>
+        <button class="btn" type="submit"><svg class="ic"><use href="#h-check"/></svg>Move the whole period</button>
+    </form>
+</div>
+
+<div class="card">
+    <form method="POST" class="stack" novalidate>
+        {% csrf_token %}<input type="hidden" name="what" value="range">
+        <b>It was longer or shorter than this</b>
+        <p class="tiny">The days you have logged stay where they are. Days outside the new dates
+            are removed, and anything needed to reach a new first or last day is added.</p>
+        {% if range_form.non_field_errors %}
+        <div class="note soft"><svg class="ic sm"><use href="#h-x"/></svg><div>{{ range_form.non_field_errors.0 }}</div></div>
+        {% endif %}
+        <div class="field{% if range_form.first_day.errors %} bad{% endif %}">
+            <label for="{{ range_form.first_day.id_for_label }}">It started on</label>
+            {{ range_form.first_day }}
+            {% for e in range_form.first_day.errors %}<span class="err">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="field{% if range_form.last_day.errors %} bad{% endif %}">
+            <label for="{{ range_form.last_day.id_for_label }}">It ended on</label>
+            {{ range_form.last_day }}
+            {% for e in range_form.last_day.errors %}<span class="err">{{ e }}</span>{% endfor %}
+        </div>
+        <div class="field">
+            <span class="flabel">Flow for any day this adds</span>
+            <div class="chips flow">
+                {% for value, label in range_form.fields.fill_flow.choices %}
+                <label>
+                    <input type="radio" name="fill_flow" value="{{ value }}"
+                           {% if range_form.fill_flow.value|stringformat:"s" == value|stringformat:"s" %}checked{% elif not range_form.fill_flow.value and value == 3 %}checked{% endif %}>
+                    <span class="f{{ value }}">{{ label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <span class="help">Days you already logged keep their own.</span>
+        </div>
+        <button class="btn" type="submit"><svg class="ic"><use href="#h-check"/></svg>Save these dates</button>
+    </form>
+</div>
+<p class="tiny center">Days next to each other make one period. Move this one up against another
+    and the two join — that is the same rule, not a mistake.</p>
+{% endblock %}

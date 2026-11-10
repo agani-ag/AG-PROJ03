@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 from django import forms
 
+from . import reshape
 from .models import Flow, Person, Settings, StockItem, StockMove, Symptom
 
 PHONE = re.compile(r'^[6-9]\d{9}$')          # a 10-digit Indian mobile number
@@ -129,17 +130,114 @@ class DayRangeForm(forms.Form):
 
 
 class DayForm(forms.Form):
-    """One day on its own — the per-day correction."""
+    """One day on its own — the per-day correction, the date it is filed under included.
+
+    The date is editable because the commonest mistake with a diary is logging the right day
+    on the wrong date, and clearing it and starting again loses the symptoms and the note.
+    Moving the row keeps all of it.
+    """
+    date = forms.DateField(label='Date', widget=forms.DateInput(attrs={'type': 'date'}),
+                           help_text='Change this to move the day. Its flow, symptoms and '
+                                     'note go with it.')
     flow = forms.TypedChoiceField(label='Flow', choices=Flow.choices, coerce=int)
     symptoms = forms.MultipleChoiceField(label='Symptoms', choices=Symptom.choices,
                                          required=False, widget=forms.CheckboxSelectMultiple)
     note = forms.CharField(label='Note', required=False, max_length=300,
                            widget=forms.TextInput(attrs={'placeholder': 'Anything to remember…'}))
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, today=None, taken=(), **kwargs):
+        self.today = today or date.today()
+        self.taken = set(taken)           # the person's other days — one row per date, always
         super().__init__(*args, **kwargs)
         _style(self)
         self.fields['symptoms'].widget.attrs.pop('class', None)
+
+    def clean_date(self):
+        day = self.cleaned_data['date']
+        if day > self.today:
+            raise forms.ValidationError('That day is in the future.')
+        if day in self.taken:
+            raise forms.ValidationError(f'{day:%d %b %Y} is already logged. Open that day and '
+                                        'clear it first, or pick another date.')
+        return day
+
+
+class _PeriodEditForm(forms.Form):
+    """What the two period corrections share: the same run, the same guards, their own plan.
+
+    A valid form carries `self.plan` — see `reshape.py` for what a plan is and why moving and
+    resizing are two things rather than one.
+    """
+    MAX_SPAN = 31                     # as DayRangeForm: a typo should not write three years
+
+    def __init__(self, *args, dates=(), taken=(), today=None, **kwargs):
+        self.dates = sorted(dates)    # the days this period is made of
+        self.taken = set(taken)       # every other day this person has logged
+        self.today = today or date.today()
+        self.plan = None
+        super().__init__(*args, **kwargs)
+        _style(self)
+
+    def _accept(self, plan):
+        """Take the plan unless it would land on a day belonging to another period."""
+        clash = reshape.clashes_with(plan, self.taken)
+        if clash:
+            self.add_error(None, f'{clash[0]:%d %b %Y} is already logged, outside this period. '
+                                 'Clear that day first, or choose dates that miss it.')
+        elif not plan.changes:
+            self.add_error(None, 'Those are the dates it already has.')
+        else:
+            self.plan = plan
+
+
+class PeriodMoveForm(_PeriodEditForm):
+    """The whole period is on the wrong dates. Every day shifts by the same amount."""
+    first_day = forms.DateField(label='It actually started on',
+                                widget=forms.DateInput(attrs={'type': 'date'}))
+
+    def clean(self):
+        data = super().clean()
+        first = data.get('first_day')
+        if not first or not self.dates:
+            return data
+        if first + (self.dates[-1] - self.dates[0]) > self.today:
+            self.add_error('first_day', 'That would put part of this period in the future.')
+            return data
+        self._accept(reshape.move(self.dates, first))
+        return data
+
+
+class PeriodRangeForm(_PeriodEditForm):
+    """It started earlier, ran longer, or was shorter than it was logged as."""
+    first_day = forms.DateField(label='First day',
+                                widget=forms.DateInput(attrs={'type': 'date'}))
+    last_day = forms.DateField(label='Last day',
+                               widget=forms.DateInput(attrs={'type': 'date'}))
+    fill_flow = forms.TypedChoiceField(label='Flow for any day this adds', choices=Flow.choices,
+                                       coerce=int, initial=Flow.MEDIUM)
+
+    def clean(self):
+        data = super().clean()
+        first, last = data.get('first_day'), data.get('last_day')
+        if not first or not last or not self.dates:
+            return data
+        if last < first:
+            self.add_error('last_day', 'The last day cannot be before the first.')
+            return data
+        if last > self.today:
+            self.add_error('last_day', 'That day is in the future.')
+            return data
+        if (last - first).days + 1 > self.MAX_SPAN:
+            self.add_error('last_day', f'That is more than {self.MAX_SPAN} days — check the dates.')
+            return data
+
+        plan = reshape.resize(self.dates, first, last)
+        if plan is None:
+            self.add_error(None, 'Those dates have no day of this period in them, so there '
+                                 'would be nothing left to resize. Move it instead.')
+            return data
+        self._accept(plan)
+        return data
 
 
 class SignUpForm(forms.Form):

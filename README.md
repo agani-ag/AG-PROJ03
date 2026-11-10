@@ -284,7 +284,11 @@ lists what is still to migrate.
 
 Hibiscus in short: flow is recorded **per day**, and a period is a *run* of days worked out by
 `hibiscus/cycle.py` — no start or end dates are stored. Spotting shows on the calendar but is not
-counted as a period day; one missing day inside a run is bridged, two start a new period. People
+counted as a period day; one missing day inside a run is bridged, two start a new period. Because
+nothing stores a start or an end, correcting a period's dates means moving the days themselves:
+`hibiscus/reshape.py` has those rules, and they are two, not one — **moving** shifts every day by
+the same amount, **resizing** leaves the logged days where they are and trims or fills the edges.
+Both screens ask which is meant rather than guessing from the dates typed. People
 sign themselves up with an email **or** a phone number. Notifications go out through SyncUp at
 times the admin sets, each time of day with its own words, delivered by the hub's 15-minute cron.
 Arriving at the diary — signing in, opening a magic link, or the first page of a new day on a

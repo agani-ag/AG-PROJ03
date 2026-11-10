@@ -23,8 +23,9 @@ from django.views.decorators.http import require_POST
 from core import auth as hub
 from core import push as core_push
 
-from . import auth, cycle, push
-from .forms import DayRangeForm, MySettingsForm, StockItemForm, StockMoveForm
+from . import auth, cycle, push, reshape
+from .forms import (DayRangeForm, MySettingsForm, PeriodMoveForm, PeriodRangeForm,
+                    StockItemForm, StockMoveForm)
 from .models import (DaySymptom, Flow, NotifyMute, NotifySlot, Person, PeriodDay, Settings,
                      StockItem, StockMove, Symptom)
 
@@ -260,6 +261,29 @@ def month(request):
     }))
 
 
+def _wanted_date(request, person, config, day_date, row):
+    """Where this day is being filed, and why not, as `(date, refusal)`.
+
+    Only a day that already has a row can move — there is nothing to carry otherwise, and the
+    calendar is one tap away from the right date.
+    """
+    typed = (request.POST.get('date') or '').strip()
+    if not typed or not row:
+        return day_date, None
+    try:
+        wanted = date.fromisoformat(typed)
+    except ValueError:
+        return day_date, 'That date did not make sense, so nothing was changed.'
+    if wanted == day_date:
+        return day_date, None
+    if wanted > config.today:
+        return day_date, 'That day has not happened yet.'
+    if person.days.filter(date=wanted).exists():
+        return day_date, (f'{wanted:%d %b} is already logged. Open that day and clear it '
+                          f'first, or pick another date.')
+    return wanted, None
+
+
 @auth.person_required
 def day_sheet(request, on):
     """The sheet that opens when a day is tapped: pick a flow, tick symptoms, save.
@@ -283,28 +307,47 @@ def day_sheet(request, on):
         flow = request.POST.get('flow', '')
         picked = request.POST.getlist('symptoms')
         note = (request.POST.get('note') or '')[:300]
+        # Where to go afterwards comes off the form, and the form took it off the URL — so it
+        # is checked before it is followed. Pocket Money guards its own the same way; this one
+        # was redirecting wherever it was told.
+        back = hub.safe_url(request, request.POST.get('next', ''), 'hibiscus_me_calendar')
+
         if flow == 'none':
             if row:
                 row.delete()
                 auth.log('cleared_day', person=person, detail=str(day_date))
                 messages.success(request, f'{day_date:%d %b} cleared.')
         else:
+            # The date is editable, so the sheet can say "that was Tuesday, not Wednesday"
+            # without losing the symptoms and the note the way clearing it and starting again
+            # would. It is settled before anything is written: half a save is worse than none.
+            target, refused = _wanted_date(request, person, config, day_date, row)
+            if refused:
+                messages.error(request, refused)
+                return redirect(back)
             try:
                 flow_value = int(flow)
             except ValueError:
                 flow_value = int(Flow.MEDIUM)
             with transaction.atomic():
+                if row and target != day_date:
+                    row.date = target
+                    row.save(update_fields=['date', 'updated_at'])
                 row, created = PeriodDay.objects.update_or_create(
-                    person=person, date=day_date,
+                    person=person, date=target,
                     defaults={'flow': flow_value, 'note': note})
                 row.symptoms.all().delete()
                 DaySymptom.objects.bulk_create(
                     [DaySymptom(day=row, symptom=s) for s in picked
                      if s in dict(Symptom.choices)])
-            auth.log('logged_day' if created else 'edited_own_day', person=person,
-                     detail=f'{day_date} · {Flow(flow_value).label}')
-            messages.success(request, f'{day_date:%d %b} saved.')
-        return redirect(request.POST.get('next') or 'hibiscus_me_calendar')
+            if target != day_date:
+                auth.log('moved_own_day', person=person, detail=f'{day_date} → {target}')
+                messages.success(request, f'{day_date:%d %b} moved to {target:%d %b}.')
+            else:
+                auth.log('logged_day' if created else 'edited_own_day', person=person,
+                         detail=f'{day_date} · {Flow(flow_value).label}')
+                messages.success(request, f'{day_date:%d %b} saved.')
+        return redirect(back)
 
     chosen = list(row.symptoms.values_list('symptom', flat=True)) if row else []
     context = {
@@ -350,6 +393,62 @@ def log_period(request):
     return _no_store(render(request, 'hibiscus/user/log.html', {
         **_context(request, config, 'log'),
         'form': form, 'stats': stats, 'periods': periods,
+    }))
+
+
+@auth.person_required
+def period_edit(request, start):
+    """Fixing a whole period's dates, from the list on Log.
+
+    The same two corrections the console has, because the person keeping the diary is the one
+    who knows which it was. See `reshape.py` for why moving and resizing are not one thing.
+    """
+    config = Settings.load()
+    person = request.person
+    try:
+        start_date = date.fromisoformat(start)
+    except ValueError:
+        raise Http404('Not a date')
+
+    days = list(person.days.values_list('date', 'flow'))
+    run = reshape.run_starting(days, start_date)
+    if not run:
+        raise Http404('No period starts on that day')
+    inside = [d for d, _ in days if run.shown_from <= d <= run.shown_to]
+    outside = [d for d, _ in days if not run.shown_from <= d <= run.shown_to]
+
+    what = request.POST.get('what')
+    shared = {'dates': inside, 'taken': outside, 'today': config.today}
+    move_form = PeriodMoveForm(request.POST if what == 'move' else None,
+                               initial={'first_day': run.shown_from}, **shared)
+    range_form = PeriodRangeForm(request.POST if what == 'range' else None,
+                                 initial={'first_day': run.shown_from,
+                                          'last_day': run.shown_to,
+                                          'fill_flow': Flow.MEDIUM}, **shared)
+
+    if what == 'move' and move_form.is_valid():
+        reshape.apply(person, move_form.plan)
+        auth.log('moved_own_period', person=person,
+                 detail=f'{run.shown_from} → {move_form.plan.after[0]}')
+        messages.success(request, f'Moved to {move_form.plan.after[0]:%d %b}.')
+        return redirect('hibiscus_me_log')
+
+    if what == 'range' and range_form.is_valid():
+        plan = range_form.plan
+        reshape.apply(person, plan, flow=range_form.cleaned_data['fill_flow'])
+        auth.log('resized_own_period', person=person,
+                 detail=f'{plan.after[0]} to {plan.after[-1]}')
+        messages.success(request, f'Now {plan.after[0]:%d %b} – {plan.after[-1]:%d %b}.')
+        return redirect('hibiscus_me_log')
+
+    logged = {d: f for d, f in days}
+    span = [run.shown_from + timedelta(days=i)
+            for i in range((run.shown_to - run.shown_from).days + 1)]
+    return _no_store(render(request, 'hibiscus/user/period.html', {
+        **_context(request, config, 'log'),
+        'run': run, 'move_form': move_form, 'range_form': range_form,
+        'days': [{'date': day, 'flow': logged.get(day), 'logged': day in logged}
+                 for day in span],
     }))
 
 
