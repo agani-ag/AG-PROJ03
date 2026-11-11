@@ -325,15 +325,11 @@
                 .filter(function(s){ return s && s.length; });
     if(!lines.length) return;
 
-    // Bigger than the classic GPS-camera stamp, and held well away from the edge: a stamp
-    // that hugs the corner is the first thing lost to a crop, a rounded phone frame or a
-    // print margin. The inset is a share of the photo's shorter side, so it stays the same
-    // visual distance whether the photo is 1080px or 4000px wide.
-    var fs    = Math.max(20, Math.round(W/22));
-    var inset = Math.round(Math.min(W, H) * 0.038);
-    var padX  = inset;
-    var padY  = inset + Math.round(fs*0.22);   // room under the baseline for descenders
-    var lh    = Math.round(fs*1.32);
+    // Bigger than the classic GPS-camera stamp, and sitting right on the bottom-right corner
+    // with nothing between it and the frame. The size is a share of the width so it looks the
+    // same whether the photo is 1080px or 4000px across.
+    var fs = Math.max(20, Math.round(W/22));
+    var lh = Math.round(fs*1.32);
 
     ctx.textAlign = 'right';
     ctx.textBaseline = 'alphabetic';
@@ -342,11 +338,17 @@
     ctx.shadowColor = 'rgba(0,0,0,0.55)';   // subtle, keeps it legible on bright photos
     ctx.shadowBlur = Math.round(fs*0.14);
     ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = Math.max(1, Math.round(fs*0.03));
+    ctx.shadowOffsetY = 0;                  // flush to the edge: a drop shadow has nowhere to fall
 
-    var y = H - padY;
+    // How far the last line reaches below its baseline, asked of the glyphs actually being
+    // drawn rather than guessed from the font size. A line ending in "y" then sits on the
+    // edge instead of being cut off by it, and one ending in "u" leaves no gap under it.
+    var below = ctx.measureText(lines[lines.length-1]).actualBoundingBoxDescent;
+    if(typeof below !== 'number' || !isFinite(below)) below = Math.round(fs*0.18);
+
+    var y = H - Math.ceil(below);
     for(var i=lines.length-1; i>=0; i--){
-      ctx.fillText(lines[i], W - padX, y);
+      ctx.fillText(lines[i], W, y);
       y -= lh;
     }
     ctx.shadowColor = 'transparent';
