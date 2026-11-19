@@ -83,17 +83,23 @@ def settings_page(request):
     """One number to set, and the one dangerous button while this is being tested."""
     config = Settings.load()
     if request.method == 'POST' and request.POST.get('what') == 'keep':
-        try:
-            days = int(request.POST.get('keep_guest_days') or 0)
-        except ValueError:
-            days = -1
-        if not 0 <= days <= 3650:
-            messages.error(request, 'A number of days between 0 and 3650. 0 keeps them for ever.')
+        wanted, bad = {}, False
+        for field, cap in (('keep_guest_days', 3650), ('keep_finished_days', 3650),
+                           ('keep_lobby_days', 3650)):
+            try:
+                value = int(request.POST.get(field) or 0)
+            except ValueError:
+                value = -1
+            if not 0 <= value <= cap:
+                bad = True
+            wanted[field] = value
+        if bad:
+            messages.error(request, 'Each one a number of days between 0 and 3650.')
         else:
-            config.keep_guest_days = days
+            for field, value in wanted.items():
+                setattr(config, field, value)
             config.save()
-            messages.success(request, 'Saved.' if days else
-                             'Guests will now be kept indefinitely.')
+            messages.success(request, 'Saved.')
         return redirect('games_settings_admin')
 
     if request.method == 'POST' and request.POST.get('confirm') == 'ERASE GAMES':

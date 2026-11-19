@@ -111,8 +111,13 @@
     if (game.need_colour) { return [null, "Name a colour."]; }
     if (game.need_swap) { return [null, "Pick whose hand to take."]; }
     if (game.pending) { return [null, game.pending + " to draw, or answer it."]; }
-    if (game.playable.length) { return [null, "Your turn."]; }
+    // Naming the card you just drew is most of what made drawing feel like a punishment:
+    // something appeared somewhere in a fan of seven and you had to find it.
+    if (game.drew !== null && game.playable.indexOf(game.drew) !== -1) {
+      return [null, "You drew the " + name(game.drew) + " — play it, or keep it and pass."];
+    }
     if (game.drew !== null) { return [null, "Nothing in that one — keep it and pass."]; }
+    if (game.playable.length) { return [null, "Your turn."]; }
     return [null, "Nothing to play — take one from the pile."];
   }
 
@@ -296,6 +301,14 @@
         list.appendChild(button);
       });
     }
+  }
+
+  var WORDS = { skip: "skip", reverse: "reverse", draw2: "draw two",
+                wild: "wild", draw4: "wild draw four" };
+  function name(index) {
+    var card = CARDS[index];
+    var what = WORDS[card.v] || card.v;
+    return card.c ? card.c + " " + what : what;
   }
 
   function mostOf(hand) {

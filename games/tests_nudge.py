@@ -17,7 +17,7 @@ from core.models import HubSettings, Member
 from games import push as pusher
 from games import service
 from games.cron import tidy, turns
-from games.models import Game, Room, Seat
+from games.models import Game, Room, Seat, Settings
 from games.tests_table import Steady, member, player, sign_in
 
 SEND = 'core.push.send'
@@ -111,6 +111,47 @@ class TheBackstopTests(TestCase):
         cronhub.run(cronhub.TICK, 20, only='games.turns')
         self.room.refresh_from_db()
         self.assertEqual(self.room.phase, Room.Phase.PLAYING)
+
+    def test_a_finished_table_is_gone_the_next_night(self):
+        """A day, not a month. Nothing reads a finished table — the score lives on the table
+        and the table is over, and a console list of hundreds of them is a list nobody
+        scrolls."""
+        self.assertEqual(Settings().keep_finished_days, 1)
+        Room.objects.filter(pk=self.room.pk).update(
+            phase=Room.Phase.CLOSED, last_seen_at=timezone.now() - timedelta(days=2))
+        cronhub.run(cronhub.CLEANUP, 20, only='games.tidy')
+        self.assertFalse(Room.objects.filter(pk=self.room.pk).exists())
+
+    def test_one_finished_an_hour_ago_is_left_until_tomorrow(self):
+        Room.objects.filter(pk=self.room.pk).update(
+            phase=Room.Phase.CLOSED, last_seen_at=timezone.now() - timedelta(hours=1))
+        cronhub.run(cronhub.CLEANUP, 20, only='games.tidy')
+        self.assertTrue(Room.objects.filter(pk=self.room.pk).exists())
+
+    def test_how_long_is_configurable(self):
+        config = Settings.load()
+        config.keep_finished_days = 14
+        config.save()
+        Room.objects.filter(pk=self.room.pk).update(
+            phase=Room.Phase.CLOSED, last_seen_at=timezone.now() - timedelta(days=5))
+        cronhub.run(cronhub.CLEANUP, 20, only='games.tidy')
+        self.assertTrue(Room.objects.filter(pk=self.room.pk).exists(), 'swept too early')
+
+    def test_zero_sweeps_them_on_the_next_run(self):
+        config = Settings.load()
+        config.keep_finished_days = 0
+        config.save()
+        Room.objects.filter(pk=self.room.pk).update(phase=Room.Phase.CLOSED)
+        cronhub.run(cronhub.CLEANUP, 20, only='games.tidy')
+        self.assertFalse(Room.objects.filter(pk=self.room.pk).exists())
+
+    def test_a_table_still_being_played_is_never_swept(self):
+        """It is in play, however long ago it was last touched — closing it is games.turns'
+        job and it has its own six-hour rule."""
+        Room.objects.filter(pk=self.room.pk).update(
+            last_seen_at=timezone.now() - timedelta(days=400))
+        cronhub.run(cronhub.CLEANUP, 20, only='games.tidy')
+        self.assertTrue(Room.objects.filter(pk=self.room.pk).exists())
 
     def test_finished_tables_are_cleared_out_eventually(self):
         Room.objects.filter(pk=self.room.pk).update(

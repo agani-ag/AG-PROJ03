@@ -586,6 +586,131 @@ class WhenARoundEndsTests(TestCase):
         self.assertEqual(fresh.seats.count(), 1)
 
 
+class TheTableFitsAndHidesTests(TestCase):
+    """Two rules about the table that are CSS, and so have nothing else watching them."""
+
+    def css(self):
+        return (Path(django_settings.BASE_DIR) / 'static' / 'games' / 'user.css').read_text(
+            encoding='utf-8')
+
+    def test_the_hidden_attribute_is_made_to_work(self):
+        """It shipped broken and somebody photographed it: the lobby sitting underneath the
+        live table, both on screen at once.
+
+        `hidden` hides by a UA stylesheet rule, and ANY author rule beats it — these divs
+        carry class="stack", which is display:flex. The script set .hidden = true and nothing
+        happened. One override fixes it for every element, now and later, which is why it is
+        worth a test that will fail if somebody tidies it away.
+        """
+        css = self.css()
+        self.assertRegex(css, r'\[hidden\]\s*\{[^}]*display:\s*none\s*!important')
+
+    def test_the_divs_that_get_hidden_really_do_carry_such_a_class(self):
+        """The other half: without this, the test above looks like superstition."""
+        page = (Path(django_settings.BASE_DIR) / 'games' / 'templates' / 'games' / 'user'
+                / 'room.html').read_text(encoding='utf-8')
+        for which in ('id="lobby"', 'id="over"'):
+            line = next(l for l in page.splitlines() if which in l)
+            self.assertIn('class="stack"', line, which)
+        self.assertRegex(self.css(), r'\.stack\s*\{[^}]*display:\s*flex')
+
+    def test_the_table_page_is_the_viewport_rather_than_a_document(self):
+        """Your hand, the pile and whose turn it is all have to be true at once. Hunting for
+        the fan under your thumb while a clock runs is the worst thing a phone can do to a
+        card game."""
+        player_row = player()
+        sign_in(self.client)
+        room = service.make_room(player_row)
+        page = self.client.get(reverse('games_room', args=[room.code])).content.decode()
+        self.assertIn('class="fit"', page)
+        css = self.css()
+        self.assertRegex(css, r'body\.fit\s*\{[^}]*height:\s*100dvh')
+        self.assertRegex(css, r'body\.fit\s*\{[^}]*overflow:\s*hidden')
+
+    def test_and_no_other_page_is(self):
+        """Everything else is a document and should scroll like one."""
+        player()
+        sign_in(self.client)
+        for name in ('games_home', 'games_settings'):
+            page = self.client.get(reverse(name)).content.decode()
+            self.assertNotIn('class="fit"', page, name)
+
+
+class EndingAndLeavingTests(TestCase):
+    """Getting out of a table — which until now only an admin could do."""
+
+    def setUp(self):
+        self.player = player()
+        sign_in(self.client)
+        self.room = service.make_room(self.player)
+        service.fill(self.room, 3)
+        self.game, _ = service.start(self.room, rng=Steady(3))
+        self.url = reverse('games_seat', args=[self.room.code])
+
+    def test_the_host_can_end_a_table_in_play(self):
+        self.client.post(self.url, {'what': 'end'})
+        self.room.refresh_from_db()
+        self.game.refresh_from_db()
+        self.assertEqual(self.room.phase, Room.Phase.CLOSED)
+        self.assertIsNotNone(self.game.finished_at)
+
+    def test_nobody_else_can(self):
+        other = Client()
+        member('Meena', 'meena@example.com')
+        sign_in(other, 'meena@example.com')
+        other.post(reverse('games_join'), {'name': 'Meena'})
+        guest_player = Player.objects.get(name='Meena')
+        service.join(self.room, guest_player) if self.room.is_open else None
+        other.post(self.url, {'what': 'end'})
+        self.room.refresh_from_db()
+        self.assertEqual(self.room.phase, Room.Phase.PLAYING)
+
+    def test_stepping_away_mid_round_hands_the_chair_over_rather_than_pulling_it(self):
+        """Chairs are numbered and a round refers to them by number, so the seat stays — it is
+        played for them, exactly as if they had gone quiet, and is theirs again when they
+        come back."""
+        self.client.post(self.url, {'what': 'leave'})
+        seat = self.room.seats.get(position=0)
+        self.assertTrue(seat.away)
+        self.assertEqual(seat.player_id, self.player.pk)
+        self.assertEqual(self.room.seats.count(), 3)
+
+    def test_and_coming_back_takes_it_again(self):
+        self.client.post(self.url, {'what': 'leave'})
+        self.client.get(reverse('games_room', args=[self.room.code]))
+        self.assertFalse(self.room.seats.get(position=0).away)
+
+    def test_before_the_first_deal_leaving_really_leaves(self):
+        fresh = service.make_room(self.player)
+        other = player('Ravi', 'ravi@example.com')
+        service.join(fresh, other)
+        self.assertTrue(service.leave(fresh, other))
+        self.assertEqual(fresh.seats.count(), 1)
+
+    def test_the_host_can_change_the_rules_between_rounds(self):
+        """Which is how a table made under the old defaults stops being hard work."""
+        service.close(self.room)
+        Room.objects.filter(pk=self.room.pk).update(phase=Room.Phase.LOBBY)
+        self.room.refresh_from_db()
+        self.client.post(self.url, {'what': 'rules', 'draw_until': 'on', 'target': '0'})
+        self.room.refresh_from_db()
+        self.assertTrue(self.room.options['draw_until'])
+        self.assertFalse(self.room.options['stacking'])
+
+    def test_but_never_in_the_middle_of_one(self):
+        """The engine reads them on every move; swapping them halfway through would change
+        what is legal under somebody's hand."""
+        before = dict(self.room.options)
+        self.client.post(self.url, {'what': 'rules', 'stacking': 'on'})
+        self.room.refresh_from_db()
+        self.assertEqual(self.room.options, before)
+
+    def test_a_new_table_draws_until_you_can_play(self):
+        """The default that makes the pile bearable. Tables made before it keep their own."""
+        made = service.make_room(self.player)
+        self.assertTrue(made.options['draw_until'])
+
+
 class JoiningGamesTests(TestCase):
 
     def test_the_first_visit_asks_for_one_name_and_nothing_else(self):

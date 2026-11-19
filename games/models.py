@@ -34,6 +34,13 @@ class Settings(models.Model):
         help_text='A guest untouched for this long is deleted outright by the nightly '
                   'cleanup, with every table, seat, round and move that is theirs. '
                   'Members are never touched by it.')
+    keep_finished_days = models.PositiveSmallIntegerField(
+        default=1,
+        help_text='A finished table is kept this long and then deleted, with its rounds and '
+                  'moves. Nothing reads a finished table — the score lives on the table and '
+                  'the table is over. 0 removes them on the next nightly run.')
+    keep_lobby_days = models.PositiveSmallIntegerField(
+        default=7, help_text='A table nobody ever started, abandoned this long ago.')
 
     class Meta:
         verbose_name = verbose_name_plural = 'settings'

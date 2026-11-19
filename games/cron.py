@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 #: A table nobody has touched for this long is not being played any more.
 STALE_HOURS = 6
 
-#: What is kept. A finished table is worth looking back at for a while; an empty lobby is not.
-KEEP_CLOSED_DAYS = 30
-KEEP_LOBBY_DAYS = 7
+#: How long a table nobody has touched is still considered in play.
 
 
 @cronhub.tick('games.turns', budget=6)
@@ -98,17 +96,31 @@ def guests(ctx):
 
 @cronhub.cleanup('games.tidy', budget=6)
 def tidy(ctx):
-    """Clear out what has aged out. Rooms cascade to their seats, games and moves."""
-    now = timezone.now()
-    old_closed = Room.objects.filter(phase=Room.Phase.CLOSED,
-                                     last_seen_at__lt=now - timedelta(days=KEEP_CLOSED_DAYS))
-    gone_closed = old_closed.count()
-    old_closed.delete()
+    """Clear out what has aged out. Rooms cascade to their seats, rounds and moves.
 
-    empty = Room.objects.filter(phase=Room.Phase.LOBBY,
-                                last_seen_at__lt=now - timedelta(days=KEEP_LOBBY_DAYS))
-    gone_empty = empty.count()
-    empty.delete()
+    A FINISHED TABLE IS KEPT FOR A DAY, not a month. Nothing reads one: the score lives on the
+    table and the table is over, the code has been read out and will never be read out again,
+    and a console list of hundreds of finished tables is a list nobody scrolls. Both numbers
+    are on the module's settings page.
+    """
+    now = timezone.now()
+    config = Settings.load()
+
+    gone_closed = 0
+    if config.keep_finished_days is not None:
+        done = Room.objects.filter(
+            phase=Room.Phase.CLOSED,
+            last_seen_at__lt=now - timedelta(days=config.keep_finished_days))
+        gone_closed = done.count()
+        done.delete()
+
+    gone_empty = 0
+    if config.keep_lobby_days:
+        empty = Room.objects.filter(
+            phase=Room.Phase.LOBBY,
+            last_seen_at__lt=now - timedelta(days=config.keep_lobby_days))
+        gone_empty = empty.count()
+        empty.delete()
 
     return {'items': gone_closed + gone_empty,
             'note': f'{gone_closed} finished, {gone_empty} never started'}

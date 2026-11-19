@@ -138,6 +138,7 @@ def room(request, code):
         'cards': json.dumps([{'c': deck.colour_of(i) or '', 'v': deck.value_of(i)}
                              for i in range(deck.SIZE)]),
         'can_start': bool(seat and room.host_id == request.player.pk and room.is_open),
+        'options': rules.options(room.options),
         'seat_count': room.seats.count(),
         'max_seats': service.MAX_SEATS,
     }))
@@ -159,9 +160,23 @@ def seat_room(request, code):
         if error:
             messages.error(request, error)
     elif what == 'leave':
+        # Before the first deal the chair goes. After it, getting up is the same thing as
+        # going quiet — the chair is played for them and is theirs again when they come back.
         if not service.leave(room, request.player):
-            messages.error(request, 'You cannot leave this one.')
+            service.step_away(room, request.player)
         return redirect('games_home')
+    elif what == 'end' and is_host:
+        service.close(room)
+        messages.success(request, f'Table {room.code} is closed.')
+        return redirect('games_home')
+    elif what == 'rules' and is_host and room.is_open:
+        wanted = {name: bool(request.POST.get(name)) for name in rules.DEFAULTS}
+        try:
+            target = int(request.POST.get('target') or room.target)
+        except ValueError:
+            target = room.target
+        service.set_rules(room, wanted, target)
+        messages.success(request, 'Table rules saved.')
     elif what == 'again' and is_host:
         game, error = service.start(room)
         if error:

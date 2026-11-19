@@ -100,6 +100,46 @@ def join(room, player):
                                name=player.name), None
 
 
+def close(room, now=None):
+    """End a table for good. The host's button, and the console's.
+
+    There was no way for anybody but an admin to finish a table, which left a code somebody
+    had read out still live and a round nobody was going to come back to.
+    """
+    now = now or timezone.now()
+    Game.objects.filter(room=room, finished_at__isnull=True).update(finished_at=now)
+    Room.objects.filter(pk=room.pk).update(phase=Room.Phase.CLOSED, last_seen_at=now)
+    room.refresh_from_db()
+    return room
+
+
+def step_away(room, player):
+    """Get up mid-round. The chair is played for you, exactly as if you had stopped answering.
+
+    Not a seat deletion: chairs are numbered and a round in progress refers to them by number.
+    The one already-built answer to somebody not being there is the right one here too, and it
+    means they can sit back down and carry on.
+    """
+    seat = seat_of(room, player)
+    if not seat or seat.away:
+        return False
+    Seat.objects.filter(pk=seat.pk).update(away=True)
+    return True
+
+
+def set_rules(room, options, target=None):
+    """Change a table's rules between rounds. Never during one — the engine reads them on
+    every move, and swapping them mid-round would change what is legal halfway through."""
+    if room.phase != Room.Phase.LOBBY:
+        return False
+    fields = {'options': rules.options(options)}
+    if target is not None:
+        fields['target'] = target if target in (0, 200, 500) else room.target
+    Room.objects.filter(pk=room.pk).update(**fields)
+    room.refresh_from_db()
+    return True
+
+
 def leave(room, player):
     """Give a chair up, before the first round is dealt.
 
