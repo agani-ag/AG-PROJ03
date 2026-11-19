@@ -99,6 +99,24 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'ag-proj03.sqlite3',
+        # Added for Games, which is the first thing here with genuinely concurrent writers:
+        # four people at one table, tapping at once. Without these, SQLite answers "database
+        # is locked" under exactly the conditions a card game creates.
+        #
+        #   WAL             a reader no longer blocks a writer, so a poll and a move can
+        #                   overlap. Set on the file itself, so it survives the connection.
+        #   synchronous     NORMAL rather than FULL: one fsync per checkpoint instead of per
+        #                   commit. The risk it trades away is losing the last commits in a
+        #                   power cut, which on a hobby host is the right trade.
+        #   IMMEDIATE       a write transaction takes its lock when it starts rather than
+        #                   when it first writes, so two of them queue instead of one getting
+        #                   halfway and being thrown out.
+        #   timeout         wait for a busy database rather than failing at five seconds.
+        'OPTIONS': {
+            'init_command': 'PRAGMA journal_mode=WAL;PRAGMA synchronous=NORMAL',
+            'transaction_mode': 'IMMEDIATE',
+            'timeout': 15,
+        },
     }
 }
 
