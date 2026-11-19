@@ -3,16 +3,47 @@
 {% block heading %}Games{% endblock %}
 
 {% block content %}
+{% comment %}
+Two doors, and the guest one is not the lesser. A table of two is not a game, and the people
+most likely to make up the numbers are the ones who will never sign up for anything — so the
+cheapest way in is deliberately first and the name is already typed for them.
+{% endcomment %}
+{% if member %}
 <div class="card stack center">
     <b style="font-size:19px">Hello{% if member.name %}, {{ member.name }}{% endif %}</b>
-    <p class="tiny">One name is all this needs. It is what the table will call you, and you
-        can change it whenever you like.</p>
+    <p class="tiny">One name is all this needs. It is what the table will call you, and you can
+        change it whenever you like.</p>
     <form method="POST" class="stack">
         {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
         <input class="input" name="name" maxlength="40" value="{{ suggested }}"
                autocomplete="off" aria-label="Your name at the table">
         <button class="btn" type="submit">Start playing</button>
     </form>
 </div>
 <p class="tiny center">Your SyncHub sign-in is the only one here. Nothing else to make.</p>
+
+{% else %}
+<div class="card stack">
+    <b style="font-size:17px">Play as a guest</b>
+    <p class="tiny">No account, no password, nothing to confirm. Change the name if you like.</p>
+    <form method="POST" class="stack">
+        {% csrf_token %}
+        <input type="hidden" name="what" value="guest">
+        <input type="hidden" name="next" value="{{ next }}">
+        <input class="input" name="name" maxlength="40" value="{{ suggested }}"
+               autocomplete="off" aria-label="Your name at the table">
+        <button class="btn" type="submit">Start playing</button>
+    </form>
+</div>
+
+<div class="card stack">
+    <b style="font-size:17px">I have a SyncHub account</b>
+    <p class="tiny">Sign in and your tables follow you to any phone.</p>
+    <a class="btn ghost" href="{% url 'member_login' %}?next={{ request.get_full_path|urlencode }}">Sign in</a>
+</div>
+
+<p class="tiny center">A guest lives in this browser only. Clear your history, or open the
+    same table on another phone, and you are somebody new.</p>
+{% endif %}
 {% endblock %}

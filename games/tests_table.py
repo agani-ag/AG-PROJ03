@@ -608,7 +608,15 @@ class JoiningGamesTests(TestCase):
         self.assertEqual(reply.status_code, 302)
         self.assertIn(reverse('games_join'), reply['Location'])
 
-    def test_signing_in_comes_before_any_of_it(self):
+    def test_a_stranger_is_offered_a_way_in_rather_than_a_sign_in_page(self):
+        """Bouncing somebody to the hub's sign-in was the old behaviour. A table of two is not
+        a game, and the people most likely to make up the numbers are the ones who will never
+        sign up for anything — so they get the choice instead."""
         reply = Client().get(reverse('games_home'))
         self.assertEqual(reply.status_code, 302)
-        self.assertIn(reverse('member_login'), reply['Location'])
+        self.assertIn(reverse('games_join'), reply['Location'])
+
+    def test_and_that_page_offers_both_doors(self):
+        page = Client().get(reverse('games_join')).content.decode()
+        self.assertIn('Play as a guest', page)
+        self.assertIn(reverse('member_login'), page)

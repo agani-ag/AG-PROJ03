@@ -57,13 +57,14 @@ def make_room(player, options=None, target=0, rng=None):
 
 
 def taken_names(room):
-    """Every name that must not be handed to a seat this server holds.
+    """Every name that must not be handed out — to a chair this server plays, or to a guest.
 
-    The hub's real members as well as the table's — if there is an Anitha on SyncHub, no table
-    gets a second one, because the two would be indistinguishable to anybody who knows her.
+    The hub's real members and everybody who plays, as well as the table's own. If there is an
+    Anitha on SyncHub, no table gets a second one: the two would be indistinguishable to
+    anybody who knows her. `room` may be None, to ask the question without a table in mind.
     """
     from core.models import Member
-    used = {s.name.strip().lower() for s in room.seats.all()}
+    used = {s.name.strip().lower() for s in room.seats.all()} if room else set()
     used |= {(name or '').strip().lower()
              for name in Member.objects.values_list('name', flat=True) if name}
     used |= {(name or '').strip().lower()

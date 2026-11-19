@@ -23,10 +23,56 @@ def new_code():
     return ''.join(secrets.choice(CODE_LETTERS) for _ in range(CODE_LENGTH))
 
 
+class Settings(models.Model):
+    """One row, pk=1 — the numbers that would otherwise be constants.
+
+    What is not here: where SyncUp lives and what this site is called. Those are the hub's
+    (`core.models.HubSettings`), because every module sends to the same SyncUp.
+    """
+    keep_guest_days = models.PositiveSmallIntegerField(
+        default=30,
+        help_text='A guest untouched for this long is deleted outright by the nightly '
+                  'cleanup, with every table, seat, round and move that is theirs. '
+                  'Members are never touched by it.')
+
+    class Meta:
+        verbose_name = verbose_name_plural = 'settings'
+
+    def __str__(self):
+        return f'guests kept {self.keep_guest_days} days'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1                       # one row, always
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        return cls.objects.get_or_create(pk=1)[0]
+
+
+def new_guest_key():
+    """What brings a guest back to their own name and score on the same phone.
+
+    Long, because it is the whole of their identity here: there is no password to fall back
+    on and nothing to recover with. Lose it and you are a new person, which is the trade J6
+    makes too.
+    """
+    return secrets.token_urlsafe(24)
+
+
 class Player(models.Model):
-    """Somebody on the hub who plays. One row per member, made the first time they open it."""
-    member = models.OneToOneField('core.Member', on_delete=models.CASCADE,
-                                  related_name='games')
+    """Somebody who plays. A hub member, or a guest who gave a name and nothing else.
+
+    A guest is a Player with no member. Everything else about them is the same — they make
+    tables, take chairs, keep a score — because a game is a poor place to meet a sign-up form.
+    What they do not get is a push when it is their turn: that needs a device token, and a
+    token lives on a member.
+    """
+    member = models.OneToOneField('core.Member', null=True, blank=True,
+                                  on_delete=models.CASCADE, related_name='games')
+    guest_key = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, default=None,
+        help_text='Null for a member. For a guest it is in their session and nowhere else.')
     name = models.CharField(max_length=40, help_text='What the table shows. Theirs to change.')
     played = models.PositiveIntegerField(default=0)
     won = models.PositiveIntegerField(default=0)
@@ -44,7 +90,15 @@ class Player(models.Model):
         return self.name
 
     @property
+    def is_guest(self):
+        """No member behind them. The console says so; the table does not — same rule as a
+        chair this server plays."""
+        return self.member_id is None
+
+    @property
     def push_token(self):
+        if self.is_guest:
+            return ''              # no member, no device token, nothing to push to
         from core.push import token_of
         return token_of(self)
 

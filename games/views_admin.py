@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 
 from core.views import admin_required
 
-from .models import Game, Player, Room
+from .models import Game, Player, Room, Settings
 from .uno import deck, rules
 
 
@@ -31,7 +31,10 @@ def rooms(request):
 @admin_required
 def players(request):
     rows = Player.objects.select_related('member').order_by('-last_seen_at', 'name')[:200]
-    return render(request, 'games/admin/players.html', {'rows': rows})
+    return render(request, 'games/admin/players.html', {
+        'rows': rows,
+        'keep_guest_days': Settings.load().keep_guest_days,
+    })
 
 
 @admin_required
@@ -77,7 +80,22 @@ def room_end(request, code):
 
 @admin_required
 def settings_page(request):
-    """What the module is, and the one dangerous button, while it is being tested."""
+    """One number to set, and the one dangerous button while this is being tested."""
+    config = Settings.load()
+    if request.method == 'POST' and request.POST.get('what') == 'keep':
+        try:
+            days = int(request.POST.get('keep_guest_days') or 0)
+        except ValueError:
+            days = -1
+        if not 0 <= days <= 3650:
+            messages.error(request, 'A number of days between 0 and 3650. 0 keeps them for ever.')
+        else:
+            config.keep_guest_days = days
+            config.save()
+            messages.success(request, 'Saved.' if days else
+                             'Guests will now be kept indefinitely.')
+        return redirect('games_settings_admin')
+
     if request.method == 'POST' and request.POST.get('confirm') == 'ERASE GAMES':
         Room.objects.all().delete()
         Player.objects.all().delete()
@@ -88,6 +106,8 @@ def settings_page(request):
     return render(request, 'games/admin/settings.html', {
         'rooms': Room.objects.count(),
         'games': Game.objects.count(),
-        'players': Player.objects.count(),
+        'players': Player.objects.filter(member__isnull=False).count(),
+        'guests': Player.objects.filter(member__isnull=True).count(),
+        'config': config,
         'defaults': rules.DEFAULTS,
     })

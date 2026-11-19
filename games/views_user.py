@@ -36,22 +36,40 @@ def _context(request, tab=''):
 
 @never_cache
 def join(request):
-    """Starting Games, for somebody the hub already knows. One field, and even that is filled in."""
+    """Two doors. A hub account, or a name and nothing else.
+
+    The second one is the point: a table of two is not a game, and the people most likely to
+    make up the numbers are the ones who will never sign up for anything. A guest gets a
+    Player row like everybody else and the key that brings them back lives in their session.
+    """
     member = hub.current(request)
-    if not member:
-        return redirect(f'{reverse("member_login")}?next={request.get_full_path()}')
-    player = auth.profile_for(member)
+    going = auth.safe_next(request)
+    if member and request.session.get(auth.GUEST_KEY):
+        waiting = auth.guest_for(request)              # a guest who has signed in
+        if waiting and not auth.profile_for(member):
+            auth.adopt(request, member, waiting)
+        request.session.pop(auth.GUEST_KEY, None)
+    player = auth.current(request)
     if player:
-        return redirect('games_home')
-    if request.method == 'POST':
+        return redirect(going)
+
+    if request.method == 'POST' and request.POST.get('what') == 'guest':
+        auth.start_guest(request, request.POST.get('name'))
+        return redirect(going)
+
+    if request.method == 'POST' and member:
         name = (request.POST.get('name') or member.name or 'Player').strip()[:40]
-        player = auth.start(member)
+        new_player = auth.start(member)
         if name:
-            player.name = name
-            player.save(update_fields=['name'])
-        return redirect('games_home')
-    return _no_store(render(request, 'games/user/join.html',
-                            {'member': member, 'suggested': (member.name or '')[:40]}))
+            new_player.name = name
+            new_player.save(update_fields=['name'])
+        return redirect(going)
+
+    return _no_store(render(request, 'games/user/join.html', {
+        'member': member,
+        'suggested': (member.name or '')[:40] if member else auth.suggest_name(),
+        'next': auth.next_value(request),
+    }))
 
 
 @auth.player_required
@@ -220,7 +238,9 @@ def settings_page(request):
             player.save(update_fields=['name'])
             messages.success(request, 'Saved.')
         return redirect('games_settings')
+    from .models import Settings
     return _no_store(render(request, 'games/user/settings.html', {
         **_context(request, 'settings'),
         'synced': bool(player.member and player.member.syncup_id),
+        'keep_guest_days': Settings.load().keep_guest_days,
     }))

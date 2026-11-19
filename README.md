@@ -356,7 +356,14 @@ tap when you come back, because nothing useful comes back from a `upi://` hand-o
 voided, never deleted, on the people's side; only the console can hard-delete one.
 
 Games in short: **one module, several games — UNO is the first.** You make a table and get a
-five-character **code** to read out; anybody with it sits down, two to six to a table. Empty
+five-character **code** to read out; anybody with it sits down, two to six to a table. You do
+not need an account: **a guest gives a name and nothing else**, with one already typed in the
+box, and can make tables and keep a score like anybody. A guest is a `Player` row with no
+member, and the key that brings them back lives in their session — so signing in later is one
+UPDATE and nothing moves: the name, the score and every table and chair come with them. A
+guest nobody has seen for `Settings.keep_guest_days` (30 by default, set on the module's
+settings page, 0 to keep them for ever) is **hard-deleted** on the nightly cleanup, with every
+table they made and chair they sat in; members are never touched by it. Empty
 chairs are filled so a game happens without waiting for four people to be awake at once. A
 **round is a game and the table keeps the score**, so "play again" is a button rather than a new
 code; set a target of 200 or 500 and the table closes when somebody reaches it.

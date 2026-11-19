@@ -15,6 +15,22 @@
     <div class="sub">{{ player.played }} played · {{ player.won }} won</div>
 </div>
 
+{% if player.is_guest %}
+{% comment %}
+The standing invitation. Signing in keeps everything, because a guest and a member are the same
+row with and without a member on it — converting is one UPDATE and nothing moves.
+{% endcomment %}
+<div class="card stack">
+    <b>You are playing as a guest</b>
+    <p class="tiny">Which lives in this browser and nowhere else. Clear your history, or open a
+        table on another phone, and you are somebody new — and a guest nobody has seen for
+        {{ keep_guest_days }} day{{ keep_guest_days|pluralize }} is deleted, with their tables.</p>
+    <a class="btn" href="{% url 'member_login' %}?next={{ request.path|urlencode }}">
+        Sign in and keep all this</a>
+    <p class="tiny center">Your name, your score and every table you are at come with you.
+        Nothing is lost and nothing has to be set up again.</p>
+</div>
+{% else %}
 {% if synced %}
 <div class="card">
     <b>You are synced with SyncUp</b>
@@ -22,11 +38,11 @@
         and they arrive here within minutes.</div>
 </div>
 {% endif %}
-
 <div class="card pad0">
     <a class="item" href="{% url 'member_apps' %}">
         <div class="grow"><b>Back to SyncHub</b></div>
-        <svg class="ic" style="color:var(--mut)"><use href="#g-right"/></svg>
+        <svg class="ic" style="color:var(--faint)"><use href="#g-right"/></svg>
     </a>
 </div>
+{% endif %}
 {% endblock %}

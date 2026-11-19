@@ -6,25 +6,30 @@
     <div class="titles">
         <a class="back" href="{% url 'games_rooms' %}">{% icon "arrow-left" %}Games</a>
         <h1>Players</h1>
-        <p class="page-sub">One row per hub member who has opened Games.</p>
+        <p class="page-sub">Everybody who plays. A <b>guest</b> is a name in a browser and
+            nothing else — no account, no password, nothing to recover with — and one idle for
+            {{ keep_guest_days }} day{{ keep_guest_days|pluralize }} is deleted outright, with
+            every table and chair that was theirs.</p>
     </div>
 </div>
 
 <div class="card">
     <div class="table-wrap">
         <table class="table table-stack">
-            <thead><tr><th>Name</th><th>Signs in as</th><th>Played</th><th>Won</th><th>Started</th></tr></thead>
+            <thead><tr><th>Name</th><th>Signs in as</th><th>Played</th><th>Won</th><th>Last seen</th><th>Started</th></tr></thead>
             <tbody>
                 {% for row in rows %}
                 <tr>
                     <td class="t-primary"><b>{{ row.name }}</b></td>
-                    <td><code class="small">{{ row.member.sign_in_id }}</code></td>
+                    <td>{% if row.is_guest %}<span class="badge badge-warning">guest</span>
+                        {% else %}<code class="small">{{ row.member.sign_in_id }}</code>{% endif %}</td>
                     <td class="num">{{ row.played }}</td>
                     <td class="num">{{ row.won }}</td>
+                    <td>{{ row.last_seen_at|ago|default:"never" }}</td>
                     <td>{{ row.created_at|date:"d M Y" }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="5"><div class="empty">{% icon "users" %}<b>Nobody yet</b></div></td></tr>
+                <tr><td colspan="6"><div class="empty">{% icon "users" %}<b>Nobody yet</b></div></td></tr>
                 {% endfor %}
             </tbody>
         </table>
