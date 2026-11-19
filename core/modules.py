@@ -104,6 +104,21 @@ MODULES = [
         syncup_color='amber',
         syncup_token=True,                # pocket/user.js sends the token for its reminders
     ),
+    Module(
+        key='games',
+        title='Games',
+        icon='play',                      # no mark of its own yet: the first game is UNO
+        group='Modules',
+        description='One sign-in, a table and a code to share. UNO first.',
+        url_name='games_rooms',
+        user_url_name='games_home',
+        join_url_name='games_join',
+        syncup_path='/games/',
+        syncup_description='Cards with whoever is about',
+        syncup_icon='play',
+        syncup_color='indigo',
+        syncup_token=True,
+    ),
 ]
 
 MODULES_BY_KEY = {m.key: m for m in MODULES}

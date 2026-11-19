@@ -15,6 +15,7 @@ urlpatterns = [
     path('hibiscus/', include('hibiscus.urls')),
     path('j6/', include('j6.urls')),
     path('pocket/', include('pocket.urls')),
+    path('games/', include('games.urls')),
     # Not a feature module: standalone HTML files, each at its own short address.
     path('', include('pages.urls')),
 ]

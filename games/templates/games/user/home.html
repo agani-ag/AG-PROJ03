@@ -1,0 +1,52 @@
+{% extends "games/user/base.html" %}
+{% block title %}Tables{% endblock %}
+{% block heading %}Games{% endblock %}
+
+{% block content %}
+{% if rooms %}
+<div class="card pad0">
+    {% for room in rooms %}
+    <a class="item" href="{% url 'games_room' room.code %}">
+        <div class="grow"><b>Table {{ room.code }}</b>
+            <div class="sub">{{ room.get_phase_display }} · {{ room.seats.count }} playing</div></div>
+        <svg class="ic" style="color:var(--mut)"><use href="#g-right"/></svg>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<form method="POST" action="{% url 'games_enter' %}" class="card stack">
+    {% csrf_token %}
+    <b>Join a table</b>
+    <p class="tiny">Somebody read you a code.</p>
+    <input class="input code-in" name="code" maxlength="8" autocomplete="off"
+           autocapitalize="characters" placeholder="ABCDE" aria-label="Table code">
+    <button class="btn ghost" type="submit">Sit down</button>
+</form>
+
+<form method="POST" action="{% url 'games_new' %}" class="card stack">
+    {% csrf_token %}
+    <b>Start a table</b>
+    <p class="tiny">You get a code to share. UNO, two to six playing.</p>
+
+    <div class="toggles">
+        <label><input type="checkbox" name="stacking"><span>Stacking
+            <div class="sub">+2 on +2, +4 on +4. The lot falls on whoever stops.</div></span></label>
+        <label><input type="checkbox" name="draw_until"><span>Draw until you can play
+            <div class="sub">Rather than taking exactly one.</div></span></label>
+        <label><input type="checkbox" name="seven_zero"><span>7 and 0 swap hands
+            <div class="sub">7 trades with somebody, 0 passes every hand round.</div></span></label>
+        <label><input type="checkbox" name="free_wild_four"><span>Wild +4 any time
+            <div class="sub">Off, it is only allowed when you hold nothing of that colour.</div></span></label>
+    </div>
+
+    <label class="sub" for="target">Play to</label>
+    <select class="input" name="target" id="target">
+        <option value="0">One round</option>
+        <option value="200">200 points</option>
+        <option value="500">500 points — what the box says</option>
+    </select>
+
+    <button class="btn" type="submit">Make a table</button>
+</form>
+{% endblock %}

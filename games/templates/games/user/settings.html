@@ -1,0 +1,32 @@
+{% extends "games/user/base.html" %}
+{% block title %}You{% endblock %}
+{% block heading %}You{% endblock %}
+
+{% block content %}
+<form method="POST" class="card stack">
+    {% csrf_token %}
+    <b>What the table calls you</b>
+    <input class="input" name="name" maxlength="40" value="{{ player.name }}" aria-label="Your name">
+    <button class="btn" type="submit">Save</button>
+</form>
+
+<div class="card">
+    <b>Rounds</b>
+    <div class="sub">{{ player.played }} played · {{ player.won }} won</div>
+</div>
+
+{% if synced %}
+<div class="card">
+    <b>You are synced with SyncUp</b>
+    <div class="sub">Your name, email, phone and password come from SyncUp. Change them there
+        and they arrive here within minutes.</div>
+</div>
+{% endif %}
+
+<div class="card pad0">
+    <a class="item" href="{% url 'member_apps' %}">
+        <div class="grow"><b>Back to SyncHub</b></div>
+        <svg class="ic" style="color:var(--mut)"><use href="#g-right"/></svg>
+    </a>
+</div>
+{% endblock %}

@@ -1,0 +1,159 @@
+/* Games — the tables, on a phone first.
+
+   Our own CSS, no framework, no CDN, no webfont. Dark by default, because a card table is a
+   dark room with colour on it; light is there for anybody who wants it.
+
+   THE FOUR COLOURS ARE NEVER THE ONLY SIGNAL. Red and green are two of them, and around one
+   man in twelve cannot reliably tell those apart. So every card also carries its value and a
+   shape, and the colour in play is named in words as well as shown. */
+:root {
+  --bg: #f3f4f8; --felt: #e7eaf2; --card: #ffffff; --ink: #141828; --mut: #5b6478;
+  --faint: #8e97aa; --bd: #d9dde8; --chip: #eceff6;
+  --me: #4f46e5; --me-soft: #e8e7fd; --ok: #15803d; --bad: #dc2626; --bad-soft: #fdeded;
+  --r: #d7263d; --y: #e8a400; --g: #1b9e4b; --b: #1f6fd0; --wild: #2b2f42;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --radius: 14px;
+}
+:root[data-theme="dark"] {
+  --bg: #141620; --felt: #1b1e2b; --card: #232738; --ink: #eceef6; --mut: #9aa3b8;
+  --faint: #6d768c; --bd: #2f3447; --chip: #272c3e;
+  --me: #8b85ff; --me-soft: #2a2752; --bad-soft: #3a1b1b;
+  --r: #ef4b60; --y: #f0b429; --g: #35c06c; --b: #4d94ef; --wild: #0d1020;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font);
+       -webkit-font-smoothing: antialiased; padding-bottom: 76px; }
+a { color: var(--me); text-decoration: none; }
+h1, h2 { margin: 0; font-weight: 750; letter-spacing: -.02em; }
+h1 { font-size: 21px; }
+input, button, select { font: inherit; color: inherit; }
+.ml-auto { margin-left: auto; }
+
+/* ---------- shell ---------- */
+.top { position: sticky; top: 0; z-index: 20; background: var(--bg);
+       border-bottom: 1px solid var(--bd); }
+.top-in { display: flex; align-items: center; gap: 10px; max-width: 560px; margin: 0 auto;
+          padding: 10px 16px; }
+.top .title { font-weight: 750; font-size: 16.5px; }
+.rb { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--bd);
+      background: var(--card); display: grid; place-items: center; cursor: pointer;
+      flex: none; }
+.wrap { max-width: 560px; margin: 0 auto; padding: 16px; }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+main { min-height: 50vh; }
+
+.nav { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card);
+       border-top: 1px solid var(--bd); z-index: 30;
+       padding-bottom: env(safe-area-inset-bottom, 0px); }
+.nav-in { display: flex; max-width: 560px; margin: 0 auto; }
+.nav a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+         padding: 9px 0 10px; font-size: 11.5px; color: var(--mut); }
+.nav a[aria-current] { color: var(--me); font-weight: 650; }
+
+.ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9;
+      stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.ic.sm { width: 16px; height: 16px; }
+:root[data-theme="dark"] .light-only, :root:not([data-theme="dark"]) .dark-only { display: none; }
+
+/* ---------- pieces ---------- */
+.card { background: var(--card); border: 1px solid var(--bd); border-radius: var(--radius);
+        padding: 15px; }
+.card b { display: block; }
+.sub { color: var(--mut); font-size: 13px; }
+.tiny { color: var(--faint); font-size: 12px; margin: 0; }
+.center { text-align: center; }
+.row { display: flex; align-items: center; gap: 10px; }
+.grow { flex: 1; min-width: 0; }
+.note { background: var(--me-soft); border-radius: 11px; padding: 10px 13px; font-size: 13.5px; }
+.note.bad { background: var(--bad-soft); color: var(--bad); }
+.err { color: var(--bad); font-size: 13px; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+       min-height: 48px; width: 100%; padding: 0 16px; border: 0; border-radius: var(--radius);
+       background: var(--me); color: #fff; font-weight: 700; font-size: 15.5px;
+       cursor: pointer; }
+.btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--bd); }
+.btn.sm { min-height: 38px; width: auto; font-size: 13.5px; padding: 0 14px; }
+.btn[disabled] { opacity: .5; cursor: default; }
+.input { width: 100%; min-height: 46px; padding: 0 13px; border: 1px solid var(--bd);
+         border-radius: 11px; background: var(--card); }
+.input:focus { outline: 2px solid var(--me); outline-offset: -1px; }
+.code-in { font-size: 24px; font-weight: 750; letter-spacing: .22em; text-align: center;
+           text-transform: uppercase; }
+
+.item { display: flex; align-items: center; gap: 11px; padding: 12px 14px;
+        border-bottom: 1px solid var(--bd); color: inherit; }
+.item:last-child { border-bottom: 0; }
+.pad0 { padding: 0; }
+.pill { font-size: 12px; font-weight: 650; padding: 3px 9px; border-radius: 999px;
+        background: var(--chip); color: var(--mut); flex: none; }
+
+/* ---------- the table ---------- */
+.felt { background: var(--felt); border: 1px solid var(--bd); border-radius: 18px;
+        padding: 14px; }
+.seats { display: flex; flex-wrap: wrap; gap: 8px; }
+.who { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 999px;
+       background: var(--card); border: 1px solid var(--bd); font-size: 13px; }
+.who.now { border-color: var(--me); box-shadow: 0 0 0 2px var(--me-soft); font-weight: 700; }
+.who .n { font-weight: 650; }
+.who .c { font-variant-numeric: tabular-nums; color: var(--mut); font-size: 12px; }
+.who .uno { color: var(--bad); font-weight: 800; font-size: 11px; letter-spacing: .06em; }
+
+.middle { display: flex; align-items: center; justify-content: center; gap: 18px;
+          padding: 18px 0 14px; }
+.pile { display: grid; place-items: center; gap: 6px; }
+.pile .lab { font-size: 11.5px; color: var(--mut); }
+
+/* A card. The value is always written on it — the colour is never the only thing saying
+   what it is. */
+.uc { width: 58px; height: 86px; border-radius: 10px; border: 2px solid rgba(0,0,0,.18);
+      background: var(--wild); color: #fff; display: grid; place-items: center;
+      font-weight: 800; font-size: 20px; line-height: 1; position: relative; flex: none;
+      cursor: default; padding: 0; }
+.uc.r { background: var(--r); } .uc.y { background: var(--y); color: #241a00; }
+.uc.g { background: var(--g); } .uc.b { background: var(--b); }
+.uc .cv { font-size: 13px; letter-spacing: .02em; }
+.uc .corner { position: absolute; top: 4px; left: 6px; font-size: 10px; opacity: .85;
+              font-weight: 700; }
+.uc.back { background: repeating-linear-gradient(45deg, #2b2f42 0 6px, #343a52 6px 12px);
+           color: #8b93ad; }
+.uc.small { width: 40px; height: 60px; font-size: 15px; }
+
+.colour-band { display: flex; align-items: center; justify-content: center; gap: 8px;
+               font-size: 12.5px; color: var(--mut); }
+.dot { width: 13px; height: 13px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); }
+.dot.r { background: var(--r); } .dot.y { background: var(--y); }
+.dot.g { background: var(--g); } .dot.b { background: var(--b); }
+
+/* The hand. Scrolls sideways; what you may play is lifted, the rest is dimmed — the rules
+   shown rather than explained after the fact. */
+.hand { display: flex; gap: 7px; overflow-x: auto; padding: 16px 4px 10px;
+        scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.hand .uc { scroll-snap-align: center; transition: transform .12s ease; }
+.hand .uc.on { cursor: pointer; transform: translateY(-9px);
+               box-shadow: 0 6px 14px rgba(0,0,0,.28); }
+.hand .uc.off { opacity: .42; }
+.hand .uc.on:active { transform: translateY(-3px); }
+
+.acts { display: flex; gap: 9px; }
+.acts .btn { flex: 1; }
+.uno-btn { background: var(--bad); }
+.turn-left { font-variant-numeric: tabular-nums; }
+
+.picker { display: flex; gap: 10px; }
+.picker button { flex: 1; height: 62px; border: 2px solid rgba(0,0,0,.18); border-radius: 12px;
+                 color: #fff; font-weight: 750; cursor: pointer; }
+.picker .r { background: var(--r); } .picker .y { background: var(--y); color: #241a00; }
+.picker .g { background: var(--g); } .picker .b { background: var(--b); }
+
+.log { font-size: 12.5px; color: var(--mut); display: flex; flex-direction: column; gap: 3px; }
+.toggles { display: flex; flex-direction: column; gap: 9px; }
+.toggles label { display: flex; align-items: center; gap: 10px; }
+.toggles input { width: 18px; height: 18px; accent-color: var(--me); flex: none; }
+.toggles .sub { margin-left: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hand .uc { transition: none; }
+}

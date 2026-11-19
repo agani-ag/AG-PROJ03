@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Table {{ room.code }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'games_rooms' %}">{% icon "arrow-left" %}Games</a>
+        <h1>Table {{ room.code }}</h1>
+        <p class="page-sub">
+            Host {{ room.host.name }} · {{ room.get_phase_display|lower }}
+            {% if room.target %}· playing to {{ room.target }}{% else %}· one round{% endif %}
+            · last seen {{ room.last_seen_at|ago }}
+        </p>
+    </div>
+    <div class="page-actions">
+        {% if room.phase != 'closed' %}
+        <form method="POST" action="{% url 'games_room_end' room.code %}"
+              data-confirm="Close {{ room.code }}?"
+              data-confirm-text="The round in progress is marked finished and nobody can play on. Use this for a table that has stopped on its own."
+              data-confirm-button="Close the table" data-danger>{% csrf_token %}
+            <button class="btn btn-ghost text-danger" type="submit">{% icon "circle-stop" %}Close it</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+{% comment %}
+This is the one page in the project that says which chairs the server is playing, and it says
+so in a column of its own. It is behind the admin sign-in and it is for the three of us: a
+table that will not move has to be explicable when you are looking at it, and a record that
+cannot tell a person from this server is not a record. Nothing of this reaches a player — see
+service.table() and rules.view(), which are the only two things that do.
+{% endcomment %}
+<div class="card">
+    <div class="card-head">{% icon "users" %}<h2>Seats</h2>
+        <span class="small muted ml-auto">Round {{ game.number|default:"—" }}</span></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>#</th><th>Name</th><th>Played by</th><th>Cards</th><th>Score</th><th>Holding</th></tr></thead>
+            <tbody>
+                {% for row in hands %}
+                <tr>
+                    <td class="num">{{ row.seat.position }}{% if row.turn %} <span class="badge badge-accent">turn</span>{% endif %}</td>
+                    <td class="t-primary"><b>{{ row.seat.name }}</b></td>
+                    <td>
+                        {% if row.is_house %}<span class="badge badge-warning">{% icon "server" "icon-sm" %}this server</span>
+                        {% else %}<code class="small">{{ row.seat.player.member.sign_in_id }}</code>{% endif %}
+                    </td>
+                    <td class="num">{{ row.count }}</td>
+                    <td class="num">{{ row.seat.score }}</td>
+                    <td><span class="small muted">{{ row.cards|join:", "|default:"—" }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6"><div class="empty">{% icon "users" %}<b>Nobody sat down</b></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="grid-2" style="margin-top:16px">
+    <div class="card">
+        <div class="card-head">{% icon "play" %}<h2>The round</h2></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>On the pile</dt><dd>{{ top }}</dd>
+                <dt>Colour in play</dt><dd>{{ colour }}</dd>
+                <dt>Seq</dt><dd><code class="small">{{ game.seq|default:"0" }}</code></dd>
+                <dt>Started</dt><dd>{{ game.started_at|ago|default:"—" }}</dd>
+                <dt>Finished</dt><dd>{{ game.finished_at|ago|default:"still going" }}</dd>
+            </dl>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-head">{% icon "sliders-horizontal" %}<h2>Table rules</h2></div>
+        <div class="card-body">
+            <dl class="kv">
+                {% for name, on in options.items %}
+                <dt>{{ name }}</dt><dd>{% if on %}on{% else %}off{% endif %}</dd>
+                {% endfor %}
+            </dl>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "scroll-text" %}<h2>What happened</h2>
+        <span class="small muted ml-auto">Newest first</span></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Seq</th><th>Seat</th><th>Move</th><th>Card</th><th>When</th></tr></thead>
+            <tbody>
+                {% for move in moves reversed %}
+                <tr>
+                    <td class="num">{{ move.seq }}</td>
+                    <td class="num">{{ move.position }}</td>
+                    <td>{{ move.kind }}</td>
+                    <td><span class="small muted">{{ move.detail|default:"—" }}</span></td>
+                    <td>{{ move.at|ago }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5"><div class="empty">{% icon "scroll-text" %}<b>Nothing yet</b>
+                    <span>Moves made by a person are recorded here.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if log %}
+    <div class="card-foot bordered">
+        <span class="small muted">Table log: {{ log|join:" · " }}</span>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

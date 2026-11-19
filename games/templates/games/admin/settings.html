@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Games · settings{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'games_rooms' %}">{% icon "arrow-left" %}Games</a>
+        <h1>Settings</h1>
+        <p class="page-sub">Nothing to configure. A table carries its own rules.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">{% icon "info" %}<h2>What is here</h2></div>
+    <div class="card-body">
+        <dl class="kv">
+            <dt>Tables</dt><dd>{{ rooms }}</dd>
+            <dt>Rounds played</dt><dd>{{ games }}</dd>
+            <dt>Players</dt><dd>{{ players }}</dd>
+        </dl>
+        <p class="small muted">Table rules are chosen when a table is made, not here — the
+            arguments are per table, which is where they happen.</p>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px;border-color:var(--danger)">
+    <div class="card-head">{% icon "triangle-alert" %}<h2>Factory reset</h2></div>
+    <div class="card-body">
+        <p class="small">Every table, every round and every player row goes. For while this is
+            being tested; there is no undo.</p>
+        <form method="POST" class="form">
+            {% csrf_token %}
+            <div class="field">
+                <label class="label" for="confirm">Type <code>ERASE GAMES</code></label>
+                <input class="input" id="confirm" name="confirm" autocomplete="off">
+            </div>
+            <button class="btn btn-danger" type="submit">{% icon "trash" %}Empty Games</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

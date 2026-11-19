@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Games{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles"><h1>Games</h1>
+        <p class="page-sub">{{ rows|length }} table{{ rows|length|pluralize }} · {{ live }} in play · {{ players }} player{{ players|pluralize }}</p></div>
+    <div class="page-actions">
+        <a class="btn btn-ghost" href="{% url 'games_players' %}">{% icon "users" %}Players</a>
+        <a class="btn btn-ghost" href="{% url 'games_settings_admin' %}">{% icon "settings" %}Settings</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">{% icon "play" %}<h2>Tables</h2>
+        <span class="small muted ml-auto">Newest activity first</span></div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Code</th><th>Host</th><th>Seats</th><th>Rounds</th><th>State</th><th>Last seen</th><th></th></tr></thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="t-primary"><b><code>{{ row.code }}</code></b></td>
+                    <td>{{ row.host.name }}</td>
+                    <td class="num">{{ row.seat_count }}</td>
+                    <td class="num">{{ row.round_count }}</td>
+                    <td><span class="badge">{{ row.get_phase_display }}</span></td>
+                    <td>{{ row.last_seen_at|ago }}</td>
+                    <td><a class="btn btn-ghost btn-icon btn-sm" href="{% url 'games_room_admin' row.code %}"
+                           aria-label="Open">{% icon "chevron-right" %}</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7"><div class="empty">{% icon "play" %}<b>No tables yet</b>
+                    <span>One appears here as soon as somebody starts a game.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "games/user/base.html" %}
+{% block title %}Start playing{% endblock %}
+{% block heading %}Games{% endblock %}
+
+{% block content %}
+<div class="card stack center">
+    <b style="font-size:19px">Hello{% if member.name %}, {{ member.name }}{% endif %}</b>
+    <p class="tiny">One name is all this needs. It is what the table will call you, and you
+        can change it whenever you like.</p>
+    <form method="POST" class="stack">
+        {% csrf_token %}
+        <input class="input" name="name" maxlength="40" value="{{ suggested }}"
+               autocomplete="off" aria-label="Your name at the table">
+        <button class="btn" type="submit">Start playing</button>
+    </form>
+</div>
+<p class="tiny center">Your SyncHub sign-in is the only one here. Nothing else to make.</p>
+{% endblock %}
