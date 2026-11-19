@@ -86,9 +86,9 @@ class Room(models.Model):
 class Seat(models.Model):
     """A chair at the table.
 
-    `player` being null is the whole of what the server keeps to itself: a seat with nobody
-    behind it is one this server plays. It is a database column and nothing more — it is never
-    put into a page, a payload or a log, and there is a test that says so.
+    `player` being null, or `away` being set, is the whole of what the server keeps to
+    itself: either way it is a chair this server plays. They are database columns and
+    nothing more — never put into a page, a payload or a log, and there is a test saying so.
 
     `name` is stored on the seat rather than read through the player, so that what the table
     calls somebody cannot change halfway through a round.
@@ -97,6 +97,10 @@ class Seat(models.Model):
     position = models.PositiveSmallIntegerField()
     player = models.ForeignKey(Player, null=True, blank=True, on_delete=models.SET_NULL,
                                related_name='seats')
+    #: Set when somebody stopped answering and the chair is being played for them. The
+    #: player stays on it, because it is still their chair and their score — this is the
+    #: only reason they can walk back into the round they left.
+    away = models.BooleanField(default=False)
     name = models.CharField(max_length=40)
     score = models.PositiveIntegerField(default=0)
     joined_at = models.DateTimeField(default=timezone.now)
@@ -114,6 +118,11 @@ class Seat(models.Model):
 
     def __str__(self):
         return f'{self.room.code} · {self.position} · {self.name}'
+
+    @property
+    def is_held(self):
+        """Whether this server is playing it — an empty chair or one somebody left."""
+        return self.player_id is None or self.away
 
 
 class Game(models.Model):

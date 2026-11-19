@@ -108,8 +108,9 @@ def room(request, code):
     room, seat = _room_for(request, code)
     if not seat and not room.is_open:
         raise Http404('That game has already started')
-    game = room.games.filter(finished_at__isnull=True).first()
-    if game:
+    service.back(room, request.player)        # walked off and come back: it is still theirs
+    game = service.current_game(room)
+    if game and game.is_live:
         game = service.catch_up(game)
     payload = service.table(room, game, seat)
     return _no_store(render(request, 'games/user/room.html', {
@@ -143,7 +144,7 @@ def seat_room(request, code):
         if not service.leave(room, request.player):
             messages.error(request, 'You cannot leave this one.')
         return redirect('games_home')
-    elif what == 'again' and is_host and room.phase == Room.Phase.LOBBY:
+    elif what == 'again' and is_host:
         game, error = service.start(room)
         if error:
             messages.error(request, error)
@@ -156,11 +157,9 @@ def poll(request, code):
     """The one thing the table asks for, over and over. 304 when nothing has moved."""
     room, seat = _room_for(request, code)
     service.seen(request.player)
-    game = room.games.filter(finished_at__isnull=True).first()
-    if game:
+    game = service.current_game(room)
+    if game and game.is_live:
         game = service.catch_up(game)
-    elif room.phase == Room.Phase.PLAYING:
-        game = room.games.first()
     payload = service.table(room, game, seat)
     body = json.dumps(payload, separators=(',', ':'), sort_keys=True)
     etag = '"' + hashlib.md5(body.encode()).hexdigest()[:16] + '"'

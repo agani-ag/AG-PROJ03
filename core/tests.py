@@ -13,7 +13,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from . import cronhub
+from . import cronhub, modules
 from .models import AdminPin, CronLock, CronRun
 
 CRON_KEY = 'test-cron-key'
@@ -335,6 +335,47 @@ class MigrationPackageTests(TestCase):
             if not (path / 'migrations' / '__init__.py').exists():
                 missing.append(f'{config.label} ({path.name}/migrations/__init__.py)')
         self.assertEqual(missing, [], 'bare makemigrations would skip these apps')
+
+class ModuleListTests(TestCase):
+    """The module list is data, and nothing was checking it.
+
+    Games shipped with syncup_icon="play" and syncup_color="indigo". SyncUp has neither, and
+    the app falls back silently — so the first anybody would have known is a link with no icon
+    on a phone, with nothing anywhere to say why.
+    """
+
+    def test_every_syncup_icon_is_one_the_app_can_draw(self):
+        for module in modules.MODULES:
+            if module.syncup_icon:
+                self.assertIn(module.syncup_icon, modules.SYNCUP_ICONS, module.key)
+
+    def test_every_syncup_colour_is_one_the_app_has(self):
+        for module in modules.MODULES:
+            if module.syncup_color:
+                self.assertIn(module.syncup_color, modules.SYNCUP_COLORS, module.key)
+
+    def test_a_module_offered_to_syncup_says_what_it_looks_like(self):
+        for module in modules.MODULES:
+            if module.has_syncup_link:
+                self.assertTrue(module.syncup_icon, f'{module.key} has no icon')
+                self.assertTrue(module.syncup_color, f'{module.key} has no colour')
+                self.assertTrue(module.syncup_description, f'{module.key} has no line')
+
+    def test_every_console_landing_is_a_url_that_exists(self):
+        for module in modules.MODULES:
+            for name in (module.url_name, module.user_url_name, module.join_url_name):
+                if name:
+                    reverse(name)                      # raises if it is not wired up
+
+    def test_every_module_icon_is_in_the_sprite(self):
+        sprite = (Path(settings.BASE_DIR) / 'static' / 'icons.svg').read_text(encoding='utf-8')
+        for module in modules.MODULES:
+            self.assertIn(f'id="i-{module.icon}"', sprite, module.key)
+
+    def test_keys_and_titles_are_not_shared(self):
+        keys = [m.key for m in modules.MODULES]
+        self.assertEqual(len(keys), len(set(keys)))
+
 
 class BrandMarkTests(TestCase):
     """The two marks: SyncHub's repeat arrow, and a module's own icon.

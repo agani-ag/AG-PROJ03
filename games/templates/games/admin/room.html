@@ -43,7 +43,7 @@ service.table() and rules.view(), which are the only two things that do.
                     <td class="num">{{ row.seat.position }}{% if row.turn %} <span class="badge badge-accent">turn</span>{% endif %}</td>
                     <td class="t-primary"><b>{{ row.seat.name }}</b></td>
                     <td>
-                        {% if row.is_house %}<span class="badge badge-warning">{% icon "server" "icon-sm" %}this server</span>
+                        {% if row.is_house %}<span class="badge badge-warning">{% icon "server" "icon-sm" %}this server{% if row.walked_off %} · they stopped answering{% endif %}</span>
                         {% else %}<code class="small">{{ row.seat.player.member.sign_in_id }}</code>{% endif %}
                     </td>
                     <td class="num">{{ row.count }}</td>

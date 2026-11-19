@@ -444,8 +444,44 @@ class TheServerPlayingTests(TestCase):
         name_before = self.room.seats.get(position=0).name
         service.catch_up(self.game, timezone.now(), Steady(23))
         seat = self.room.seats.get(position=0)
-        self.assertIsNone(seat.player_id)
+        self.assertTrue(seat.is_held)
         self.assertEqual(seat.name, name_before)
+        # Still their chair. That is the only reason they can walk back into it.
+        self.assertEqual(seat.player_id, self.player.pk)
+
+    def test_and_they_take_it_back_by_opening_the_table_again(self):
+        state = dict(self.game.state)
+        state['turn'] = 0
+        state['misses'] = [rules.MISSES_BEFORE_TAKEOVER, 0, 0]
+        state['turn_until'] = rules._at(timezone.now() - timedelta(seconds=1))
+        Game.objects.filter(pk=self.game.pk).update(state=state)
+        self.game.refresh_from_db()
+        service.catch_up(self.game, timezone.now(), Steady(23))
+        self.assertTrue(self.room.seats.get(position=0).is_held)
+
+        self.assertTrue(service.back(self.room, self.player))
+        seat = self.room.seats.get(position=0)
+        self.assertFalse(seat.is_held)
+        self.game.refresh_from_db()
+        self.assertEqual(self.game.state['misses'][0], 0, 'they start with a clean slate')
+
+    def test_coming_back_when_you_never_left_does_nothing(self):
+        self.assertFalse(service.back(self.room, self.player))
+
+    def test_nothing_at_the_table_says_either_thing_happened(self):
+        """Leaving and coming back are both invisible from the other chairs."""
+        state = dict(self.game.state)
+        state['turn'] = 0
+        state['misses'] = [rules.MISSES_BEFORE_TAKEOVER, 0, 0]
+        state['turn_until'] = rules._at(timezone.now() - timedelta(seconds=1))
+        Game.objects.filter(pk=self.game.pk).update(state=state)
+        self.game.refresh_from_db()
+        service.catch_up(self.game, timezone.now(), Steady(23))
+        service.back(self.room, self.player)
+        self.game.refresh_from_db()
+        said = ' '.join(self.game.state['log']).lower()
+        for word in ('away', 'left', 'took over', 'taken', 'back', 'returned'):
+            self.assertNotIn(word, said, word)
 
     def test_catching_up_is_bounded(self):
         """It runs inside somebody's poll. A loop that ends only if the rules are right is a
@@ -453,6 +489,101 @@ class TheServerPlayingTests(TestCase):
         game = service.catch_up(self.game, timezone.now() + timedelta(days=30), Steady(29),
                                 rounds=3)
         self.assertLessEqual(game.seq, 4)
+
+
+class WhenARoundEndsTests(TestCase):
+    """What happens between rounds — which was two bugs, both only visible end to end."""
+
+    def setUp(self):
+        self.player = player()
+        sign_in(self.client)
+        self.room = service.make_room(self.player)
+        service.fill(self.room, 3)
+        self.game, _ = service.start(self.room, rng=Steady(3))
+        self._play_it_out()
+
+    def _play_it_out(self):
+        now = timezone.now()
+        game = self.game
+        for step in range(500):
+            game = service.catch_up(game, now + timedelta(seconds=step * 40), Steady(step))
+            game.refresh_from_db()
+            if game.state['phase'] != 'playing':
+                break
+        self.game = game
+        self.room.refresh_from_db()
+        self.assertEqual(game.state['phase'], 'over', 'the round never ended')
+
+    def test_the_finished_round_is_still_what_the_table_is_handed(self):
+        """Filtering on finished_at alone handed the page nothing, so it fell back to the
+        lobby and the winner was never announced."""
+        seat = service.seat_of(self.room, self.player)
+        payload = service.table(self.room, service.current_game(self.room), seat)
+        self.assertIn('game', payload)
+        self.assertEqual(payload['game']['phase'], 'over')
+        self.assertIsNotNone(payload['game']['winner'])
+
+    def test_the_poll_says_so_too(self):
+        reply = self.client.get(reverse('games_poll', args=[self.room.code]))
+        self.assertEqual(reply.json()['game']['phase'], 'over')
+
+    def test_a_table_with_no_target_goes_back_to_waiting(self):
+        """There is nothing to win, so there is nothing to close. The score carries."""
+        self.assertEqual(self.room.phase, Room.Phase.LOBBY)
+
+    def test_play_again_deals_another_round_into_the_same_table(self):
+        reply = self.client.post(reverse('games_seat', args=[self.room.code]),
+                                 {'what': 'again'})
+        self.assertEqual(reply.status_code, 302)
+        self.room.refresh_from_db()
+        self.assertEqual(self.room.games.count(), 2)
+        self.assertEqual(self.room.phase, Room.Phase.PLAYING)
+
+    def test_the_score_carries_between_rounds(self):
+        before = sum(s.score for s in self.room.seats.all())
+        self.assertGreater(before, 0)
+        self.client.post(reverse('games_seat', args=[self.room.code]), {'what': 'again'})
+        self.assertEqual(sum(s.score for s in self.room.seats.all()), before)
+
+    def test_only_the_host_deals_again(self):
+        other = Client()
+        member('Meena', 'meena@example.com')
+        sign_in(other, 'meena@example.com')
+        other.post(reverse('games_join'), {'name': 'Meena'})
+        other.post(reverse('games_seat', args=[self.room.code]), {'what': 'again'})
+        self.assertEqual(self.room.games.count(), 1)
+
+    def test_a_table_that_has_been_won_closes(self):
+        Seat.objects.filter(room=self.room, position=0).update(score=600)
+        Room.objects.filter(pk=self.room.pk).update(target=500)
+        room = Room.objects.get(pk=self.room.pk)
+        game, _ = service.start(room, rng=Steady(11))
+        state = dict(game.state)
+        state['phase'], state['winner'] = 'over', 0
+        service._commit(game, state, game.seq, timezone.now())
+        game.refresh_from_db()
+        service._finish(game, timezone.now())
+        room.refresh_from_db()
+        self.assertEqual(room.phase, Room.Phase.CLOSED)
+
+    def test_a_closed_table_is_not_dealt_again(self):
+        Room.objects.filter(pk=self.room.pk).update(phase=Room.Phase.CLOSED)
+        room = Room.objects.get(pk=self.room.pk)
+        _, error = service.start(room)
+        self.assertEqual(error, 'That table has finished.')
+
+    def test_nobody_leaves_once_a_round_has_been_played(self):
+        """The chairs are numbered and a finished round refers to them by number."""
+        other = player('Meena', 'meena@example.com')
+        service.join(self.room, other)
+        self.assertFalse(service.leave(self.room, other))
+
+    def test_but_leaving_before_the_first_deal_is_fine(self):
+        fresh = service.make_room(self.player)
+        other = player('Ravi', 'ravi@example.com')
+        service.join(fresh, other)
+        self.assertTrue(service.leave(fresh, other))
+        self.assertEqual(fresh.seats.count(), 1)
 
 
 class JoiningGamesTests(TestCase):

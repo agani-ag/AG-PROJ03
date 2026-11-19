@@ -40,8 +40,8 @@ def nudge(game):
     if turn is None or turn >= len(seats):
         return 'no seat'
     seat = seats[turn]
-    if not seat.player_id:
-        return 'nobody waiting'           # a chair this server holds needs no telling
+    if seat.is_held:
+        return 'nobody waiting'           # a chair this server plays needs no telling
     if seat.pushed_seq >= game.seq:
         return 'already pushed'
     player = seat.player

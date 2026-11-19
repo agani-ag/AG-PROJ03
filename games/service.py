@@ -100,8 +100,13 @@ def join(room, player):
 
 
 def leave(room, player):
-    """Give a chair up, while the room is still waiting to start."""
-    if not room.is_open:
+    """Give a chair up, before the first round is dealt.
+
+    Only before: chairs are numbered, a finished round refers to them by number, and
+    renumbering them afterwards would misalign the scores from the game they were won in.
+    Somebody who wants out later simply stops answering, and the chair is played for
+    them — which is the behaviour that already exists."""
+    if not room.is_open or room.games.exists():
         return False
     seat = room.seats.filter(player=player).first()
     if not seat or seat.player_id == room.host_id:
@@ -129,8 +134,38 @@ def seen(player):
     player.last_seen_at = now
 
 
+def current_game(room):
+    """The round to show: the one in play, or the one that has just finished.
+
+    Filtering on finished_at alone is what hid the result screen — the moment somebody went
+    out there was no game to hand over, so the table fell back to the lobby and the winner
+    was never announced."""
+    return (room.games.filter(finished_at__isnull=True).first()
+            or room.games.first())
+
+
 def seat_of(room, player):
     return room.seats.filter(player=player).first() if player else None
+
+
+def back(room, player):
+    """Somebody who wandered off has opened the table again: give them their chair back.
+
+    Nothing at the table marks either the leaving or the returning. From the other chairs
+    one player went quiet for a while and then did not."""
+    seat = seat_of(room, player)
+    if not seat or not seat.away:
+        return False
+    Seat.objects.filter(pk=seat.pk).update(away=False)
+    seat.away = False
+    game = room.games.filter(finished_at__isnull=True).first()
+    if game and game.state.get('misses'):
+        state = dict(game.state)
+        if seat.position < len(state['misses']):
+            state['misses'][seat.position] = 0
+            state['think_until'] = None
+            _commit(game, state, game.seq, timezone.now())
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -139,6 +174,8 @@ def seat_of(room, player):
 def start(room, now=None, rng=None):
     """Deal. Returns `(game, error)`."""
     rng, now = rng or _SYSTEM, now or timezone.now()
+    if room.phase == Room.Phase.CLOSED:
+        return None, 'That table has finished.'
     seats = list(room.seats.order_by('position'))
     if len(seats) < MIN_SEATS:
         return None, 'There has to be somebody to play against.'
@@ -172,20 +209,22 @@ def _finish(game, now):
         if row.player_id:
             Player.objects.filter(pk=row.player_id).update(played=F('played') + 1)
 
+    # A table closes when it has been won, and not otherwise. Without a target there is
+    # nothing to win, so it simply goes back to waiting: the score carries, and "play
+    # again" is a button rather than a new table with a new code to read out.
     room = game.room
-    reached = room.target and any(s.score >= room.target
-                                  for s in room.seats.order_by('position'))
+    won = room.target and any(s.score >= room.target
+                              for s in room.seats.order_by('position'))
     Room.objects.filter(pk=room.pk).update(
-        phase=Room.Phase.CLOSED if (not room.target or reached) else Room.Phase.LOBBY,
-        last_seen_at=now)
+        phase=Room.Phase.CLOSED if won else Room.Phase.LOBBY, last_seen_at=now)
 
 
 # --------------------------------------------------------------------------- #
 # The lazy clock
 # --------------------------------------------------------------------------- #
 def _house_seats(room):
-    """Positions with nobody behind them. Never leaves this module in anything readable."""
-    return {s.position for s in room.seats.order_by('position') if s.player_id is None}
+    """Positions this server is playing. Never leaves this module in anything readable."""
+    return {s.position for s in room.seats.order_by('position') if s.is_held}
 
 
 def _set_think(state, seats, now, rng):
@@ -194,7 +233,7 @@ def _set_think(state, seats, now, rng):
         state['think_until'] = None
         return
     turn = state['turn']
-    if turn >= len(seats) or seats[turn].player_id is not None:
+    if turn >= len(seats) or not seats[turn].is_held:
         state['think_until'] = None
         return
     if state.get('think_until'):
@@ -230,9 +269,11 @@ def catch_up(game, now=None, rng=None, rounds=24):
         # Somebody who has stopped answering: the chair is played for them, keeping its name,
         # its hand and its score. Nothing at the table says so.
         stuck = rules.stuck_seat(state)
-        if stuck is not None and stuck < len(seats) and seats[stuck].player_id is not None:
-            Seat.objects.filter(pk=seats[stuck].pk).update(player=None)
-            seats[stuck].player_id = None
+        if stuck is not None and stuck < len(seats) and not seats[stuck].is_held:
+            # The chair keeps its player, its name, its hand and its score. Only the
+            # answering changes hands, and they take it back by opening the table again.
+            Seat.objects.filter(pk=seats[stuck].pk).update(away=True)
+            seats[stuck].away = True
             held.add(stuck)
             state['misses'][stuck] = 0
             moved = True

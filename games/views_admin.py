@@ -47,8 +47,9 @@ def room_detail(request, code):
         held = cards[seat.position] if seat.position < len(cards) else []
         hands.append({
             'seat': seat,
-            # Plainly, and only here: a chair with no player behind it is one the server plays.
-            'is_house': seat.player_id is None,
+            # Plainly, and only here: an empty chair, or one somebody walked away from.
+            'is_house': seat.is_held,
+            'walked_off': bool(seat.player_id and seat.away),
             'cards': [deck.label(c) for c in held],
             'count': len(held),
             'turn': state.get('turn') == seat.position,

@@ -115,11 +115,33 @@ MODULES = [
         join_url_name='games_join',
         syncup_path='/games/',
         syncup_description='Cards with whoever is about',
-        syncup_icon='play',
-        syncup_color='indigo',
+        syncup_icon='star',          # SyncUp's list has no card or dice; see SYNCUP_ICONS
+        syncup_color='violet',
         syncup_token=True,
     ),
 ]
+
+# --------------------------------------------------------------------------- #
+# What SyncUp will actually draw
+#
+# `syncup_icon` and `syncup_color` are not ours to invent: the app draws from a fixed list and
+# silently falls back on anything it does not know, so a wrong name here is a link with no icon
+# on somebody's phone and nothing to say why. Both lists are copied from AG-PROJ01's
+# mobileapi/link_icons.py; the test in core/tests.py is what keeps a typo from shipping.
+#
+# Games was written with icon "play" and colour "indigo". Neither exists.
+# --------------------------------------------------------------------------- #
+SYNCUP_ICONS = {
+    'link', 'globe', 'star', 'home', 'bell', 'person', 'settings',
+    'flower', 'heart', 'pill', 'fitness', 'leaf', 'drop',
+    'chat', 'group', 'phone', 'mail',
+    'wallet', 'bank', 'rupee', 'card', 'cart', 'receipt',
+    'document', 'folder', 'upload', 'briefcase', 'calendar', 'chart', 'gov',
+    'school', 'book', 'location', 'car', 'video', 'music', 'camera', 'image', 'news',
+    'youtube', 'notification', 'speed', 'newtab',          # retired, still drawn
+}
+SYNCUP_COLORS = {'blue', 'teal', 'green', 'lime', 'amber', 'orange', 'rose', 'violet', 'slate'}
+
 
 MODULES_BY_KEY = {m.key: m for m in MODULES}
 

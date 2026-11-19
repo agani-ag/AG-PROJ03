@@ -281,6 +281,7 @@ lists what is still to migrate.
 | **Hibiscus** (`/hibiscus/`) | A cycle diary. The diary itself is at `/hibiscus/` with its own sign-up, session and theme; the console side is at `/hibiscus/admin/`. Was a separate Flask app called Red Hibiscus. |
 | **J6** (`/j6/`) | Chat with no sign-up. The chat is at `/j6/`, the console at `/j6/admin/`, plus a portable Windows client in [desktop/](desktop/). |
 | **Pocket Money** (`/pocket/`) | Two halves under one sign-in: a **Tracker** for your own money in and out, and a **Ledger** of folders of people and what passes between you. Console at `/pocket/admin/`. |
+| **Games** (`/games/`) | Card games with whoever is about — UNO first, more to come. Make a table, share the code, play on a phone. Console at `/games/admin/`. |
 
 Hibiscus in short: flow is recorded **per day**, and a period is a *run* of days worked out by
 `hibiscus/cycle.py` — no start or end dates are stored. Spotting shows on the calendar but is not
@@ -353,6 +354,38 @@ with the browser's own `BarcodeDetector` — no library. Paying is a redirect an
 `upi://pay?pa=…&pn=…&cu=INR`, no amount in the link, and the ledger entry is a separate deliberate
 tap when you come back, because nothing useful comes back from a `upi://` hand-off. Entries are
 voided, never deleted, on the people's side; only the console can hard-delete one.
+
+Games in short: **one module, several games — UNO is the first.** You make a table and get a
+five-character **code** to read out; anybody with it sits down, two to six to a table. Empty
+chairs are filled so a game happens without waiting for four people to be awake at once. A
+**round is a game and the table keeps the score**, so "play again" is a button rather than a new
+code; set a target of 200 or 500 and the table closes when somebody reaches it.
+
+The rules of UNO live alone and pure in `games/uno/rules.py` — plain data in, plain data out, no
+Django — beside `deck.py` (108 cards as the integers 0–107) and `house.py`. The box's rules are
+the default; the four arguments people actually have are **toggles set when the table is made**:
+stacking +2/+4, draw until you can play, 7-0 swaps, and a free wild draw four. Off, a wild draw
+four is *refused* unless you really are stuck, which is why there is no challenge to make — the
+server holds the hand and simply says no.
+
+Three things follow from the host. Delivery is **polling** (2s while you wait on somebody, 9s
+while they wait on you, 12s hidden, `304` when nothing changed), because the host cannot do
+WebSockets. **Nothing runs on a schedule**: whoever looks at the table next is what closes an
+expired UNO window, takes a turn that ran out and plays the chairs the server holds — the
+15-minute cron is only the backstop for tables everybody walked away from. And since SQLite has
+no row locks, **every write is a compare-and-swap** on the game's `seq`, so a double tap, a
+retried request and two players racing are one already-handled case.
+
+A turn is 90 seconds; three missed in a row and the chair is **played for them**, keeping its
+name, hand and score, until they open the table again and take it back. Calling **UNO** is a
+button with a five-second window, and anybody else can tap **Caught!** inside it for the two-card
+penalty. "Your turn" goes to SyncUp only when the table is *not* polling, by the same rule J6
+uses, and never twice for one turn.
+
+What a player can know is two functions — `service.table()` and `rules.view()` — and between them
+they carry one hand, counts for everybody else, and never the order of the draw pile. Every card
+on screen carries its value and letter as well as its colour: red and green are two of the four
+and about one man in twelve cannot separate them.
 
 ## Pages
 
