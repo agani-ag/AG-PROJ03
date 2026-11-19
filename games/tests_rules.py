@@ -319,6 +319,36 @@ class DrawingTests(TestCase):
         _, error = rules.pass_turn(state, 0, at(1))
         self.assertEqual(error, 'Draw a card first.')
 
+    def test_drawing_keeps_going_until_something_fits_by_default(self):
+        """The one place this differs from the box. Taking a single card and losing your turn
+        reads as a punishment on a phone — you tap, something appears, and the turn is gone."""
+        self.assertTrue(rules.DEFAULTS['draw_until'])
+        state = table([[card('blue', '9')], [0]], top=card('red', '3'),
+                      pile=[card('red', '7'), card('blue', '2'), card('green', '2')])
+        state, _ = rules.draw(state, 0, at(1))
+        self.assertEqual(len(state['hands'][0]), 4)       # two useless, then the red 7
+        self.assertEqual(state['turn'], 0, 'the turn stays with them to play it')
+        self.assertEqual(state['drew'], card('red', '7'))
+
+    def test_the_printed_rule_is_still_there_for_anybody_who_wants_it(self):
+        state = table([[card('blue', '9')], [0]], top=card('red', '3'),
+                      pile=[card('blue', '7')])
+        state, _ = rules.draw(state, 0, at(1), opts={'draw_until': False})
+        self.assertEqual(len(state['hands'][0]), 2)
+        self.assertEqual(state['turn'], 1, 'one card, and the turn is over')
+
+    def test_a_wild_four_drawn_on_the_way_is_judged_on_the_hand_it_lands_in(self):
+        """_give rebinds the hand, so a reference taken before the first draw goes stale. In
+        draw-until mode something of the colour in play can arrive before the four does, and
+        then the four is not legal after all."""
+        state = table([[card('blue', '9')], [0]], top=card('red', '3'),
+                      pile=[card(None, 'draw4'), card('red', '2')])
+        state, _ = rules.draw(state, 0, at(1))
+        # The red 2 came first and is playable, so the draw stops there and the four is never
+        # reached. What matters is that the stop was judged against the hand as it then was.
+        self.assertEqual(state['drew'], card('red', '2'))
+        self.assertEqual(len(state['hands'][0]), 2)
+
     def test_draw_until_keeps_going_until_something_fits(self):
         state = table([[card('blue', '9')], [0]], top=card('red', '3'),
                       pile=[card('red', '7'), card('blue', '2'), card('green', '2')])
@@ -329,7 +359,7 @@ class DrawingTests(TestCase):
     def test_the_pile_is_shuffled_back_in_when_it_runs_out(self):
         state = table([[card('blue', '9')], [0]], top=card('red', '3'), pile=[])
         state['discard'] = [card('green', '1'), card('green', '2'), card('red', '3')]
-        state, _ = rules.draw(state, 0, at(1), rng=Fixed())
+        state, _ = rules.draw(state, 0, at(1), rng=Fixed(), opts={'draw_until': False})
         self.assertEqual(state['discard'], [card('red', '3')])
         self.assertEqual(len(state['hands'][0]), 2)
 

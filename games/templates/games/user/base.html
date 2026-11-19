@@ -4,11 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     {% comment %}
-    A table is a dark room with cards on it, so unlike the other modules this one is dark by
-    default and the choice is the phone's. Applied before first paint, so there is no flash.
+    Light unless somebody says otherwise, like the rest of the hub. The first draft made this
+    one dark on the theory that a card table is a dark room, which got it backwards: the four
+    card colours are the only colour on the screen and they carry further off paper than off
+    felt. Dark is a tap away and the card faces are the same in both.
+
+    Applied before first paint, so there is no flash.
     {% endcomment %}
-    <script>try{var r=document.documentElement,t=localStorage.getItem("games-theme");r.setAttribute("data-theme",(t==="light"||t==="dark")?t:"dark")}catch(e){document.documentElement.setAttribute("data-theme","dark")}</script>
-    {% include "_theme_color.html" with light="#f3f4f8" dark="#141620" %}
+    <script>try{var r=document.documentElement,t=localStorage.getItem("games-theme");r.setAttribute("data-theme",t==="dark"?"dark":"light")}catch(e){document.documentElement.setAttribute("data-theme","light")}</script>
+    {% include "_theme_color.html" with light="#f6f7fb" dark="#11141c" %}
     <title>{% block title %}Games{% endblock %} · Games</title>
     <link rel="icon" href="{% static 'images/app-icon.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static_v 'games/user.css' %}">
@@ -22,6 +26,10 @@
   <symbol id="g-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
   <symbol id="g-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
   <symbol id="g-cards" viewBox="0 0 24 24"><rect x="3" y="5" width="11" height="15" rx="2"/><path d="M8 3h9a2 2 0 0 1 2 2v12"/></symbol>
+  {% comment %}The three action marks, drawn once and used by every card on the table.{% endcomment %}
+  <symbol id="g-skip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M5.6 5.6l12.8 12.8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
+  <symbol id="g-rev" viewBox="0 0 24 24"><path d="M8 4l-4 4 4 4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 8h12a4 4 0 0 1 0 8h-1" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M16 20l4-4-4-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="g-d2" viewBox="0 0 24 24"><rect x="3" y="5" width="11" height="15" rx="2" fill="currentColor" opacity=".45"/><rect x="9" y="3" width="11" height="15" rx="2" fill="currentColor"/></symbol>
   <symbol id="g-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></symbol>
   <symbol id="g-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
   <symbol id="g-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>

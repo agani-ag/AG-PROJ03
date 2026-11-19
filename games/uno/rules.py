@@ -40,7 +40,12 @@ CAUGHT_PENALTY = 2
 #: The arguments people actually have, and what the box says.
 DEFAULTS = {
     'stacking': False,        # +2 on +2 and +4 on +4, the total falling on whoever stops
-    'draw_until': False,      # keep drawing until something fits, rather than taking one
+    # ON, and the one place this differs from the printed rules by default. The box says
+    # take exactly one card and lose your turn if it does not fit. On a phone that reads as
+    # a punishment: you tap the pile, something appears, and your turn is gone before you
+    # have seen what you got. Drawing until something fits is how people actually play, and
+    # anybody who wants the printed rule turns this off when they make the table.
+    'draw_until': True,
     'seven_zero': False,      # 7 swaps hands with a chosen seat, 0 passes every hand round
     'free_wild_four': False,  # a wild draw four whenever you like, rather than only when stuck
 }
@@ -347,9 +352,13 @@ def draw(state, seat, now, rng=None, opts=None):
         _start_turn(state, now)
         return state, None
 
-    hand = state['hands'][seat]
+    # The hand is read back each time rather than held: _give rebinds state['hands'][seat],
+    # so a reference taken before the first draw is a different list by the second. It
+    # matters — whether a drawn wild draw four may be played depends on what else is in
+    # there, and in draw-until mode something of that colour may have arrived on the way.
     taken = _give(state, seat, 1, rng)
-    while opts['draw_until'] and taken and not playable(state, taken[-1], hand, opts):
+    while (opts['draw_until'] and taken
+           and not playable(state, taken[-1], state['hands'][seat], opts)):
         more = _give(state, seat, 1, rng)
         if not more:
             break
@@ -358,7 +367,7 @@ def draw(state, seat, now, rng=None, opts=None):
 
     # Drawn something you can use? The turn stays with you, to play it or pass. Otherwise it is
     # over — there is nothing to decide and making somebody tap "pass" is not a decision.
-    if taken and playable(state, taken[-1], hand, opts):
+    if taken and playable(state, taken[-1], state['hands'][seat], opts):
         state['drew'] = taken[-1]
         return state, None
     _advance(state)
@@ -599,5 +608,7 @@ def view(state, seat, opts=None):
         'drew': state['drew'] if state['turn'] == seat else None,
         'turn_until': state['turn_until'],
         'winner': state['winner'],
-        'log': list(state['log'][-8:]),
+        # The log is NOT here. The table's one sentence is worked out from the state
+        # above, and eight lines of history in a payload that goes out every two
+        # seconds is weight nobody reads. The console still has the whole of it.
     }

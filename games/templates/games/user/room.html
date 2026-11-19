@@ -8,9 +8,13 @@
 
 {% block content %}
 {% comment %}
+Four regions, not seven. The colour in play is a wash behind the pile rather than a band of its
+own; the rolling log and the hint line are one sentence; the three buttons are one that changes.
+See docs/mockup/games-uno-mockup.html for what each of those replaced and why.
+
 Everything after first paint arrives through one poll. The page ships with the state it was
-rendered from, so there is no flash of an empty table, and `data-*` carries the three addresses
-the script needs rather than any of them being built in JavaScript.
+rendered from, so there is no flash of an empty table, and the three addresses the script needs
+are on `data-*` rather than built in JavaScript.
 {% endcomment %}
 <div id="table"
      data-poll="{% url 'games_poll' room.code %}"
@@ -19,11 +23,11 @@ the script needs rather than any of them being built in JavaScript.
      data-cards="{{ cards }}">
 
   <!-- waiting to start -->
-  <div id="lobby" {% if not room.is_open %}hidden{% endif %}>
-    <div class="card center">
-      <div class="sub">Share this code</div>
-      <div style="font-size:34px;font-weight:800;letter-spacing:.2em;margin:6px 0 2px">{{ room.code }}</div>
-      <p class="tiny">Whoever has it can sit down, until there are {{ max_seats }} of you.</p>
+  <div id="lobby" class="stack" {% if not room.is_open %}hidden{% endif %}>
+    <div class="card center" style="padding:22px 15px">
+      <div class="sub">Read this out</div>
+      <div style="font-size:42px;font-weight:800;letter-spacing:.17em;margin:7px 0 3px">{{ room.code }}</div>
+      <p class="tiny">No vowels, no O or I — nothing anybody can mishear.</p>
     </div>
 
     <div class="card pad0" id="lobby-seats"></div>
@@ -33,8 +37,7 @@ the script needs rather than any of them being built in JavaScript.
       {% csrf_token %}
       <button class="btn ghost" type="submit" name="what" value="fill">
         <svg class="ic"><use href="#g-plus"/></svg>Add another player</button>
-      <button class="btn" type="submit" name="what" value="start">
-        <svg class="ic"><use href="#g-check"/></svg>Deal</button>
+      <button class="btn" type="submit" name="what" value="start">Deal</button>
     </form>
     <p class="tiny center">Two at the table is a game. Six is the most.</p>
     {% else %}
@@ -45,75 +48,77 @@ the script needs rather than any of them being built in JavaScript.
     </form>
     {% endif %}
 
-    <div class="card">
-      <b>Table rules</b>
-      <div class="sub" id="lobby-rules">The ones on the box.</div>
-    </div>
+    <p class="tiny center" id="lobby-rules"></p>
   </div>
 
   <!-- in play -->
   <div id="play" hidden>
-    <div class="felt stack">
-      <div class="seats" id="seats"></div>
+    <div class="felt">
+      <div class="wash" id="wash"></div>
+      <div class="opps" id="opps"></div>
 
       <div class="middle">
-        <div class="pile">
-          <button class="uc back" id="draw-pile" type="button" aria-label="Draw a card">
-            <span id="draw-count" class="cv"></span></button>
-          <span class="lab">pile</span>
+        <div class="pilewrap">
+          <button class="uc lg back" id="draw-pile" type="button" aria-label="Take one from the pile">
+            <span class="face"><span class="oval"></span><span class="mid">UNO</span></span>
+          </button>
+          <span class="lab" id="draw-count"></span>
         </div>
-        <div class="pile">
-          <div class="uc" id="top-card"></div>
-          <span class="lab">on the pile</span>
+        <div class="pilewrap">
+          <div class="disc" id="disc"></div>
+          <span class="lab" id="colour-word"></span>
         </div>
       </div>
 
-      <div class="colour-band"><span class="dot" id="colour-dot"></span>
-        <span id="colour-word">—</span><span id="pending"></span></div>
-      <div class="log" id="log"></div>
-    </div>
+      <div class="clock" id="clock"><i></i></div>
+      <p class="said" id="said"></p>
 
-    <div class="hand" id="hand"></div>
-
-    <div class="acts">
-      <button class="btn ghost" id="pass-btn" type="button" hidden>Keep it and pass</button>
-      <button class="btn uno-btn" id="uno-btn" type="button" hidden>UNO!</button>
-      <button class="btn uno-btn" id="catch-btn" type="button" hidden>Caught!</button>
-    </div>
-    <p class="tiny center" id="hint"></p>
-
-    <div class="card" id="colour-picker" hidden>
-      <b style="margin-bottom:9px">Name a colour</b>
-      <div class="picker">
-        <button class="r" type="button" data-colour="red">Red</button>
-        <button class="y" type="button" data-colour="yellow">Yellow</button>
-        <button class="g" type="button" data-colour="green">Green</button>
-        <button class="b" type="button" data-colour="blue">Blue</button>
+      <div class="fan" id="hand"></div>
+      <div class="acts">
+        <button class="btn ghost" id="act" type="button"></button>
       </div>
-    </div>
-
-    <div class="card" id="swap-picker" hidden>
-      <b style="margin-bottom:9px">Whose hand will you take?</b>
-      <div class="stack" id="swap-list"></div>
+      <p class="err center" id="oops" hidden style="margin-top:10px"></p>
     </div>
   </div>
 
   <!-- the round is over -->
-  <div id="over" hidden>
-    <div class="card center">
-      <b style="font-size:19px" id="over-who">Round over</b>
+  <div id="over" class="stack" hidden>
+    <div class="won">
+      <div class="disc" id="over-card" style="width:78px;height:116px"></div>
+      <div class="big" id="over-who" style="margin-top:14px">Round over</div>
       <div class="sub" id="over-score"></div>
     </div>
     <div class="card pad0" id="over-seats"></div>
-    {% if can_start or room.host_id == player.pk %}
-    <form method="POST" action="{% url 'games_seat' room.code %}" style="margin-top:14px">
+    {% if room.host_id == player.pk %}
+    <form method="POST" action="{% url 'games_seat' room.code %}">
       {% csrf_token %}
       <button class="btn" type="submit" name="what" value="again">Play again</button>
     </form>
     {% endif %}
-    <p class="tiny center" style="margin-top:10px">The score carries between rounds.</p>
+    <p class="tiny center" id="over-note"></p>
   </div>
 
-  <p class="err center" id="oops" hidden></p>
+  <!-- a wild, and the seven-zero swap: sheets, so the table stays visible behind them -->
+  <div class="scrim" id="scrim" hidden></div>
+  <div class="sheet" id="colour-picker" hidden>
+    <div class="in">
+      <div class="hdl"></div>
+      <b style="display:block;margin-bottom:12px">Name a colour</b>
+      <div class="pick">
+        <button class="c-r" type="button" data-colour="red">Red</button>
+        <button class="c-y" type="button" data-colour="yellow">Yellow</button>
+        <button class="c-g" type="button" data-colour="green">Green</button>
+        <button class="c-b" type="button" data-colour="blue">Blue</button>
+      </div>
+      <p class="tiny center" id="colour-hint" style="margin-top:12px"></p>
+    </div>
+  </div>
+  <div class="sheet" id="swap-picker" hidden>
+    <div class="in">
+      <div class="hdl"></div>
+      <b style="display:block;margin-bottom:12px">Whose hand will you take?</b>
+      <div class="stack" id="swap-list"></div>
+    </div>
+  </div>
 </div>
 {% endblock %}

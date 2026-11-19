@@ -364,7 +364,11 @@ code; set a target of 200 or 500 and the table closes when somebody reaches it.
 The rules of UNO live alone and pure in `games/uno/rules.py` — plain data in, plain data out, no
 Django — beside `deck.py` (108 cards as the integers 0–107) and `house.py`. The box's rules are
 the default; the four arguments people actually have are **toggles set when the table is made**:
-stacking +2/+4, draw until you can play, 7-0 swaps, and a free wild draw four. Off, a wild draw
+stacking +2/+4, draw until you can play, 7-0 swaps, and a free wild draw four. One of those
+four is **on** by default and is the single place this differs from the box: *draw until you
+can play*. Taking one card and losing your turn is what the printed rule says and it reads as
+a punishment on a phone — you tap the pile, something appears, and the turn is gone before you
+have seen what you got. Off, a wild draw
 four is *refused* unless you really are stuck, which is why there is no challenge to make — the
 server holds the hand and simply says no.
 
