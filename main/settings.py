@@ -99,21 +99,33 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'ag-proj03.sqlite3',
-        # Added for Games, which is the first thing here with genuinely concurrent writers:
-        # four people at one table, tapping at once. Without these, SQLite answers "database
-        # is locked" under exactly the conditions a card game creates.
+        # ---- WAL WAS TRIED HERE AND IT DOES NOT WORK ON THIS HOST. DO NOT PUT IT BACK.
         #
-        #   WAL             a reader no longer blocks a writer, so a poll and a move can
-        #                   overlap. Set on the file itself, so it survives the connection.
-        #   synchronous     NORMAL rather than FULL: one fsync per checkpoint instead of per
-        #                   commit. The risk it trades away is losing the last commits in a
-        #                   power cut, which on a hobby host is the right trade.
-        #   IMMEDIATE       a write transaction takes its lock when it starts rather than
-        #                   when it first writes, so two of them queue instead of one getting
-        #                   halfway and being thrown out.
-        #   timeout         wait for a busy database rather than failing at five seconds.
+        # P1B3C56 turned on journal_mode=WAL for Games, the first thing here with genuinely
+        # concurrent writers. It took — `PRAGMA journal_mode` answered 'wal' — and then the
+        # live site started throwing `OperationalError: disk I/O error` under real use.
+        #
+        # WAL needs shared memory through a `-shm` file that every connection mmaps. On
+        # PythonAnywhere the database sits on a network filesystem, and that mapping is the
+        # thing such filesystems do not reliably provide. SQLite accepts the pragma and then
+        # fails later, under load, which is the worst shape a fault can have.
+        #
+        # So journal_mode is pinned back to DELETE rather than merely left unset: the mode
+        # lives in the database file, so a file already switched to WAL stays that way until
+        # something switches it back. This does that on every connection and is a no-op once
+        # it has.
+        #
+        # `synchronous` is deliberately NOT set. NORMAL is safe in WAL; in rollback-journal
+        # mode it trades away crash safety, and the pair of them together is how a database
+        # gets corrupted rather than merely slow.
+        #
+        # What is left is the part that was doing most of the work anyway:
+        #   IMMEDIATE       a write takes its lock when it starts rather than when it first
+        #                   writes, so two of them queue instead of one getting halfway and
+        #                   being thrown out.
+        #   timeout         wait 15s for a busy database rather than giving up at 5.
         'OPTIONS': {
-            'init_command': 'PRAGMA journal_mode=WAL;PRAGMA synchronous=NORMAL',
+            'init_command': 'PRAGMA journal_mode=DELETE',
             'transaction_mode': 'IMMEDIATE',
             'timeout': 15,
         },
