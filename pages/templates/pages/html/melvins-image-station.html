@@ -60,12 +60,11 @@ body{
   border-bottom:1px solid #e5e9f0;transform:rotate(45deg)}
 
 .tools{flex:none;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:8px 12px 0}
-.tools button,.tools select{
+.tools button{
   min-height:44px;padding:0 16px;border-radius:999px;border:1px solid #d9dfe8;
   background:#fff;color:#1b2430;font:inherit;font-size:.9rem;font-weight:600;cursor:pointer;
   max-width:62vw;
 }
-.tools select{font-weight:500;padding:0 12px}
 .tools button:active{transform:scale(.97)}
 .tools button[aria-pressed="true"]{background:#105498;border-color:#105498;color:#fff}
 .hint{flex:none;text-align:center;font-size:.76rem;color:#7a8698;padding:7px 12px 0}
@@ -107,7 +106,7 @@ body{
 }
 @media (prefers-color-scheme:dark){
   body{background:#11141c;color:#e9ecf4}
-  .note,.bubble,.tools button,.tools select{background:#1a1e28;border-color:#262b38;color:#e9ecf4}
+  .note,.bubble,.tools button{background:#1a1e28;border-color:#262b38;color:#e9ecf4}
   .scene{filter:brightness(.58) saturate(.86) hue-rotate(-4deg)}
   .scene-shade{background:radial-gradient(130% 80% at 50% 12%,rgba(255,243,214,.12),transparent 62%),
                radial-gradient(120% 70% at 50% 108%,rgba(4,10,7,.45),transparent 60%)}
@@ -332,9 +331,8 @@ body{
 
 <div class="side">
   <div class="tools">
-    <button type="button" id="listen" aria-pressed="false">Talk to her</button>
+    <button type="button" id="listen" aria-pressed="false">Hold to talk</button>
     <button type="button" id="waveBtn">Wave</button>
-    <select id="voicePick" aria-label="Which voice she speaks with"></select>
   </div>
   <p class="hint" id="hint">Tap her hair, her face, her hands — she answers back.</p>
   <p class="hint" id="voiceNote"></p>
@@ -368,8 +366,14 @@ body{
       body:  ['கூச்சமா இருக்கு!', 'அடடா, கிச்சு கிச்சு!'],
       hand:  ['வணக்கம்!', 'ஹாய்!'],
       idle:  ['ஏதாவது சொல்லுங்க, நான் திருப்பி சொல்றேன்.'],
-      heard: function (t) { return t; },
-      none:  'உங்க browser-ல கேட்க முடியல.'
+      hint:  'என் தலை, முகம், கையை தொடுங்க — நான் பதில் சொல்வேன்.',
+      hold:  'பிடிச்சு பேசுங்க',
+      busy:  'கேக்குறேன்…',
+      ask:   'ஏதாவது சொல்லுங்க — திருப்பி சொல்றேன்.',
+      brief: 'இன்னும் கொஞ்சம் நேரம் பிடிச்சு வைச்சிருங்க.',
+      spoilt:'சரியா பதிவாகல — மறுபடியும் முயற்சி பண்ணுங்க.',
+      ask2:  'மைக் யூஸ் பண்ண அனுமதி வேணும்.',
+      none:  'இந்த browser-ல மைக் வேலை செய்யல.'
     },
     en: {
       hair:  ['Careful with the hair!', 'Hey, I just did that!'],
@@ -377,89 +381,21 @@ body{
       body:  ['That tickles!', 'Stop it, that tickles!'],
       hand:  ['Hello there!', 'Hi!'],
       idle:  ["Say something and I'll say it back."],
-      heard: function (t) { return t; },
-      none:  'This browser cannot listen, sorry.'
+      hint:  'Tap her hair, her face, her hands — she answers back.',
+      hold:  'Hold to talk',
+      busy:  'Listening…',
+      ask:   'Say anything — I will say it back.',
+      brief: 'Hold the button a little longer.',
+      spoilt:'That did not record properly — try again.',
+      ask2:  'She needs permission to use the microphone.',
+      none:  'This browser cannot use the microphone.'
     }
   };
-  /* ---------- the voice ----------
-     Three things kept her silent, and all three are ordinary browser traps rather than
-     anything exotic:
-
-       1. cancel() called immediately before speak(). Chrome drops the new utterance when
-          they land in the same tick, so nothing is ever said. Only cancel when something
-          really is in flight, and give it a tick to land.
-       2. The utterance was a local variable. Chrome collects it mid-sentence and the audio
-          stops partway or never starts — the fix everybody arrives at eventually is to
-          hold a reference until it ends.
-       3. The repeat was spoken from a timer after recognition, which is outside any user
-          gesture AND while the microphone still owns the audio session. Speak on the
-          recogniser's own end event instead, once it has let go.
-
-     And the fourth thing, which is not a bug: a browser cannot speak Tamil without a Tamil
-     voice installed. If there is not one, the page says so and tells you where to get it,
-     rather than being mysteriously mute. */
-  var synth = window.speechSynthesis || null;
-  var voices = [], voice = null, lang = 'en', held = null, primed = false, warned = false;
-  var picker = $('#voicePick'), voiceNote = $('#voiceNote');
-
-  function isTamil(v) { return /^ta\b|^ta[-_]/i.test(v.lang || '') || /tamil/i.test(v.name || ''); }
-
-  function loadVoices() {
-    if (!synth) { voiceNote.textContent = 'This browser has no speech, so she mimes.'; return; }
-    voices = synth.getVoices() || [];
-    if (!voices.length) {
-      /* Chrome answers empty until it is ready and then fires voiceschanged. Some browsers
-         never fire it at all, so say something useful rather than nothing — she will still
-         speak, just with whatever the platform picks. */
-      voiceNote.textContent = 'Still finding the voices on this device…';
-      return;
-    }
-    var tamil = voices.filter(isTamil);
-    picker.textContent = '';
-    (tamil.length ? tamil.concat(voices.filter(function (v) { return !isTamil(v); }))
-                  : voices).forEach(function (v, i) {
-      var o = document.createElement('option');
-      o.value = v.name;
-      o.textContent = (isTamil(v) ? '★ ' : '') + v.name + ' (' + v.lang + ')';
-      picker.appendChild(o);
-    });
-    setVoice((tamil[0] || voices.filter(function (v) { return /^en-IN/i.test(v.lang); })[0]
-              || voices[0]).name);
-  }
-
-  function setVoice(name) {
-    voice = voices.filter(function (v) { return v.name === name; })[0] || null;
-    lang = voice && isTamil(voice) ? 'ta' : 'en';
-    if (picker) { picker.value = voice ? voice.name : ''; }
-    voiceNote.textContent = lang === 'ta'
-      ? ''
-      : 'No Tamil voice on this device, so she speaks English. Android: Settings → '
-        + 'Text-to-speech → install Tamil.';
-  }
-  loadVoices();
-  if (synth) { synth.addEventListener
-    ? synth.addEventListener('voiceschanged', loadVoices)
-    : (synth.onvoiceschanged = loadVoices); }
-  if (picker) { picker.addEventListener('change', function () { setVoice(picker.value); }); }
-
-  /* Browsers keep speech locked until the person has touched the page. One silent
-     utterance on the first tap unlocks it, and then everything after works. */
-  function prime() {
-    if (primed || !synth) { return; }
-    primed = true;
-    try {
-      var u = new SpeechSynthesisUtterance(' ');
-      u.volume = 0;
-      synth.speak(u);
-    } catch (e) { /* nothing to do: the next speak will tell us */ }
-  }
-
-  function noSound() {
-    if (warned) { return; }
-    warned = true;
-    voiceNote.textContent = 'No sound? Check the ringer switch and the volume — speech '
-      + 'follows the media volume, not the ringtone.';
-  }
+  /* She follows the page's own language. There is no voice list to consult any more:
+     the words appear in the bubble as text, and the only SOUND is your own, so Tamil
+     needs nothing installed. That was the entire problem before. */
+  var lang = /^ta/i.test(document.documentElement.lang || '') ? 'ta' : 'en';
+  var voiceNote = $('#voiceNote');
 
   var bubbleTimer;
   function show(text) {
@@ -489,28 +425,15 @@ body{
     lips.setAttribute('d', 'M142,156 Q160,168 178,156');
   }
 
-  function say(text, pitch, rate) {
+  /* What she says, and how long her mouth moves for. Nothing is synthesised: the bubble
+     is the line, and the only sound the page ever makes is your own voice played back.
+     While that is playing the mouth is driven by the actual loudness instead — see below. */
+  var mouthStop = null;
+  function say(text) {
     show(text);
-    if (!synth) { mouthOn(); setTimeout(mouthOff, 1300); return; }
-    var go = function () {
-      var u = new SpeechSynthesisUtterance(text);
-      held = u;                                   // held until it ends, or it is collected
-      if (voice) { u.voice = voice; u.lang = voice.lang; }
-      u.pitch = pitch === undefined ? 1.2 : pitch;
-      u.rate = rate === undefined ? 1 : rate;
-      var started = false;
-      u.onstart = function () { started = true; mouthOn(); };
-      u.onend = function () { held = null; mouthOff(); };
-      u.onerror = function () { held = null; mouthOff(); noSound(); };
-      try { synth.speak(u); } catch (e) { mouthOff(); noSound(); return; }
-      mouthOn();                                  // so she moves even if onstart is late
-      setTimeout(function () {
-        if (!started && !synth.speaking && !synth.pending) { mouthOff(); noSound(); }
-      }, 1400);
-    };
-    /* Only cancel what is actually running, and never in the same tick as the next speak. */
-    if (synth.speaking || synth.pending) { try { synth.cancel(); } catch (e) {} setTimeout(go, 140); }
-    else { go(); }
+    mouthOn();
+    clearTimeout(mouthStop);
+    mouthStop = setTimeout(mouthOff, 1200);
   }
   function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
 
@@ -592,56 +515,158 @@ body{
   [].slice.call(document.querySelectorAll('.hit')).forEach(function (area) {
     area.addEventListener('pointerdown', function (e) {
       e.preventDefault();
-      prime();
       look(e.clientX, e.clientY);
       act(area.dataset.part);
     });
   });
-  $('#waveBtn').addEventListener('click', function () { prime(); act('hand'); });
+  $('#waveBtn').addEventListener('click', function () { act('hand'); });
 
-  /* ---------- talking back ----------
-     The one thing that makes a toy like this feel alive: it repeats you, a little
-     higher and a little faster. Recognition is not in every browser and asks for the
-     microphone where it is, so the button says what happened either way. */
-  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var listening = false, rec = null;
+  /* ---------- hearing you, and giving it back higher ----------
+     Nothing here is text-to-speech. She records what you say and plays the SOUND back,
+     lifted in pitch, which is how a toy like this has always worked — and why it never
+     cared what language you spoke. Tamil needs no installed voice because nothing is
+     being synthesised: it is your own audio, pitched up.
+
+     The recording never leaves the device. It is decoded and played here, and then
+     dropped when the playback ends. That is also a real improvement on dictation, which
+     in most browsers uploads the audio to a server to be transcribed.
+
+     PITCH is the speed and so also the pitch: 1.34 is a perfect fourth up, 2^(5/12), so
+     six seconds of you comes back in four and a half. Keeping the original length instead
+     means cutting the sound into grains and overlapping them, which was the first thing
+     tried here — and measured, the grains do not line up in phase, so each harmonic lands
+     up to 18 Hz out in its own direction. That sounds like a broken radio rather than like
+     a higher voice. Running short is the honest trade, and the one the toy makes too. */
+  var PITCH = 1.34;                 // how much higher than you. 1 would be your own voice.
+  var MAX_SECONDS = 6;
+  var actx = null, micStream = null, rec = null, chunks = [], taping = false, capTimer = null;
   var btn = $('#listen');
 
-  btn.addEventListener('click', function () {
-    prime();
-    if (!SR) { say(LINES[lang].none, 1.1); return; }
-    if (listening) { try { rec.stop(); } catch (e) {} return; }
-    rec = new SR();
-    rec.lang = voice && voice.lang ? voice.lang : 'en-IN';
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onstart = function () {
-      listening = true;
+  function ctx() {
+    var C = window.AudioContext || window.webkitAudioContext;
+    if (!C) { return null; }
+    if (!actx) { actx = new C(); }
+    /* Phones start the audio engine suspended and only let a gesture wake it, so this is
+       called from the touch that starts recording rather than on load. */
+    if (actx.state === 'suspended' && actx.resume) { actx.resume(); }
+    return actx;
+  }
+
+  function canRecord() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia &&
+              window.MediaRecorder && (window.AudioContext || window.webkitAudioContext));
+  }
+
+  function note(text) { voiceNote.textContent = text || ''; }
+  function idle() {
+    taping = false;
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = LINES[lang].hold;
+  }
+
+  /* Her mouth follows the loudness of what is actually playing, so it is in time with the
+     words rather than guessing at them the way the idle timer does. */
+  function mouthFollows(analyser) {
+    var data = new Uint8Array(analyser.frequencyBinCount);
+    var going = true;
+    (function frame() {
+      if (!going) { return; }
+      analyser.getByteTimeDomainData(data);
+      var peak = 0;
+      for (var i = 0; i < data.length; i += 4) {
+        var v = Math.abs(data[i] - 128) / 128;
+        if (v > peak) { peak = v; }
+      }
+      var open = Math.min(1, peak * 3.2);
+      maw.style.transform = 'scaleY(' + open.toFixed(2) + ')';
+      lips.setAttribute('d', open > .45
+        ? 'M140,152 Q160,172 180,152' : 'M142,156 Q160,166 178,156');
+      if (window.requestAnimationFrame) { window.requestAnimationFrame(frame); }
+    })();
+    return function () { going = false; mouthOff(); };
+  }
+
+  function playBack(blob) {
+    var c = ctx();
+    if (!c) { note(LINES[lang].none); return; }
+    blob.arrayBuffer().then(function (buf) {
+      return c.decodeAudioData(buf);
+    }).then(function (sound) {
+      if (!sound || sound.duration < 0.25) { note(LINES[lang].brief); return; }
+      var source = c.createBufferSource();
+      source.buffer = sound;
+      source.playbackRate.value = PITCH;
+      var gain = c.createGain();
+      gain.gain.value = 1.15;                    // phone speakers are not generous
+      var analyser = c.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(gain); gain.connect(analyser); analyser.connect(c.destination);
+      clearTimeout(mouthStop);                   // the idle mouth must not fight the analyser
+      mouthOff();
+      var stop = mouthFollows(analyser);
+      head.style.transform = 'rotate(3deg)';
+      source.onended = function () { stop(); head.style.transform = ''; note(''); };
+      show('♪');
+      source.start();
+    })['catch'](function () {
+      note(LINES[lang].spoilt);
+      mouthOff();
+    });
+  }
+
+  function startTaping() {
+    if (taping) { return; }
+    if (!canRecord()) { note(LINES[lang].none); return; }
+    ctx();
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (s) {
+      micStream = s;
+      chunks = [];
+      rec = new MediaRecorder(s);
+      rec.ondataavailable = function (e) { if (e.data && e.data.size) { chunks.push(e.data); } };
+      rec.onstop = function () {
+        idle();
+        micStream.getTracks().forEach(function (tr) { tr.stop(); });
+        micStream = null;
+        if (chunks.length) { playBack(new Blob(chunks, { type: rec.mimeType || 'audio/webm' })); }
+        else { note(LINES[lang].brief); }
+      };
+      rec.start();
+      taping = true;
       btn.setAttribute('aria-pressed', 'true');
-      btn.textContent = 'Listening…';
-      hint.textContent = 'Say something.';
-    };
-    var done = function () {
-      listening = false;
-      btn.setAttribute('aria-pressed', 'false');
-      btn.textContent = 'Talk to her';
-      hint.textContent = 'Tap her hair, her face, her hands — she answers back.';
-    };
-    rec.onerror = function (e) {
-      done();
-      say(e.error === 'not-allowed'
-        ? 'I need the microphone to hear you.' : LINES[lang].none, 1.1);
-    };
-    /* Hold what was heard and say it on `onend`. Speaking from `onresult` talks over a
-       microphone that has not let go yet, and on iOS it is outside the gesture that started
-       it — which is most of why nothing ever came back. */
-    var heard = '';
-    rec.onresult = function (e) { heard = (e.results[0][0].transcript || '').trim(); };
-    rec.onend = function () {
-      done();
-      if (heard) { setTimeout(function () { say(heard, 1.5, 1.05); }, 320); }
-    };
-    try { rec.start(); } catch (err) { done(); }
+      btn.textContent = LINES[lang].busy;
+      note(LINES[lang].ask);
+      /* A finger that slides off the button never fires pointerup, and permission can be
+         granted long after the finger has gone. Either way it stops on its own. */
+      clearTimeout(capTimer);
+      capTimer = setTimeout(stopTaping, MAX_SECONDS * 1000);
+    })['catch'](function () {
+      idle();
+      note(LINES[lang].ask2);
+    });
+  }
+
+  function stopTaping() {
+    clearTimeout(capTimer);
+    if (!taping || !rec) { return; }
+    try { rec.stop(); } catch (e) { idle(); }
+  }
+
+  idle();
+  if (!canRecord()) { note(LINES[lang].none); }
+  btn.addEventListener('pointerdown', function (e) { e.preventDefault(); startTaping(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (k) {
+    btn.addEventListener(k, function () { stopTaping(); });
+  });
+  /* Keyboards do not send pointer events, so the button would be dead to them. A tap also
+     fires a click after pointerup, which would start a second recording — the difference
+     is that a keyboard click carries no click count, so `detail` is 0. That one press
+     records for a couple of seconds instead of for as long as it is held. */
+  btn.addEventListener('click', function (e) {
+    if (e.detail) { return; }
+    if (taping) { stopTaping(); return; }
+    startTaping();
+    clearTimeout(capTimer);
+    capTimer = setTimeout(stopTaping, 2600);
   });
 
   /* Three taps on the sign-off adds ?valid=1 and reloads. Unchanged. */
@@ -657,6 +682,7 @@ body{
     }
   });
 
+  hint.textContent = LINES[lang].hint;
   show(pick(LINES[lang].idle));
 })();
 </script>

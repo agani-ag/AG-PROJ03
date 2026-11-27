@@ -6,6 +6,7 @@ nobody notices. And that a name arriving from a URL cannot reach a file outside 
 
 Run: python manage.py test pages
 """
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -158,3 +159,60 @@ class TheRealFolderTests(TestCase):
         body = self.client.get(reverse('pages')).content.decode()
         for path in shipped:
             self.assertIn(path.name, body)
+
+class TheCharacterPageTests(TestCase):
+    """The one page with a character on it, and the few things about her that rot silently.
+
+    She answers in your own voice played back higher, not in a synthesised one. That is the
+    whole reason she works in Tamil: a browser cannot speak Tamil without a Tamil voice
+    installed, and almost none have one, so the earlier version was mute for the people this
+    page is written for. Nothing here can prove she looks right. These prove the parts that
+    would fail quietly — a reference to an element that no longer exists, a return of the
+    speech API, a network dependency on a page that has to paint on a bad connection.
+    """
+
+    page = Path(views.HTML_DIR) / 'melvins-image-station.html'
+
+    def setUp(self):
+        self.assertTrue(self.page.exists(), f'{self.page.name} has moved or gone')
+        self.html = self.page.read_text(encoding='utf-8')
+        self.script = re.search(r'<script>(.*?)</script>', self.html, re.S).group(1)
+
+    def test_every_element_the_script_reaches_for_is_in_the_page(self):
+        """The bug this catches: deleting markup and leaving the code that reads it.
+
+        It happened here. The voice picker went, and two handlers kept calling a function
+        that had gone with it — which throws on the first tap and takes every later
+        reaction down with it, while the page still looks perfectly fine.
+        """
+        wanted = set(re.findall(r"""\$\('#([A-Za-z0-9_-]+)'\)""", self.script))
+        wanted |= set(re.findall(r"""getElementById\('([A-Za-z0-9_-]+)'\)""", self.script))
+        self.assertTrue(wanted, 'found no element lookups at all — has the script changed shape?')
+        present = set(re.findall(r'\bid="([A-Za-z0-9_-]+)"', self.html))
+        self.assertEqual(wanted - present, set())
+
+    def test_she_plays_your_voice_back_rather_than_speaking(self):
+        for gone in ('speechSynthesis', 'SpeechRecognition', 'SpeechSynthesisUtterance'):
+            self.assertNotIn(gone, self.html, f'{gone} is back; Tamil will be silent again')
+        for needed in ('getUserMedia', 'MediaRecorder', 'decodeAudioData', 'playbackRate'):
+            self.assertIn(needed, self.script, f'{needed} has gone; she cannot answer')
+
+    def test_the_pitch_is_the_speed_and_is_actually_higher(self):
+        """A rate of 1 would hand back your own voice and still look like it worked."""
+        pitch = float(re.search(r'var PITCH = ([\d.]+);', self.script).group(1))
+        self.assertGreater(pitch, 1.1)
+        self.assertLess(pitch, 1.6)
+        self.assertIn('source.playbackRate.value = PITCH;', self.script)
+
+    def test_she_says_everything_in_both_languages(self):
+        """Tamil and English have to carry the same keys, or one of them shows `undefined`."""
+        blocks = re.findall(r'^    (ta|en): \{(.*?)^    \}', self.script, re.S | re.M)
+        self.assertEqual(len(blocks), 2, 'expected a Tamil block and an English one')
+        keys = [set(re.findall(r'^      (\w+):', body, re.M)) for _, body in blocks]
+        self.assertEqual(keys[0], keys[1])
+        self.assertTrue({'hold', 'busy', 'ask', 'brief', 'spoilt', 'none'} <= keys[0])
+
+    def test_it_needs_nothing_off_the_network(self):
+        """It replaced a CDN stylesheet. On a phone on a bad line that was the whole page."""
+        outside = re.findall(r'(?:src|href)="(https?:)?//[^"]+', self.html)
+        self.assertEqual(outside, [])
