@@ -278,13 +278,30 @@ body.fit .felt { height: 100%; justify-content: space-between; }
 
 /* The turn clock: a hairline that drains, under the table where your eyes already are. No
    number — watching a number is not the same as noticing. */
+/* The clock is as loud as it is urgent, and no louder.
+
+   It used to drain at full accent across most of the width, directly above the sentence
+   that says whose turn it is — which made the loudest thing on the table a countdown
+   rather than the thing you are supposed to do about it. There should be exactly one
+   event on a screen and everything energetic should extend it; a bar shouting over the
+   instruction is two events arguing.
+
+   So: somebody else's clock is a hairline you can ignore, yours is the accent, and the
+   last few seconds are red. The information is identical. Only the volume moved. */
 .clock { height: 3px; margin: 10px 46px 0; border-radius: 3px; background: var(--bd); }
 .clock i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 3px;
-           background: var(--me); transition: width 1s linear, background .2s ease; }
-.clock.low i { background: var(--bad); }
+           background: var(--bd); filter: brightness(.92);
+           transition: width 1s linear, background .25s ease; }
+.clock.mine i { background: var(--me); filter: none; }
+.clock.low i { background: var(--bad); filter: none; }
+
+/* And the sentence is the event when the event is yours. It was grey while the name of
+   whoever you are waiting for was the only thing in full ink — the quiet state shouting
+   and the loud one whispering, exactly the wrong way round. */
 .said { text-align: center; font-size: 12.5px; color: var(--mut); margin-top: 8px;
-        min-height: 19px; padding: 0 16px; }
+        min-height: 19px; padding: 0 16px; transition: color .2s ease; }
 .said b { color: var(--ink); font-weight: 650; }
+.said.mine { color: var(--ink); font-weight: 600; }
 
 /* ---------- the ones you are holding ----------
    They stand in a line at the front, every one of them whole. This is what a fan of cards
@@ -319,6 +336,16 @@ body.fit .wrap, body.fit #table, body.fit #play, .felt, .line, .middle { min-wid
                     60% { opacity: 1; }
                     to { transform: var(--to); opacity: 1; } }
 .who.joining { animation: joinIn .42s cubic-bezier(.2,.8,.3,1) backwards; }
+
+/* The round ending. Whoever went out last is standing in the middle of the table one
+   moment and heading the result screen the next, and they are the same person — so they
+   travel, rather than the table being replaced by a different picture of them.
+
+   A boundary where nothing survives reads as a slide even when both sides of it are
+   animated. This is the one boundary in the game worth carrying: it is the moment
+   somebody won. */
+@keyframes arrive { from { transform: var(--from); } to { transform: none; } }
+.who.arriving { animation: arrive .5s cubic-bezier(.2,.8,.3,1) backwards; }
 
 .acts { display: flex; gap: 10px; padding: 4px 16px 0; }
 /* "Step away" and "End the table" were 18 pixels tall, under the 24x24 that WCAG 2.2
@@ -360,7 +387,8 @@ body.fit .wrap, body.fit #table, body.fit #play, .felt, .line, .middle { min-wid
 @media (prefers-reduced-motion: reduce) {
   .who, .wash, .clock i, .sw, .sw i, .opp { transition: none; }
   .body { animation: none; }
-  .who.leaving, .who.joining, .queue.calling .who:last-child { animation: none; }
+  .who.leaving, .who.joining, .who.arriving,
+  .queue.calling .who:last-child { animation: none; }
   .felt { perspective: none; }
   .floor { display: none; }
 }

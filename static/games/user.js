@@ -272,6 +272,26 @@
              y: a.top - b.top + (a.height - b.height) / 2 };
   }
 
+  /* Where something is on the screen right now, before the state it belongs to is
+     replaced. Read at the moment of the change and nowhere else: a rect costs a layout,
+     and this is the one boundary worth paying for. */
+  function boxOf(node) {
+    if (!node || !node.getBoundingClientRect) { return null; }
+    var r = node.getBoundingClientRect();
+    return r.width ? r : null;
+  }
+
+  /* Put a newly drawn figure back where the old one was, and let it travel in. */
+  function arrive(node, from) {
+    var to = boxOf(node);
+    if (!node || !from || !to) { return; }
+    var dx = from.left - to.left + (from.width - to.width) / 2;
+    var dy = from.top - to.top + (from.height - to.height) / 2;
+    node.style.setProperty("--from", "translate(" + dx.toFixed(0) + "px," + dy.toFixed(0)
+      + "px) scale(" + (from.width / to.width).toFixed(3) + ")");
+    once(node, "arriving");
+  }
+
   function once(node, cls) {
     node.classList.add(cls);
     var off = function () {
@@ -310,6 +330,7 @@
   function say(game) {
     var parts = sentence(game);
     var node = el("said");
+    node.classList.toggle("mine", game.turn === state.you);
     clear(node);
     if (parts[0]) { node.appendChild(make("b", null, parts[0])); }
     node.appendChild(document.createTextNode(parts[1]));
@@ -361,6 +382,7 @@
       fill.style.width = (share * 100).toFixed(1) + "%";
       bar.classList.toggle("low", share < 0.18);
     };
+    bar.classList.toggle("mine", game.turn === state.you);
     clearInterval(clockTimer);
     tick();
     clockTimer = setInterval(tick, 1000);
@@ -642,11 +664,19 @@
       tableAt = null;
       clear(el("hand"));
     }
+    /* The round ending: catch where the one in the middle is standing, while the table is
+       still the table. A moment later this element belongs to a screen that does not
+       exist yet, and the rect is gone. */
+    var ending = state.game && state.game.phase === "playing"
+                 && data.game && data.game.phase !== "playing";
+    var stood = ending ? boxOf(el("disc").lastElementChild) : null;
     state = data;
     var oops = el("oops");
     if (data.error) { oops.textContent = data.error; oops.hidden = false; }
     else { oops.hidden = true; }
     render();
+    /* After the render, because the element to walk into does not exist until then. */
+    if (stood) { arrive(el("over-card").firstElementChild, stood); }
   }
 
   function send(move) {

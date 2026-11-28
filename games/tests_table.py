@@ -1090,3 +1090,55 @@ class ItCanBeReadTests(TestCase):
                     self.assertGreaterEqual(
                         round(got, 1), 4.5,
                         f'{theme} --{name} is {got:.1f}:1 on --bg')
+
+class NothingMovesIfYouAskedItNotToTests(TestCase):
+    """Every animation this module defines is switched off under prefers-reduced-motion.
+
+    It is the kind of rule that rots by addition: nobody breaks it, somebody adds a fourth
+    animation and forgets the block at the bottom, and the person who asked for less
+    movement gets it anyway. So this finds the animations rather than being told them —
+    any new one has to be turned off or this fails.
+
+    Somebody who has asked for less movement has often asked because movement makes them
+    unwell, which is why the perspective goes too and not only the keyframes.
+    """
+
+    def css(self):
+        return (Path(django_settings.BASE_DIR) / 'static' / 'games'
+                / 'user.css').read_text(encoding='utf-8')
+
+    def quiet_block(self):
+        css = self.css()
+        start = css.index('@media (prefers-reduced-motion: reduce)')
+        depth, i = 0, css.index('{', start)
+        for j in range(i, len(css)):
+            if css[j] == '{':
+                depth += 1
+            elif css[j] == '}':
+                depth -= 1
+                if depth == 0:
+                    return css[i:j]
+        raise AssertionError('the reduced-motion block is not closed')
+
+    def test_every_animation_is_named_in_the_quiet_block(self):
+        css = self.css()
+        quiet = self.quiet_block()
+        defined = set(re.findall(r'@keyframes\s+([\w-]+)', css))
+        self.assertTrue(defined, 'no keyframes at all — has the table stopped moving?')
+        used = re.findall(r'([^{}@]+)\{[^{}]*animation:\s*(?!none)([\w-]+)', css)
+        checked = 0
+        for selector, name in used:
+            selector = ' '.join(selector.split()).lstrip('} ').strip()
+            if not selector or name not in defined:
+                continue
+            checked += 1
+            with self.subTest(animation=name, selector=selector):
+                self.assertIn(selector, quiet,
+                              f'{selector} runs "{name}" and is not switched off')
+        self.assertGreaterEqual(checked, 4, 'found suspiciously few animations to check')
+
+    def test_the_table_goes_flat_as_well_as_still(self):
+        """Depth on a screen is made of movement as much as of perspective."""
+        quiet = self.quiet_block()
+        self.assertRegex(quiet, r'\.felt\s*\{[^}]*perspective:\s*none')
+        self.assertRegex(quiet, r'\.floor\s*\{[^}]*display:\s*none')
