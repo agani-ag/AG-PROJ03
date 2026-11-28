@@ -11,15 +11,21 @@
    in twelve cannot separate them — so every card prints its value three times, in the middle
    and in both corners, and the colour in play is named in words under the pile. */
 :root {
-  --bg: #f6f7fb; --surface: #ffffff; --ink: #141822; --mut: #6b7483; --faint: #9aa2b1;
+  --bg: #f6f7fb; --surface: #ffffff; --ink: #141822; --mut: #697281; --faint: #677286;
   --bd: #e8ebf2; --soft: #f1f3f9; --me: #4f46e5; --me-soft: #eceafe;
+  /* Measured, not picked. --faint was 2.4:1 on the page background and --mut 4.4:1, both
+     under the 4.5:1 that ordinary text needs; the smallest print on this module is the
+     line under the table code and the count under the queue, which are exactly the things
+     somebody squints at. The hue is unchanged — only the lightness moved, by the least
+     that cleared it. */
   --ok: #15803d; --bad: #dc2626; --bad-soft: #fdeded;
   --r: #e0243f; --y: #efa900; --g: #18a05a; --b: #1667cc; --wild: #1b1f2a;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 :root[data-theme="dark"] {
-  --bg: #11141c; --surface: #1a1e28; --ink: #e9ecf4; --mut: #949cad; --faint: #6b7384;
+  --bg: #11141c; --surface: #1a1e28; --ink: #e9ecf4; --mut: #949cad; --faint: #767e90;
   --bd: #262b38; --soft: #1f2430; --me: #8b85ff; --me-soft: #272450; --bad-soft: #3a1b1b;
+  --bad: #e14646;                      /* 3.8:1 on the dark background was not readable */
   --r: #ef4b60; --y: #f0b429; --g: #35c06c; --b: #4d94ef; --wild: #0b0e15;
 }
 
@@ -298,6 +304,13 @@ body.fit .felt { height: 100%; justify-content: space-between; }
 body.fit .wrap, body.fit #table, body.fit #play, .felt, .line, .middle { min-width: 0; }
 .line .who + .who { margin-left: -14px; }
 .line .who.on:active { transform: translateY(-15px); }
+/* While a move is in the air. Nothing is pretended to have happened — the one you tapped
+   is simply standing up, and the rest of the table stops answering so a second tap cannot
+   queue behind the first. */
+#table.sending .who.on, #table.sending .queue, #table.sending .acts .btn {
+  pointer-events: none;
+}
+#table.sending .said { opacity: .55; }
 
 @keyframes stepOut { from { transform: var(--from); opacity: 1; }
                      to { transform: var(--to); opacity: 0; } }

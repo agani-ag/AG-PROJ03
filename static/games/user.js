@@ -528,7 +528,15 @@
       if (!node) {
         node = who(index, { button: true });
         node.addEventListener("click", function () {
-          if (node.classList.contains("on")) { send({ what: "play", card: index }); }
+          if (!node.classList.contains("on")) { return; }
+          /* Stand them up the moment they are tapped, and leave them standing until the
+             answer comes back. The server still decides everything — this does not play
+             the card, it only says the tap landed. Without it there is a whole round trip
+             on a free host over mobile data where you have touched somebody and the table
+             has not moved, which reads as a dropped tap and gets tapped again.
+             :active only lasts while the finger is down, so it covers none of that. */
+          node.style.transform = "translateY(-20px) scale(1.04)";
+          send({ what: "play", card: index });
         });
         lineNodes[index] = node;
         arrived.push(node);
@@ -644,6 +652,7 @@
   function send(move) {
     if (busy) { return; }
     busy = true;
+    el("table").classList.add("sending");
     fetch(MOVE, {
       method: "POST",
       credentials: "same-origin",
@@ -653,7 +662,11 @@
       .then(function (r) { return r.json(); })
       .then(apply)
       .catch(function () { /* the next poll puts it right */ })
-      .then(function () { busy = false; etag = null; });
+      .then(function () {
+        busy = false;
+        etag = null;
+        el("table").classList.remove("sending");
+      });
   }
 
   el("draw-pile").addEventListener("click", function () {

@@ -960,3 +960,133 @@ class TheDeckIsPeopleTests(TestCase):
                            ('the template', self.room_template())):
             self.assertNotIn('class="uc"', text, what)
             self.assertNotIn('.uc ', text, what)
+
+def _srgb(channel):
+    channel /= 255
+    return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+
+def _luminance(rgb):
+    return 0.2126 * _srgb(rgb[0]) + 0.7152 * _srgb(rgb[1]) + 0.0722 * _srgb(rgb[2])
+
+
+def _rgb(text):
+    text = text.lstrip('#')
+    if len(text) == 3:
+        text = ''.join(c * 2 for c in text)
+    return tuple(int(text[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def contrast(one, other):
+    """The WCAG ratio between two colours, 1:1 to 21:1."""
+    a, b = _luminance(_rgb(one)), _luminance(_rgb(other))
+    high, low = max(a, b), min(a, b)
+    return (high + 0.05) / (low + 0.05)
+
+
+def _at(stops, want):
+    """What a gradient resolves to at `want` along its length."""
+    previous = stops[0]
+    for offset, colour in stops:
+        if offset >= want:
+            last_offset, last_colour = previous
+            if offset == last_offset:
+                return '#%02x%02x%02x' % _rgb(colour)
+            share = (want - last_offset) / (offset - last_offset)
+            a, b = _rgb(last_colour), _rgb(colour)
+            return '#%02x%02x%02x' % tuple(
+                round(a[i] + share * (b[i] - a[i])) for i in range(3))
+        previous = (offset, colour)
+    return '#%02x%02x%02x' % _rgb(stops[-1][1])
+
+
+class ItCanBeReadTests(TestCase):
+    """The value on a figure's chest is the only thing on this table that MUST be read.
+
+    It is printed on a gradient, which makes the usual way of checking this useless in both
+    directions: measured against the lightest stop everything fails, and against the mid
+    colour anybody would quote everything flatters itself. So this resolves the gradient AT
+    THE POINT THE GLYPH SITS and measures against that.
+
+    Doing it found that white on green was 2.6:1 — under even the 3:1 that large text needs
+    — on the one table where colour is deliberately never the only signal. The fix was to
+    bring each mid stop forward and down, which darkens the middle of the body without
+    touching the highlight at the top-left, where there is no type.
+
+    The glyph also carries a dark outline, which helps a real eye and is not counted here.
+    """
+
+    # Where the glyph is, taken from the drawing rather than guessed: the torso path's
+    # bounds, and the text baseline the script sets.
+    BODY = (14.4, 41.0, 49.6, 81.0)
+    SIZE = 26.0
+
+    def setUp(self):
+        base = Path(django_settings.BASE_DIR)
+        self.page = (base / 'games' / 'templates' / 'games' / 'user'
+                     / 'room.html').read_text(encoding='utf-8')
+        self.css = (base / 'static' / 'games' / 'user.css').read_text(encoding='utf-8')
+        self.js = (base / 'static' / 'games' / 'user.js').read_text(encoding='utf-8')
+
+    def gradients(self):
+        found = {}
+        for m in re.finditer(
+                r'<radialGradient id="(k-[a-z])"([^>]*)>(.*?)</radialGradient>',
+                self.page, re.S):
+            head, body = m.group(2), m.group(3)
+            found[m.group(1)] = (
+                float(re.search(r'cx="(\d+)%', head).group(1)) / 100,
+                float(re.search(r'cy="(\d+)%', head).group(1)) / 100,
+                float(re.search(r'r="(\d+)%', head).group(1)) / 100,
+                [(float(o or 0), c) for o, c in re.findall(
+                    r'offset="([\d.]*)"\s+stop-color="(#[0-9a-fA-F]{6})"', body)])
+        return found
+
+    def behind_the_glyph(self, key):
+        cx, cy, radius, stops = self.gradients()[key]
+        baseline = float(re.search(r'y: "(\d+)", "text-anchor"', self.js).group(1))
+        x = (32.0 - self.BODY[0]) / (self.BODY[2] - self.BODY[0])
+        y = ((baseline - self.SIZE * 0.35) - self.BODY[1]) / (self.BODY[3] - self.BODY[1])
+        reach = min(1.0, ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 / radius)
+        return _at(stops, reach)
+
+    def test_the_value_reads_on_every_colour_it_is_printed_on(self):
+        """Large bold text needs 3:1 for AA and 4.5:1 for AAA. This asks for AAA, because
+        the value IS the game — a 7 you cannot read is not a card you can play."""
+        ink = {'k-y': '#4a3300'}                 # yellow is the one that cannot take white
+        for key, colour in (('k-r', 'red'), ('k-y', 'yellow'),
+                            ('k-g', 'green'), ('k-b', 'blue')):
+            with self.subTest(colour=colour):
+                behind = self.behind_the_glyph(key)
+                got = contrast(ink.get(key, '#ffffff'), behind)
+                self.assertGreaterEqual(
+                    round(got, 1), 4.5,
+                    f'{colour}: the value is {got:.1f}:1 on {behind} behind the glyph')
+
+    def test_the_ink_chosen_for_each_colour_is_the_better_of_the_two(self):
+        """Not a style choice. Whichever of white or near-black reads better on the colour
+        behind the glyph is the one that should be there, and yellow is the only one of the
+        four where that is not white."""
+        for key in ('k-r', 'k-y', 'k-g', 'k-b'):
+            behind = self.behind_the_glyph(key)
+            on_white, on_dark = contrast('#ffffff', behind), contrast('#4a3300', behind)
+            better = '#4a3300' if on_dark > on_white else '#ffffff'
+            used = '#4a3300' if key == 'k-y' else '#ffffff'
+            self.assertEqual(used, better, f'{key} is printed in the worse of the two inks')
+
+    def test_every_word_on_the_table_clears_AA(self):
+        """The smallest print was 2.4:1 against the page, which is the line under the table
+        code and the count under the queue — the things somebody squints at."""
+        light = dict(re.findall(r'--(\w[\w-]*): (#[0-9a-fA-F]{3,6});',
+                                self.css.split(':root[data-theme="dark"]')[0]))
+        dark = dict(light)
+        dark.update(dict(re.findall(
+            r'--(\w[\w-]*): (#[0-9a-fA-F]{3,6});',
+            self.css.split(':root[data-theme="dark"]')[1].split('}')[0])))
+        for theme, tokens in (('light', light), ('dark', dark)):
+            for name in ('ink', 'mut', 'faint', 'me', 'bad'):
+                with self.subTest(theme=theme, token=name):
+                    got = contrast(tokens[name], tokens['bg'])
+                    self.assertGreaterEqual(
+                        round(got, 1), 4.5,
+                        f'{theme} --{name} is {got:.1f}:1 on --bg')
