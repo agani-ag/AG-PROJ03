@@ -65,15 +65,18 @@ body.fit .nav { position: static; }
 body.fit #table { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 body.fit #play { flex: 1; min-height: 0; }
 body.fit .felt { height: 100%; justify-content: space-between; }
-/* A short screen, or a hand that has grown: the cards give up height before the table
+/* A short screen, or a hand that has grown: everybody gives up height before the table
    gives up fitting. */
-@media (max-height: 720px) {
-  .uc { width: 54px; height: 80px; } .uc .oval { width: 40px; height: 59px; }
-  .uc .mid { font-size: 23px; } .uc .mid .ic { width: 24px; height: 24px; }
-  .uc.lg { width: 66px; height: 98px; } .uc.lg .oval { width: 49px; height: 73px; }
-  .uc.lg .mid { font-size: 28px; } .uc.lg .mid .ic { width: 30px; height: 30px; }
-  .disc { width: 66px; height: 98px; } .fan { min-height: 108px; }
-  .middle { padding: 6px 0 0; } .btn { min-height: 46px; }
+@media (max-height: 700px) {
+  .who { width: 48px; height: 81px; }
+  .played .who { width: 62px; height: 105px; }
+  .queue { width: 62px; height: 105px; } .queue .who { width: 46px; height: 78px; }
+  .line { min-height: 86px; } .middle { padding: 4px 0 0; } .btn { min-height: 46px; }
+}
+@media (min-height: 820px) {
+  .who { width: 66px; height: 112px; }
+  .played .who { width: 92px; height: 156px; }
+  .queue { width: 92px; height: 156px; } .queue .who { width: 66px; height: 112px; }
 }
 
 .nav { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface);
@@ -145,59 +148,99 @@ body.fit .felt { height: 100%; justify-content: space-between; }
 .seg input:checked + span { border-color: var(--me); color: var(--me); font-weight: 650; }
 
 /* ============================================================
-   THE CARD — a coloured face, a tilted white oval, and the value
-   three times so the colour is confirmation and never the signal.
-   ============================================================ */
-.uc { position: relative; width: 62px; height: 92px; border-radius: 11px; background: #fff;
-      padding: 4px; flex: none; border: 0; cursor: default;
-      box-shadow: 0 1px 2px rgba(17,22,31,.18); }
-.uc .face { position: relative; height: 100%; border-radius: 8px; overflow: hidden;
-            display: grid; place-items: center; background: var(--wild); }
-.uc.c-r .face { background: var(--r); } .uc.c-y .face { background: var(--y); }
-.uc.c-g .face { background: var(--g); } .uc.c-b .face { background: var(--b); }
-.uc .oval { position: absolute; width: 46px; height: 68px; border-radius: 50%;
-            background: #fff; transform: rotate(-24deg); }
-.uc .mid { position: relative; font-weight: 800; font-style: italic; font-size: 27px;
-           line-height: 1; letter-spacing: -.03em; color: var(--wild); }
-.uc.c-r .mid { color: var(--r); } .uc.c-y .mid { color: #b87d00; }
-.uc.c-g .mid { color: var(--g); } .uc.c-b .mid { color: var(--b); }
-.uc .mid .ic { width: 28px; height: 28px; stroke: none; }
-.uc .cn { position: absolute; font-weight: 800; font-style: italic; font-size: 11.5px;
-          color: #fff; line-height: 1; }
-.uc .cn.tl { top: 5px; left: 6px; }
-.uc .cn.br { bottom: 5px; right: 6px; transform: rotate(180deg); }
-.uc .cn .ic { width: 11px; height: 11px; stroke: none; }
-.uc.c-w .face { background: conic-gradient(var(--r) 0 25%, var(--y) 0 50%,
-                                           var(--g) 0 75%, var(--b) 0); }
-.uc.c-w .mid { color: #1b1f2a; }
-.uc.back .oval { width: 44px; height: 66px; background: none;
-                 border: 3px solid rgba(255,255,255,.9); }
-.uc.back .mid { color: #fff; font-size: 15px; letter-spacing: .02em; }
-.uc.sm { width: 44px; height: 66px; border-radius: 8px; padding: 3px; }
-.uc.sm .oval { width: 33px; height: 48px; } .uc.sm .mid { font-size: 19px; }
-.uc.sm .mid .ic { width: 19px; height: 19px; } .uc.sm .cn { font-size: 9px; }
-.uc.lg { width: 78px; height: 116px; border-radius: 14px; }
-.uc.lg .oval { width: 58px; height: 86px; } .uc.lg .mid { font-size: 34px; }
-.uc.lg .mid .ic { width: 36px; height: 36px; }
+   THE DECK IS PEOPLE
 
-/* ---------- the table ---------- */
+   There are no cards. Every one of the hundred and eight is somebody in a coloured kit
+   with their value across their chest, and you do not play a card, you send somebody out.
+   The middle of the table is whoever went out last, standing there.
+
+   A shirt number is the thing being borrowed, and it is designed for exactly this job:
+   read at a distance, at an angle, in a hurry. It also puts the value in ONE fixed place
+   on every one of them, which beats a playing card — a card prints its value three times
+   precisely because fanning a hand covers two of them. Nobody is fanned here. They stand
+   in a line and all of each of them is visible.
+
+   THE COLOUR IS STILL NEVER THE ONLY SIGNAL. Red and green are two of the four and about
+   one man in twelve cannot separate them, so the value on the chest carries the meaning,
+   the colour only agrees with it, and the colour in play is named in words underneath.
+
+   HOW THE MOULDING IS DONE, because it is four things and not one:
+     the volume      a radial gradient with a real range — nearly white to nearly black
+                     across one form, with the base colour only a band in the middle
+     the rim light   each form drawn twice, the second copy nudged up and left, which
+                     leaves a crescent of a lighter tint along the shaded side. Without it
+                     a shaded ball is a flat disc with a gradient on it
+     the contact     a hard dark line where the head sits onto the shoulders, a shadow the
+                     eyes sit in, and two floor shadows: tight and dark where it touches,
+                     wide and soft for the rest
+     hands and feet  a sphere on the end of each limb. A bare tube reads as a stick
+
+   And NO blur filters anywhere. A blur is the obvious way to soften a highlight and the
+   expensive way; with a dozen of them on a phone it is what costs the frame rate. A
+   gradient that fades to transparent does the same for nothing. The gradients themselves
+   are defined once in the page and every figure points at them.
+   ============================================================ */
+.who { position: relative; display: block; width: 56px; height: 95px; flex: none;
+       border: 0; padding: 0; background: none;
+       transition: transform .2s cubic-bezier(.22,.7,.3,1), filter .18s ease,
+                   opacity .18s ease; }
+.who svg { display: block; width: 100%; height: 100%; overflow: visible; }
+/* Out of the light means IN SHADOW — darker, with the colour still in it. Taking the
+   saturation out instead turns a moulded figure chalky, because every stop in the gradient
+   moves at once. And it is never only the shading: one you cannot send out is also not
+   standing forward and does not answer a tap, so it is three signals, none of them colour. */
+.who.off { filter: brightness(.74) saturate(.85) contrast(1.04); opacity: .9;
+           cursor: default; }
+.who.on { cursor: pointer; }
+.who .shadow { opacity: 1; }
+/* The one you have just been handed, ringed, so you can see what you got. Without it a
+   draw is somebody appearing in a line of seven and a turn that may already be over. */
+.who.just::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 86%;
+                   height: 86%; margin-left: -43%; border-radius: 50%;
+                   box-shadow: 0 0 0 2.5px var(--me); opacity: .55; pointer-events: none; }
+
+/* They shift their weight, so a table nobody has touched is not a photograph. */
+@keyframes sway { 50% { transform: translateY(-1.6px); } }
+.body { animation: sway 3.8s ease-in-out infinite; }
+
+/* ---------- the table ----------
+   One perspective for the whole felt. The floor is tilted away from you and everybody on
+   it is drawn upright, which is what makes them people standing on a surface rather than
+   stickers lying on one. */
 .felt { position: relative; display: flex; flex-direction: column; gap: 2px; overflow: hidden;
-        padding-top: 4px; }
-/* The colour in play is a wash behind the pile rather than a band of its own: one region
-   fewer, and it reads faster because it is where the cards already are. */
-.wash { position: absolute; left: 50%; top: 92px; width: 460px; height: 460px; margin-left: -230px;
-        border-radius: 50%; opacity: .16; filter: blur(34px); pointer-events: none;
+        padding-top: 4px; perspective: 1000px; perspective-origin: 50% 38%; }
+.floor { position: absolute; left: 50%; top: 2%; width: 150%; height: 78%; margin-left: -75%;
+         border-radius: 50%; background: radial-gradient(ellipse at 50% 36%, var(--surface),
+         var(--soft) 66%); border: 1px solid var(--bd); z-index: 0;
+         box-shadow: inset 0 0 0 8px rgba(125,135,155,.08),
+                     0 20px 44px rgba(17,22,31,.06);
+         transform: rotateX(68deg) translateZ(-40px); pointer-events: none; }
+/* The floor is absolutely positioned and the rest of the table is not, so without this it
+   paints OVER the line telling you whose turn it is. */
+.opps, .middle, .clock, .said, .line, .acts { position: relative; z-index: 1; }
+
+/* The colour in play, as the light the one in the middle is standing in. */
+/* The colour in play, as the light the one in the middle is standing in. Weaker than it
+   wants to be, and smaller: the mockup's felt was a third of a screen and this one is most
+   of one, so the same circle at the same strength turned the whole table pink and took the
+   moulding off every figure on it. It is light on a surface, not a dye in the baize. */
+.wash { position: absolute; left: 50%; top: 20%; width: 210px; height: 210px;
+        margin-left: -105px; border-radius: 50%; opacity: .17; filter: blur(26px);
+        pointer-events: none; z-index: 0;
         transition: background .22s ease, opacity .22s ease; }
 .wash.c-r { background: var(--r); } .wash.c-y { background: var(--y); }
 .wash.c-g { background: var(--g); } .wash.c-b { background: var(--b); }
 .wash.c-w { background: conic-gradient(var(--r), var(--y), var(--g), var(--b), var(--r));
-            opacity: .2; }
+            opacity: .34; }
 
-.opps { position: relative; display: flex; justify-content: center; flex-wrap: wrap; gap: 7px;
-        padding: 2px 4px 0; }
+/* ---------- who else is at the table ----------
+   A name and a number, and nothing more. All the drawing went into the deck, and two kinds
+   of person on one screen — the ones you are playing and the ones you are playing WITH —
+   would be one kind too many to tell apart at a glance. */
+.opps { display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; padding: 2px 4px 0; }
 .opp { display: flex; align-items: center; gap: 7px; padding: 5px 11px 5px 5px;
        border-radius: 999px; background: var(--surface); border: 1px solid var(--bd);
-       font-size: 12.5px; }
+       font-size: 12.5px; transition: border-color .18s ease, background .18s ease; }
 .opp .av { width: 26px; height: 26px; border-radius: 9px; font-size: 11px;
            background: var(--soft); color: var(--mut); }
 .opp .nm { font-weight: 600; }
@@ -207,41 +250,63 @@ body.fit .felt { height: 100%; justify-content: space-between; }
 .opp .uno { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: #fff;
             background: var(--bad); padding: 2px 6px; border-radius: 999px; }
 
-.middle { position: relative; display: flex; align-items: center; justify-content: center;
-          gap: 26px; padding: 12px 0 2px; }
-.pilewrap { display: grid; place-items: center; gap: 7px; }
-.pilewrap .lab { font-size: 11px; color: var(--mut); font-variant-numeric: tabular-nums; }
-/* The pile keeps the last two underneath at an angle: you can see what it was, and the table
-   looks played-on rather than reset. */
-.disc { position: relative; width: 78px; height: 116px; }
-.disc .uc { position: absolute; left: 0; top: 0; }
-.disc .uc.sm { left: 17px; top: 25px; }
-.disc .u1 { transform: rotate(-9deg) translate(-5px, 2px); opacity: .5; }
-.disc .u2 { transform: rotate(6deg) translate(4px, -1px); opacity: .75; }
-.disc .u3 { transform: rotate(-2deg); }
+/* ---------- the middle of the floor ---------- */
+.middle { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+          gap: 26px; padding: 8px 0 0; transform-style: preserve-3d; }
+.spot { display: grid; place-items: center; gap: 5px; transform-style: preserve-3d; }
+.spot .lab { font-size: 11px; color: var(--mut); font-variant-numeric: tabular-nums; }
 
-/* The turn clock: a hairline that drains, under the pile where your eyes already are. No
+/* Whoever went out last stands in the middle, with the last two behind them. */
+.played { position: relative; display: grid; place-items: end center; }
+.played .who { width: 78px; height: 132px; }
+/* The ones not dealt yet, waiting with their backs to you. Two of them: each has hands and
+   feet, and three overlapping read as one animal with a lot of limbs. The number underneath
+   says how many there really are. */
+.queue { position: relative; width: 78px; height: 132px; border: 0; background: none;
+         padding: 0; cursor: pointer; transform-style: preserve-3d; }
+.queue[disabled] { cursor: default; opacity: .55; }
+.queue .who { position: absolute; left: 0; bottom: 0; width: 56px; height: 95px;
+              transform-origin: 50% 100%; }
+@keyframes called { 40% { transform: translateY(-8px) scale(1.05); } }
+.queue.calling .who:last-child { animation: called .3s ease; }
+
+/* The turn clock: a hairline that drains, under the table where your eyes already are. No
    number — watching a number is not the same as noticing. */
-.clock { position: relative; height: 3px; margin: 12px 46px 0; border-radius: 3px;
-         background: var(--bd); }
+.clock { height: 3px; margin: 10px 46px 0; border-radius: 3px; background: var(--bd); }
 .clock i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 3px;
            background: var(--me); transition: width 1s linear, background .2s ease; }
 .clock.low i { background: var(--bad); }
-.said { text-align: center; font-size: 12.5px; color: var(--mut); margin-top: 9px;
+.said { text-align: center; font-size: 12.5px; color: var(--mut); margin-top: 8px;
         min-height: 19px; padding: 0 16px; }
 .said b { color: var(--ink); font-weight: 650; }
 
-/* ---------- the fan ---------- */
-.fan { display: flex; justify-content: center; align-items: flex-end; min-height: 128px;
-       padding: 6px 10px 2px; }
-.fan .uc { margin-left: -22px; transform-origin: 50% 120%;
-           transition: transform .16s ease, filter .16s ease, opacity .16s ease; }
-.fan .uc:first-child { margin-left: 0; }
-.fan .uc.on { cursor: pointer; }
-.fan .uc.off { filter: grayscale(.55); opacity: .5; }
-/* The card you just drew, ringed so you can see what you got. Without it a draw is a card
-   appearing somewhere in a fan of seven and a turn that may already be over. */
-.fan .uc.just { box-shadow: 0 0 0 3px var(--me), 0 2px 6px rgba(17,22,31,.28); }
+/* ---------- the ones you are holding ----------
+   They stand in a line at the front, every one of them whole. This is what a fan of cards
+   cannot do: a fan hides two of the three places a card prints its value, and here nothing
+   is covering anything. */
+.line { display: flex; justify-content: center; align-items: flex-end; min-height: 104px;
+        padding: 4px 8px 2px; transform-style: preserve-3d; }
+/* A flex item will not shrink below the width of its own contents, and seven people side
+   by side are wider than a phone. Without this the hand pushed the whole page out to 436
+   pixels on a 390 pixel screen — and then the measuring that closes the line up measured
+   the pushed-out width, decided there was room to spare, and left them spread. A feedback
+   loop: the overflow hid the overflow.
+
+   The overlap below is the floor under that. The measuring can only ever close them up
+   further, so even before a single line of script has run the line is no wider than the
+   screen it is on. */
+body.fit .wrap, body.fit #table, body.fit #play, .felt, .line, .middle { min-width: 0; }
+.line .who + .who { margin-left: -14px; }
+.line .who.on:active { transform: translateY(-15px); }
+
+@keyframes stepOut { from { transform: var(--from); opacity: 1; }
+                     to { transform: var(--to); opacity: 0; } }
+.who.leaving { animation: stepOut .36s ease-in forwards; pointer-events: none; }
+@keyframes joinIn { from { transform: var(--from); opacity: 0; }
+                    60% { opacity: 1; }
+                    to { transform: var(--to); opacity: 1; } }
+.who.joining { animation: joinIn .42s cubic-bezier(.2,.8,.3,1) backwards; }
+
 .acts { display: flex; gap: 10px; padding: 4px 16px 0; }
 .link-ish { background: none; border: 0; padding: 0; color: var(--mut); font-size: 12px;
             text-decoration: underline; cursor: pointer; }
@@ -263,9 +328,22 @@ body.fit .felt { height: 100%; justify-content: space-between; }
 
 .won { display: grid; place-items: center; gap: 4px; padding: 22px 0 12px; }
 .won .big { font-size: 23px; font-weight: 700; letter-spacing: -.02em; }
+.won .who { width: 84px; height: 142px; }
+
+/* The gradients live in the page once and every figure points at them. */
+.defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 
 /* One block, so there is one place to look. Everything still changes — instantly — and the
-   game is identical to play. */
+   game is identical to play.
+
+   The table goes FLAT here as well as still. Depth on a screen is made of motion as much as
+   of perspective, and somebody who has asked for less movement has usually asked because
+   movement makes them unwell; leaving the perspective on and removing only the animation
+   keeps the part that does it. */
 @media (prefers-reduced-motion: reduce) {
-  .fan .uc, .wash, .clock i, .sw, .sw i { transition: none; }
+  .who, .wash, .clock i, .sw, .sw i, .opp { transition: none; }
+  .body { animation: none; }
+  .who.leaving, .who.joining, .queue.calling .who:last-child { animation: none; }
+  .felt { perspective: none; }
+  .floor { display: none; }
 }

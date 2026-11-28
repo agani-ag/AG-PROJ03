@@ -745,3 +745,218 @@ class JoiningGamesTests(TestCase):
         page = Client().get(reverse('games_join')).content.decode()
         self.assertIn('Play as a guest', page)
         self.assertIn(reverse('member_login'), page)
+
+class NothingMatchesTests(TestCase):
+    """When no card in your hand matches, the table takes one for you.
+
+    Drawing is not a decision. The rules make you take one either way, and with draw-until
+    on they make you keep taking until you can play — so a tap that only confirms there was
+    nothing to decide is a tap worth removing. What IS a decision is left strictly alone,
+    and most of the tests below are about that half.
+    """
+
+    def setUp(self):
+        self.player = player()
+        self.room = service.make_room(self.player)
+        service.fill(self.room, 2)
+        self.game, _ = service.start(self.room, rng=Steady(5))
+
+    def _set(self, **changes):
+        state = dict(self.game.state)
+        state.update(changes)
+        Game.objects.filter(pk=self.game.pk).update(state=state)
+        self.game.refresh_from_db()
+        return state
+
+    def _stuck(self):
+        """Seat 0's turn, holding a hand with nothing in it that matches."""
+        state = dict(self.game.state)
+        # A red 5 is on top, and the hand is seven blue numbers: nothing matches by colour
+        # and nothing by value, which is the position this whole feature is about.
+        red5 = deck.CARDS.index(('red', '5'))
+        blues = [i for i, c in enumerate(deck.CARDS) if c[0] == 'blue' and c[1] == '1'][:1]
+        blues += [i for i, c in enumerate(deck.CARDS) if c[0] == 'blue' and c[1] == '2'][:1]
+        blues += [i for i, c in enumerate(deck.CARDS) if c[0] == 'blue' and c[1] == '3'][:1]
+        state['turn'] = 0
+        state['hands'] = [list(blues)] + [list(h) for h in state['hands'][1:]]
+        state['discard'] = [red5]
+        state['colour'] = 'red'
+        state['drew'] = None
+        state['need_colour'] = False
+        state['need_swap'] = False
+        state['pending'] = {'n': 0, 'kind': None}
+        state['think_until'] = None
+        Game.objects.filter(pk=self.game.pk).update(state=state)
+        self.game.refresh_from_db()
+        return blues
+
+    def test_the_table_draws_without_being_asked(self):
+        held = self._stuck()
+        self.assertEqual(rules.legal(self.game.state, 0, self.room.options), [])
+        game = service.catch_up(self.game, rng=Steady(2))
+        self.assertGreater(len(game.state['hands'][0]), len(held),
+                           'nobody tapped anything and no card arrived')
+
+    def test_it_keeps_drawing_until_one_of_them_matches(self):
+        """Draw-until is on by default, so the hand it leaves you with is a playable one —
+        or the turn has already passed on, which the rules do when the pile runs dry."""
+        self._stuck()
+        game = service.catch_up(self.game, rng=Steady(3))
+        state = game.state
+        if state['turn'] == 0:
+            self.assertTrue(rules.legal(state, 0, self.room.options),
+                            'left holding a hand it still cannot play out of')
+
+    def test_a_hand_that_can_be_played_is_left_alone(self):
+        """The commonest case, and the one it must never touch."""
+        self._stuck()
+        state = dict(self.game.state)
+        state['colour'] = 'blue'                  # now every card in that hand matches
+        Game.objects.filter(pk=self.game.pk).update(state=state)
+        self.game.refresh_from_db()
+        before = list(self.game.state['hands'][0])
+        game = service.catch_up(self.game, rng=Steady(4))
+        self.assertEqual(game.state['hands'][0], before)
+        self.assertEqual(game.state['turn'], 0, 'and the turn is still theirs')
+
+    def test_a_colour_still_to_be_named_is_a_decision_and_is_left_alone(self):
+        self._stuck()
+        self._set(need_colour=True)
+        before = list(self.game.state['hands'][0])
+        game = service.catch_up(self.game, rng=Steady(6))
+        self.assertEqual(game.state['hands'][0], before)
+        self.assertTrue(game.state['need_colour'])
+
+    def test_a_hand_still_to_be_picked_is_a_decision_and_is_left_alone(self):
+        self._stuck()
+        self._set(need_swap=True)
+        before = list(self.game.state['hands'][0])
+        game = service.catch_up(self.game, rng=Steady(7))
+        self.assertEqual(game.state['hands'][0], before)
+        self.assertTrue(game.state['need_swap'])
+
+    def test_a_card_already_drawn_is_a_decision_and_is_left_alone(self):
+        """Having drawn, you choose to play it or keep it. That is a real choice, and it is
+        the one the old `drew` flag exists to protect."""
+        held = self._stuck()
+        self._set(drew=held[0])
+        before = list(self.game.state['hands'][0])
+        game = service.catch_up(self.game, rng=Steady(8))
+        self.assertEqual(game.state['hands'][0], before)
+        self.assertEqual(game.state['drew'], held[0])
+
+    def test_a_stack_you_could_answer_is_a_decision_and_is_left_alone(self):
+        """Two twos on the table and a two in your hand: taking four or passing it on is
+        the most interesting choice in the game, and nothing may take it from you."""
+        state = dict(self.game.state)
+        red2 = deck.CARDS.index(('red', 'draw2'))
+        other = [i for i, c in enumerate(deck.CARDS) if c == ('blue', 'draw2')][0]
+        state['turn'] = 0
+        state['hands'] = [[red2]] + [list(h) for h in state['hands'][1:]]
+        state['discard'] = [other]
+        state['colour'] = 'blue'
+        state['pending'] = {'n': 2, 'kind': 'draw2'}
+        state['drew'] = None
+        state['need_colour'] = False
+        state['need_swap'] = False
+        state['think_until'] = None
+        Game.objects.filter(pk=self.game.pk).update(state=state)
+        self.game.refresh_from_db()
+        if not rules.legal(self.game.state, 0, self.room.options):
+            self.skipTest('stacking is off at this table, so there is no choice to protect')
+        game = service.catch_up(self.game, rng=Steady(9))
+        self.assertEqual(game.state['hands'][0], [red2], 'the choice was taken away')
+        self.assertEqual(game.state['pending']['n'], 2)
+
+    def test_a_stack_you_cannot_answer_is_taken_for_you(self):
+        """No two in hand: taking the four is forced, so there is nothing to tap about."""
+        state = dict(self.game.state)
+        blue1 = [i for i, c in enumerate(deck.CARDS) if c == ('blue', '1')][0]
+        other = [i for i, c in enumerate(deck.CARDS) if c == ('red', 'draw2')][0]
+        state['turn'] = 0
+        state['hands'] = [[blue1]] + [list(h) for h in state['hands'][1:]]
+        state['discard'] = [other]
+        state['colour'] = 'red'
+        state['pending'] = {'n': 2, 'kind': 'draw2'}
+        state['drew'] = None
+        state['need_colour'] = False
+        state['need_swap'] = False
+        state['think_until'] = None
+        Game.objects.filter(pk=self.game.pk).update(state=state)
+        self.game.refresh_from_db()
+        game = service.catch_up(self.game, rng=Steady(10))
+        self.assertGreater(len(game.state['hands'][0]), 1, 'the stack was never taken')
+        self.assertEqual(game.state['pending']['n'], 0)
+
+    def test_the_poll_alone_is_enough_to_make_it_happen(self):
+        """It has to work from a plain poll, because that is all a waiting player does."""
+        self._stuck()
+        sign_in(self.client)
+        before = len(self.game.state['hands'][0])
+        self.client.get(reverse('games_poll', args=[self.room.code]))
+        self.game.refresh_from_db()
+        self.assertGreater(len(self.game.state['hands'][0]), before)
+
+class TheDeckIsPeopleTests(TestCase):
+    """Three things about the drawing that nothing else is watching.
+
+    None of them is about how it looks — no test can be. They are the three that fail
+    silently: a figure painted black because the light it refers to is not in the page, a
+    line of people wider than the phone they are on, and the word nobody at this table is
+    ever called.
+    """
+
+    def css(self):
+        return (Path(django_settings.BASE_DIR) / 'static' / 'games' / 'user.css').read_text(
+            encoding='utf-8')
+
+    def js(self):
+        return (Path(django_settings.BASE_DIR) / 'static' / 'games' / 'user.js').read_text(
+            encoding='utf-8')
+
+    def room_template(self):
+        return (Path(django_settings.BASE_DIR) / 'games' / 'templates' / 'games' / 'user'
+                / 'room.html').read_text(encoding='utf-8')
+
+    def test_every_light_the_script_paints_with_is_in_the_page(self):
+        """The moulding is a handful of gradients defined once in the template and pointed
+        at from the script. Delete one and every figure that used it goes flat black — on
+        the table, in your hand, and on the round-over screen at once. Nothing throws."""
+        js = self.js()
+        wanted = set(re.findall(r'url\(#([a-z0-9-]+)\)', js))
+        # The five kit gradients are never written out whole — they are built as
+        # "url(#k-" + key + ")" from the colour, so a regex looking for a literal finds
+        # four of the nine and misses every one that matters. The keys come from the map
+        # the script builds them with, plus the grey the ones still waiting wear.
+        keys = set(re.findall(r':\s*"([a-z])"', js[js.index('var KEY'):js.index('var FLAT')]))
+        self.assertEqual(keys, set('rygb'), 'the four colours are not where they were')
+        wanted |= {'k-' + k for k in keys | {'n'}}
+        self.assertGreaterEqual(len(wanted), 9)
+        defined = set(re.findall(r'<radialGradient id="([a-z0-9-]+)"', self.room_template()))
+        self.assertEqual(wanted - defined, set())
+
+    def test_a_line_of_people_cannot_push_the_page_wider_than_the_phone(self):
+        """Seven of them side by side are wider than a phone, and a flex item will not
+        shrink below its own contents — so without this the hand pushed the whole page out
+        to 436 pixels on a 390 pixel screen. Everything went off-centre, the buttons ran
+        off the right-hand edge, and the measuring that is supposed to close the line up
+        then measured the pushed-out width, decided it had room, and left them spread. The
+        overflow hid the overflow, which is why it needs a test and not a memory."""
+        css = self.css()
+        self.assertRegex(css, r'\.line[^{]*\{[^}]*min-width:\s*0')
+        # And the floor under it: they overlap before a line of script has run.
+        self.assertRegex(css, r'\.line \.who \+ \.who\s*\{[^}]*margin-left:\s*-\d')
+
+    def test_each_of_them_is_named_in_words_for_a_screen_reader(self):
+        """The value is drawn, not written, so there is nothing to read unless it is said.
+        A colour swatch is not a label at the best of times, and about one man in twelve
+        cannot separate two of these four."""
+        self.assertIn('aria-label', self.js())
+        self.assertIn('name(index)', self.js())
+
+    def test_nothing_is_drawn_as_a_card_any_more(self):
+        """The old card markup is gone from all three files, not just stopped being used."""
+        for what, text in (('the stylesheet', self.css()), ('the script', self.js()),
+                           ('the template', self.room_template())):
+            self.assertNotIn('class="uc"', text, what)
+            self.assertNotIn('.uc ', text, what)

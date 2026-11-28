@@ -330,6 +330,28 @@ def catch_up(game, now=None, rng=None, rounds=24):
             state['think_until'] = None
             moved = True
 
+        # Nothing in that hand matches. Drawing is not a decision — the rules make you
+        # take one either way, and in draw-until they make you keep taking until you can
+        # play — so tapping to be told that is a tap that decides nothing. The table does
+        # it instead, here, where the player's own poll is already waiting.
+        #
+        # Everything that IS a decision is left alone: a colour still to be named, a hand
+        # still to be picked, a card already drawn and waiting to be played or kept, and a
+        # stack of twos you could answer with a two of your own. Held chairs are not
+        # touched either; those are already played for, a little further up.
+        #
+        # Only two conditions here, and they are the two this layer owns: whose chair it is,
+        # and whether the hand has anything in it. Everything else that must NOT be drawn
+        # over — a colour still to be named, a hand still to be picked, a card already
+        # drawn — is refused by `rules.draw` itself, which returns before it touches the
+        # state. Repeating those checks here was written first and then taken out: removing
+        # each one changed no behaviour and broke no test, which is the definition of a
+        # condition that only looks like it is doing something. The rule lives in the rules.
+        if turn not in held and not rules.legal(state, turn, room.options):
+            state, refused = rules.draw(state, turn, now, rng, room.options)
+            if not refused:
+                moved = True
+
         _set_think(state, seats, now, rng)
         if state.get('think_until') != game.state.get('think_until'):
             moved = True
