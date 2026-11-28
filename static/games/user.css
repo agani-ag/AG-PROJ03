@@ -321,8 +321,12 @@ body.fit .wrap, body.fit #table, body.fit #play, .felt, .line, .middle { min-wid
 .who.joining { animation: joinIn .42s cubic-bezier(.2,.8,.3,1) backwards; }
 
 .acts { display: flex; gap: 10px; padding: 4px 16px 0; }
-.link-ish { background: none; border: 0; padding: 0; color: var(--mut); font-size: 12px;
-            text-decoration: underline; cursor: pointer; }
+/* "Step away" and "End the table" were 18 pixels tall, under the 24x24 that WCAG 2.2
+   §2.5.8 asks of a pointer target — and these two are the ones you reach for in a hurry,
+   with a thumb, usually because something has gone wrong. The type stays the same size;
+   the box around it grows. */
+.link-ish { background: none; border: 0; padding: 4px 8px; margin: -4px 0; min-height: 24px;
+            color: var(--mut); font-size: 12px; text-decoration: underline; cursor: pointer; }
 .acts .btn { flex: 1; }
 
 /* ---------- sheets ---------- */
